@@ -9,11 +9,10 @@ SQLAlchemy==2.0.23
 psycopg2-binary==2.9.9
 alembic==1.13.1
 
-# Authentication & Security
+# Authentication & Security (simplified for deployment)
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
 python-multipart==0.0.6
-bcrypt==4.1.2
 
 # Testing dependencies
 pytest==7.4.3

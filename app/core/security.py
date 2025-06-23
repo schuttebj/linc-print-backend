@@ -15,8 +15,8 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing context (using pbkdf2_sha256 to avoid bcrypt dependency issues on Render.com)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def create_access_token(
