@@ -370,4 +370,4 @@ class UserQueryParams(BaseModel):
     department: Optional[str] = None
     location_id: Optional[uuid.UUID] = None
     sort_by: str = Field(default="created_at")
-    sort_order: str = Field(default="desc", regex="^(asc|desc)$") 
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$") 

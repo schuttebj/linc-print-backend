@@ -52,7 +52,7 @@ async def list_users(
     role: Optional[str] = Query(None, description="Filter by role"),
     department: Optional[str] = Query(None, description="Filter by department"),
     sort_by: str = Query("created_at", description="Sort field"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order"),
     current_user: User = Depends(require_permission("users.read")),
     db: Session = Depends(get_db)
 ):
