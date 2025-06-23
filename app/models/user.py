@@ -69,6 +69,15 @@ class User(BaseModel):
     - English default language
     - Role-based access control for Clerk/Supervisor/Printer
     - Multi-location assignment for distributed printing
+    
+    TODO: User Model Enhancements
+    =============================
+    - TODO: Add biometric data fields (when Persons module is implemented)
+    - TODO: Add location preferences and restrictions  
+    - TODO: Add session management and device tracking
+    - TODO: Add user activity logging enhancements
+    - TODO: Add password policy enforcement
+    - TODO: Add device registration for automatic location detection
     """
     __tablename__ = "users"
     

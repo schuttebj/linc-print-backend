@@ -193,6 +193,32 @@ DEFAULT_LANGUAGE="en"
 
 ---
 
+## 📋 TODO: Future Development Roadmap
+
+### Priority 1: Core Functionality
+- [ ] **Persons Module**: Madagascar citizen ID validation and management
+- [ ] **Applications Module**: License application processing workflow
+- [ ] **Printing Module**: Distributed card printing system
+- [ ] **Locations Module**: Multi-office management
+
+### Priority 2: Location System Enhancement
+- [ ] **Device Registration**: Automatic location detection via MAC address
+- [ ] **Location-Specific URLs**: Subdomain or path-based location routing
+- [ ] **IP-Based Detection**: Automatic location assignment with fallback
+- [ ] **Hybrid Approach**: Device registration + manual selection
+
+### Priority 3: Security & Compliance
+- [ ] **Enhanced Authentication**: 2FA, rate limiting, session management
+- [ ] **Audit System**: Comprehensive activity logging and reporting
+- [ ] **Data Import**: Integration with existing systems
+- [ ] **Performance Optimization**: Caching and monitoring
+
+### Priority 4: Production Features
+- [ ] **OCR Integration**: Document processing automation
+- [ ] **Backup Systems**: Automated backup and recovery
+- [ ] **Monitoring**: Health checks and alerting
+- [ ] **Admin Controls**: Remove admin endpoints or secure properly
+
 **Next Steps**:
 1. Deploy frontend (React/TypeScript)
 2. Implement remaining modules (Persons, Applications, etc.)

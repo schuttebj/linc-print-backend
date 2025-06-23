@@ -1,6 +1,17 @@
 """
 Authentication Endpoints for Madagascar License System
 Handles login, logout, token refresh, and password management
+
+TODO: Authentication Enhancements
+=================================
+- TODO: Implement location-based authentication (device registration)
+- TODO: Add rate limiting for login attempts
+- TODO: Add 2FA support for high-privilege accounts  
+- TODO: Add session management and concurrent login controls
+- TODO: Add audit logging for all authentication events
+- TODO: Implement location detection and validation
+- TODO: Add password strength validation on change
+- TODO: Add account lockout after failed attempts
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -132,6 +143,8 @@ async def login(
     user.last_login_ip = request.client.host if request.client else None
     
     # Create JWT tokens
+    # TODO: Implement location validation and automatic detection
+    # Currently location_id is optional and not validated
     additional_claims = create_user_token_claims(user, login_data.location_id)
     access_token = create_access_token(user.id, additional_claims=additional_claims)
     refresh_token = create_refresh_token(user.id)

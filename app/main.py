@@ -1,6 +1,38 @@
 """
 Main FastAPI Application for Madagascar License System
 Adapted from LINC Old with Madagascar-specific configuration
+
+TODO: Future Enhancements
+========================
+1. Location System Enhancements:
+   - TODO: Add device registration by MAC address for automatic location detection
+   - TODO: Implement location-specific login URLs (subdomains or paths)
+   - TODO: Add IP address-based location detection with fallback
+   - TODO: Create hybrid approach (device registration + manual selection)
+   
+2. Security Enhancements:
+   - TODO: Add rate limiting for admin endpoints
+   - TODO: Implement proper admin authentication for database operations
+   - TODO: Add audit logging for admin actions
+   - TODO: Remove admin endpoints in production or add proper security
+
+3. Module Expansion:
+   - TODO: Implement Persons Module (Madagascar ID validation)
+   - TODO: Implement Applications Module (license application processing)
+   - TODO: Implement Printing Module (distributed card printing)
+   - TODO: Implement Locations Module (multi-office management)
+   - TODO: Implement Reports Module (audit and compliance)
+
+4. Data Import:
+   - TODO: Add data import functionality from existing systems
+   - TODO: Implement OCR for document processing
+   - TODO: Add bulk user import capabilities
+
+5. Production Readiness:
+   - TODO: Add comprehensive logging and monitoring
+   - TODO: Implement backup and recovery procedures
+   - TODO: Add health checks for external dependencies
+   - TODO: Performance optimization and caching
 """
 
 from fastapi import FastAPI, Request, status

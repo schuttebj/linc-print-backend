@@ -10,7 +10,16 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    """Application settings for Madagascar License System"""
+    """Application settings for Madagascar License System
+    
+    TODO: Configuration Enhancements
+    ================================
+    - TODO: Add location-specific configuration settings
+    - TODO: Add device registration settings
+    - TODO: Add printing system configuration
+    - TODO: Add external integration settings (when needed)
+    - TODO: Add production vs development environment configurations
+    """
     
     model_config = SettingsConfigDict(
         env_file=".env",

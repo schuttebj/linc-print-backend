@@ -254,6 +254,12 @@ class LoginRequest(BaseModel):
     username: str = Field(..., description="Username or email")
     password: str = Field(..., description="Password")
     location_id: Optional[uuid.UUID] = Field(None, description="Login location")
+    
+    # TODO: Location System Enhancement
+    # Currently location_id is optional. Future implementations could include:
+    # - Automatic device detection (MAC address registration)
+    # - IP-based location detection
+    # - Hybrid approach with fallback options
 
 
 class LoginResponse(BaseModel):
