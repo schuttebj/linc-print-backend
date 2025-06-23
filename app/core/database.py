@@ -1,10 +1,9 @@
 """
 Database Configuration for Madagascar License System
-Adapted from LINC Old with PostgreSQL and async support
+Compatible with SQLAlchemy 1.4 for Render.com deployment
 """
 
 from sqlalchemy import create_engine, MetaData
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import os
@@ -26,9 +25,6 @@ engine = create_engine(
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create declarative base
-Base = declarative_base()
-
 # Metadata for schema creation
 metadata = MetaData()
 
@@ -47,9 +43,11 @@ def get_db():
 
 def create_tables():
     """Create all database tables"""
+    from app.models.base import Base
     Base.metadata.create_all(bind=engine)
 
 
 def drop_tables():
     """Drop all database tables (use with caution!)"""
+    from app.models.base import Base
     Base.metadata.drop_all(bind=engine) 

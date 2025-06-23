@@ -1,9 +1,9 @@
 """
 Madagascar License System Configuration
-Adapted from LINC Old with Madagascar-specific requirements
+Compatible with Pydantic v1 and older dependencies for Render.com
 """
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseSettings
 from typing import List, Dict, Any, Optional
 import os
 from pathlib import Path
@@ -12,11 +12,10 @@ from pathlib import Path
 class Settings(BaseSettings):
     """Application settings for Madagascar License System"""
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_ignore_empty=True,
-        extra="ignore"
-    )
+    class Config:
+        env_file = ".env"
+        env_ignore_empty = True
+        extra = "ignore"
     
     # API Configuration
     API_V1_STR: str = "/api/v1"
@@ -122,7 +121,8 @@ class Settings(BaseSettings):
 class MadagascarConfig(BaseSettings):
     """Madagascar-specific configuration"""
     
-    model_config = SettingsConfigDict(extra="allow")
+    class Config:
+        extra = "allow"
     
     country_code: str = "MG"
     country_name: str = "Madagascar"

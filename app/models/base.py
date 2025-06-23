@@ -1,15 +1,16 @@
 """
 Base Database Model for Madagascar License System
-Common functionality and audit fields adapted from LINC Old
+Compatible with SQLAlchemy 1.4 for Render.com deployment
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.ext.declarative import declared_attr, declarative_base
 from datetime import datetime, timezone
 import uuid
 
-from app.core.database import Base
+# Create base for SQLAlchemy 1.4
+Base = declarative_base()
 
 
 class BaseModel(Base):
@@ -27,14 +28,14 @@ class BaseModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     
     # Audit fields - who and when
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, comment="Record creation timestamp")
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False, comment="Last update timestamp")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, comment="Record creation timestamp")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False, comment="Last update timestamp")
     created_by = Column(UUID(as_uuid=True), nullable=True, comment="User ID who created the record")
     updated_by = Column(UUID(as_uuid=True), nullable=True, comment="User ID who last updated the record")
     
     # Soft delete support for data retention compliance
     is_active = Column(Boolean, default=True, nullable=False, comment="Active status - false for soft deleted")
-    deleted_at = Column(DateTime, nullable=True, comment="Soft deletion timestamp")
+    deleted_at = Column(DateTime(timezone=True), nullable=True, comment="Soft deletion timestamp")
     deleted_by = Column(UUID(as_uuid=True), nullable=True, comment="User ID who soft deleted the record")
     
     def __repr__(self):

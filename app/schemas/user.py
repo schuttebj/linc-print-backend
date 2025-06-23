@@ -164,7 +164,7 @@ class RoleResponse(BaseModel):
     description: Optional[str]
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class LocationResponse(BaseModel):
@@ -175,7 +175,7 @@ class LocationResponse(BaseModel):
     location_type: str
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class UserResponse(BaseModel):
@@ -224,7 +224,7 @@ class UserResponse(BaseModel):
     assigned_locations: List[LocationResponse]
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class UserListResponse(BaseModel):
@@ -249,7 +249,7 @@ class UserSummary(BaseModel):
     last_login_at: Optional[datetime]
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 # Authentication schemas
@@ -293,7 +293,7 @@ class PermissionResponse(BaseModel):
     action: str
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class RoleDetailResponse(BaseModel):
@@ -310,7 +310,7 @@ class RoleDetailResponse(BaseModel):
     child_roles: List[RoleResponse]
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class RoleCreate(BaseModel):
@@ -363,7 +363,7 @@ class UserAuditLogResponse(BaseModel):
     created_at: datetime
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 # Query parameters
