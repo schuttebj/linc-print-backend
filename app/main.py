@@ -124,10 +124,10 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 async def drop_all_tables():
     """Drop all database tables - DEVELOPMENT ONLY"""
     try:
-        from app.core.database import engine, Base
+        from app.core.database import drop_tables
         
         logger.warning("Dropping all database tables")
-        Base.metadata.drop_all(bind=engine)
+        drop_tables()
         
         return {
             "status": "success",
@@ -151,10 +151,10 @@ async def drop_all_tables():
 async def initialize_tables():
     """Initialize database tables with latest schema"""
     try:
-        from app.core.database import engine, Base
+        from app.core.database import create_tables
         
         logger.info("Creating database tables")
-        Base.metadata.create_all(bind=engine)
+        create_tables()
         
         return {
             "status": "success", 
