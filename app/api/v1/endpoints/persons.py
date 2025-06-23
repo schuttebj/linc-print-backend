@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from app.api.v1.dependencies import get_db, get_current_user
+from app.core.database import get_db
+from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.users import require_permission
 from app.crud import crud_person
 from app.models.user import User
 from app.schemas.person import (
