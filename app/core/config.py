@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     
-    # CORS Configuration
-    ALLOWED_ORIGINS: str = "https://madagascar-license-frontend.vercel.app,http://localhost:3000,http://localhost:5173"
+    # CORS Configuration - Allow all origins for development
+    ALLOWED_ORIGINS: str = "*"
     ALLOWED_HOSTS: str = "*"
     
     @property
