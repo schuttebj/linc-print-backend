@@ -1,16 +1,17 @@
 # LINC Backend Dependencies - Madagascar Print System
+# Using versions with guaranteed pre-built wheels
 
 # Core Framework
-fastapi==0.104.1
+fastapi==0.103.2
 uvicorn==0.24.0
 
 # Database
-sqlalchemy==2.0.23
+sqlalchemy==2.0.21
 psycopg2-binary==2.9.9
 
-# API & Validation
-pydantic==2.5.0
-pydantic-settings==2.1.0
+# API & Validation (stable versions with pre-built wheels)
+pydantic==2.4.2
+pydantic-settings==2.0.3
 email-validator==2.1.0
 
 # Authentication & Security
@@ -19,7 +20,7 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.6
 
-# File Handling (simplified for core functionality)
+# File Handling
 Pillow==10.4.0
 
 # Utilities
