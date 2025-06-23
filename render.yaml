@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: madagascar-license-backend
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: madagascar-license-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: 'https://madagascar-license-frontend.vercel.app,http://localhost:3000,http://localhost:5173'
+      - key: FILE_STORAGE_BASE_PATH
+        value: /tmp/madagascar-license-data
+      - key: COUNTRY_CODE
+        value: MG
+      - key: COUNTRY_NAME
+        value: Madagascar
+      - key: CURRENCY
+        value: MGA
+
+databases:
+  - name: madagascar-license-db
+    databaseName: madagascar_license
+    user: madagascar_user
+    plan: starter 
