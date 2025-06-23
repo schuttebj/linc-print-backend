@@ -230,7 +230,7 @@ class Role(BaseModel):
     # Relationships
     users = relationship("User", secondary=user_roles, back_populates="roles")
     permissions = relationship("Permission", secondary=role_permissions, back_populates="roles")
-    child_roles = relationship("Role", backref="parent_role", remote_side=[id])
+    child_roles = relationship("Role", backref="parent_role", remote_side="Role.id")
     
     def __repr__(self):
         return f"<Role(id={self.id}, name='{self.name}', display_name='{self.display_name}')>"
