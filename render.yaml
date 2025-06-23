@@ -3,11 +3,12 @@ services:
     name: madagascar-license-backend
     env: python
     plan: starter
+    region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: "3.11.9"
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
