@@ -3,7 +3,7 @@ User Schemas for Madagascar License System API
 Pydantic models for request/response validation
 """
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -57,15 +57,13 @@ class UserBase(BaseModel):
     timezone: str = Field(default="Indian/Antananarivo", description="Timezone")
     currency: str = Field(default="MGA", description="Currency")
     
-    @field_validator('username')
-    @classmethod
+    @validator('username')
     def validate_username(cls, v):
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError('Username can only contain letters, numbers, hyphens, and underscores')
         return v.lower()
     
-    @field_validator('madagascar_id_number')
-    @classmethod
+    @validator('madagascar_id_number')
     def validate_madagascar_id(cls, v):
         # Basic validation - can be enhanced with actual CIN/CNI format rules
         if not v.replace('-', '').replace(' ', '').isalnum():
@@ -81,10 +79,9 @@ class UserCreate(UserBase):
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location ID")
     assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Assigned location IDs")
     
-    @field_validator('confirm_password')
-    @classmethod
-    def passwords_match(cls, v, info):
-        if info.data.get('password') and v != info.data['password']:
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if 'password' in values and v != values['password']:
             raise ValueError('Passwords do not match')
         return v
 
@@ -133,10 +130,9 @@ class UserPasswordChange(BaseModel):
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., description="New password confirmation")
     
-    @field_validator('confirm_password')
-    @classmethod
-    def passwords_match(cls, v, info):
-        if info.data.get('new_password') and v != info.data['new_password']:
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if 'new_password' in values and v != values['new_password']:
             raise ValueError('Passwords do not match')
         return v
 
@@ -152,10 +148,9 @@ class UserPasswordResetConfirm(BaseModel):
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., description="Password confirmation")
     
-    @field_validator('confirm_password')
-    @classmethod
-    def passwords_match(cls, v, info):
-        if info.data.get('new_password') and v != info.data['new_password']:
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if 'new_password' in values and v != values['new_password']:
             raise ValueError('Passwords do not match')
         return v
 

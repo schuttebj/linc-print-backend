@@ -3,8 +3,7 @@ Madagascar License System Configuration
 Compatible with Pydantic v2 and modern dependencies for Render.com
 """
 
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Dict, Any, Optional
 import os
 from pathlib import Path
@@ -13,7 +12,7 @@ from pathlib import Path
 class Settings(BaseSettings):
     """Application settings for Madagascar License System"""
     
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=".env",
         env_ignore_empty=True,
         extra="ignore"
@@ -27,10 +26,11 @@ class Settings(BaseSettings):
     # Security Configuration
     SECRET_KEY: str = "your-very-secure-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours for office work
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     
     # CORS Configuration
-    ALLOWED_ORIGINS: str = "https://your-frontend.vercel.app,http://localhost:3000,http://localhost:5173"
+    ALLOWED_ORIGINS: str = "https://madagascar-license-frontend.vercel.app,http://localhost:3000,http://localhost:5173"
     ALLOWED_HOSTS: str = "*"
     
     @property
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
             return [host.strip() for host in self.ALLOWED_HOSTS.split(",")]
     
     # Database Configuration
-    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/madagascar_license_db"
+    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/madagascar_license"
     DB_SSL_MODE: str = "prefer"
     
     # File Storage Configuration
@@ -66,14 +66,8 @@ class Settings(BaseSettings):
     ALLOWED_IMAGE_TYPES: str = "image/jpeg,image/png,image/gif,image/bmp,image/tiff"
     ALLOWED_DOCUMENT_TYPES: str = "application/pdf,image/jpeg,image/png"
     
-    # Backup Configuration
-    BACKUP_RETENTION_DAILY: int = 30
-    BACKUP_RETENTION_WEEKLY: int = 12
-    ENABLE_AUTO_BACKUP: bool = True
-    
     @property
     def allowed_image_types_list(self) -> List[str]:
-        """Convert ALLOWED_IMAGE_TYPES string to list"""
         try:
             import json
             return json.loads(self.ALLOWED_IMAGE_TYPES)
@@ -82,48 +76,69 @@ class Settings(BaseSettings):
     
     @property
     def allowed_document_types_list(self) -> List[str]:
-        """Convert ALLOWED_DOCUMENT_TYPES string to list"""
         try:
             import json
             return json.loads(self.ALLOWED_DOCUMENT_TYPES)
         except:
             return [mime_type.strip() for mime_type in self.ALLOWED_DOCUMENT_TYPES.split(",")]
     
+    # Country Configuration
+    COUNTRY_CODE: str = "MG"
+    COUNTRY_NAME: str = "Madagascar"
+    CURRENCY: str = "MGA"
+    
+    # Madagascar-specific settings
+    SUPPORTED_ID_TYPES: List[str] = ["CIN", "CNI", "PASSPORT", "BIRTH_CERT"]
+    SUPPORTED_LANGUAGES: List[str] = ["mg", "fr", "en"]
+    DEFAULT_LANGUAGE: str = "mg"
+    
+    # License types available in Madagascar
+    AVAILABLE_LICENSE_TYPES: List[str] = ["A", "B", "C", "D", "EB", "EC"]
+    
+    # Age requirements for license types (Madagascar-specific)
+    AGE_REQUIREMENTS: Dict[str, int] = {
+        "A": 16,    # Motorcycle
+        "B": 18,    # Light vehicle
+        "C": 21,    # Heavy vehicle
+        "D": 24     # Bus/taxi
+    }
+    
+    # Fee structure (in Malagasy Ariary)
+    FEE_STRUCTURE: Dict[str, float] = {
+        "learners_license": 25000.00,      # ~5 USD
+        "drivers_license": 50000.00,       # ~10 USD
+        "license_renewal": 40000.00,       # ~8 USD
+        "duplicate_license": 30000.00,     # ~6 USD
+        "international_permit": 75000.00    # ~15 USD
+    }
+    
+    # System Performance
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 30
+    
     # Audit Configuration
     AUDIT_LOG_RETENTION_DAYS: int = 2555  # 7 years
     ENABLE_FILE_AUDIT_LOGS: bool = True
     ENABLE_PERFORMANCE_MONITORING: bool = True
     
-    # Madagascar Country Configuration
-    COUNTRY_CODE: str = "MG"
-    COUNTRY_NAME: str = "Madagascar"
-    CURRENCY: str = "MGA"
-    DEFAULT_LANGUAGE: str = "en"  # Start with English, translate to French later
-    TIMEZONE: str = "Indian/Antananarivo"
-    
-    # Performance Configuration
-    DB_POOL_SIZE: int = 20
-    DB_MAX_OVERFLOW: int = 30
-    DB_POOL_TIMEOUT: int = 30
-    
-    # Card Production Configuration
-    CARD_PRODUCTION_MODE: str = "distributed"  # Madagascar uses distributed printing
-    ISO_18013_COMPLIANCE: bool = True  # Driver's license standard
-    ISO_7810_COMPLIANCE: bool = True   # National ID standard
-    
-    # Development Settings
-    DEBUG: bool = False
-    TESTING: bool = False
+    # Card Production
+    CARD_PRODUCTION_MODE: str = "local"
+    ISO_18013_COMPLIANCE: bool = True
     
     def get_file_storage_path(self) -> Path:
         """Get file storage path for Madagascar"""
         return Path(self.FILE_STORAGE_PATH) / self.COUNTRY_CODE
 
 
+settings = Settings()
+
+
 class MadagascarConfig(BaseSettings):
     """Madagascar-specific configuration"""
     
-    model_config = ConfigDict(extra="allow")
+    class Config:
+        extra = "allow"
     
     country_code: str = "MG"
     country_name: str = "Madagascar"
