@@ -49,8 +49,8 @@ app = FastAPI(
     version=settings.VERSION,
     description="Madagascar Driver's License Management System",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=f"{settings.API_V1_STR}/docs",
+    redoc_url=f"{settings.API_V1_STR}/redoc",
     lifespan=lifespan
 )
 
@@ -109,8 +109,8 @@ async def root():
     return {
         "message": "Madagascar Driver's License System API",
         "version": settings.VERSION,
-        "docs_url": "/docs",
-        "redoc_url": "/redoc",
+        "docs_url": f"{settings.API_V1_STR}/docs",
+        "redoc_url": f"{settings.API_V1_STR}/redoc",
         "api_base": settings.API_V1_STR
     }
 
