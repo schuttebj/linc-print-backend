@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Madagascar Driver's License System"
     VERSION: str = "1.0.0"
     
+    # Development/Debug Configuration
+    DEBUG: bool = False
+    
     # Security Configuration
     SECRET_KEY: str = "your-very-secure-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
