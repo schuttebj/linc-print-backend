@@ -101,25 +101,51 @@ app.add_middleware(
 async def add_process_time_header(request: Request, call_next):
     """Add request processing time to response headers"""
     start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+    except Exception as e:
+        # Handle middleware errors gracefully
+        logger.warning(f"Request processing error: {e}")
+        process_time = time.time() - start_time
+        logger.info(f"Request failed after {process_time:.4f}s")
+        raise
 
 
-# Global exception handler
+# Specific handler for h11 protocol errors
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for unhandled errors"""
+async def handle_h11_errors(request: Request, exc: Exception):
+    """Handle h11 protocol errors specifically"""
+    exc_str = str(exc)
+    exc_type = str(type(exc))
+    
+    # Handle h11 protocol errors - these usually mean client disconnected
+    if "h11" in exc_type.lower() or "localprotocolerror" in exc_str.lower():
+        logger.warning(f"HTTP protocol error (client likely disconnected): {exc}")
+        return None  # Don't try to send response
+    
+    # Handle connection/timeout errors
+    if any(keyword in exc_str.lower() for keyword in ["connection", "timeout", "disconnect", "broken pipe"]):
+        logger.warning(f"Connection error: {exc}")
+        return None
+    
+    # Handle other exceptions normally
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Internal server error",
-            "type": "internal_error",
-            "status_code": 500
-        }
-    )
+    
+    try:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": "Internal server error",
+                "type": "internal_error",
+                "status_code": 500
+            }
+        )
+    except Exception as response_error:
+        logger.warning(f"Could not send error response: {response_error}")
+        return None
 
 
 # Health check endpoint
