@@ -3,7 +3,7 @@ User Schemas for Madagascar License System API
 Pydantic models for request/response validation
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -57,13 +57,15 @@ class UserBase(BaseModel):
     timezone: str = Field(default="Indian/Antananarivo", description="Timezone")
     currency: str = Field(default="MGA", description="Currency")
     
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError('Username can only contain letters, numbers, hyphens, and underscores')
         return v.lower()
     
-    @validator('madagascar_id_number')
+    @field_validator('madagascar_id_number')
+    @classmethod
     def validate_madagascar_id(cls, v):
         # Basic validation - can be enhanced with actual CIN/CNI format rules
         if not v.replace('-', '').replace(' ', '').isalnum():
@@ -79,9 +81,10 @@ class UserCreate(UserBase):
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location ID")
     assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Assigned location IDs")
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'password' in values and v != values['password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v, info):
+        if info.data.get('password') and v != info.data['password']:
             raise ValueError('Passwords do not match')
         return v
 
@@ -130,9 +133,10 @@ class UserPasswordChange(BaseModel):
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., description="New password confirmation")
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v, info):
+        if info.data.get('new_password') and v != info.data['new_password']:
             raise ValueError('Passwords do not match')
         return v
 
@@ -148,9 +152,10 @@ class UserPasswordResetConfirm(BaseModel):
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., description="Password confirmation")
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v, info):
+        if info.data.get('new_password') and v != info.data['new_password']:
             raise ValueError('Passwords do not match')
         return v
 
@@ -163,8 +168,7 @@ class RoleResponse(BaseModel):
     display_name: str
     description: Optional[str]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LocationResponse(BaseModel):
@@ -174,8 +178,7 @@ class LocationResponse(BaseModel):
     code: str
     location_type: str
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserResponse(BaseModel):
@@ -223,8 +226,7 @@ class UserResponse(BaseModel):
     primary_location: Optional[LocationResponse]
     assigned_locations: List[LocationResponse]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserListResponse(BaseModel):
@@ -248,8 +250,7 @@ class UserSummary(BaseModel):
     department: Optional[str]
     last_login_at: Optional[datetime]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Authentication schemas
@@ -292,8 +293,7 @@ class PermissionResponse(BaseModel):
     resource: str
     action: str
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleDetailResponse(BaseModel):
@@ -309,8 +309,7 @@ class RoleDetailResponse(BaseModel):
     parent_role: Optional[RoleResponse]
     child_roles: List[RoleResponse]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleCreate(BaseModel):
@@ -362,8 +361,7 @@ class UserAuditLogResponse(BaseModel):
     details: Optional[Dict[str, Any]]
     created_at: datetime
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Query parameters
