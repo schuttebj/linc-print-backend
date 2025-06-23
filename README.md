@@ -1,226 +1,261 @@
-# Madagascar Driver's License System - Backend
+# Madagascar Driver's License Backend System
 
-A comprehensive backend API for managing driver's licenses in Madagascar, built with FastAPI and PostgreSQL.
+## Overview
+Complete backend system for Madagascar's Driver's License management with person management, authentication, and role-based access control.
 
-## 🇲🇬 System Overview
+## Current Status ✅
 
-This system provides secure, role-based management of driver's license applications, user management, and distributed printing capabilities specifically designed for Madagascar's licensing requirements.
+- **Authentication System**: JWT-based with role-based access control
+- **User Management**: Admin, Clerk, Supervisor, and Printer roles
+- **Person Module**: Complete implementation with Madagascar-specific features
+- **Permission System**: Granular access control with 43+ permissions
+- **Database**: PostgreSQL with comprehensive audit trails
+- **API Documentation**: Auto-generated OpenAPI/Swagger docs
+- **Deployment**: Production-ready on Render.com
 
-### Key Features
+## Quick Start
 
-- **Madagascar-Specific ID Support**: CIN/CNI ID number validation
-- **Role-Based Access Control**: Clerk, Supervisor, and Printer roles
-- **Distributed Printing**: Cross-location printing with shipment management
-- **ISO Compliance**: Ready for ISO 7810 (national IDs) and ISO 18013 (licenses)
-- **Comprehensive Audit Trail**: Full audit logging for compliance
-- **Multi-Currency Support**: Madagascar Ariary (MGA) with localization
+### 1. System Initialization
 
-## 🚀 Quick Start
+Use admin endpoints to set up the complete system:
 
-### Prerequisites
-
-- Python 3.8+
-- PostgreSQL 12+
-- pip or poetry
-
-### Installation
-
-1. **Clone and setup**:
 ```bash
-git clone https://github.com/schuttebj/linc-print-backend.git
-cd linc-print-backend
-pip install -r requirements.txt
+# Step 1: Create database tables
+curl -X POST "https://linc-print-backend.onrender.com/admin/init-tables"
+
+# Step 2: Initialize users, roles, and permissions (includes Person module)
+curl -X POST "https://linc-print-backend.onrender.com/admin/init-users"
 ```
 
-2. **Configure environment**:
+### 2. Authentication
+
 ```bash
-cp env.example .env
-# Edit .env with your database credentials
+# Login as clerk
+curl -X POST "https://linc-print-backend.onrender.com/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "clerk1", "password": "Clerk123!"}'
+
+# Use the returned access_token for subsequent requests
+export TOKEN="your_access_token_here"
 ```
 
-3. **Initialize the system**:
+### 3. Test Person Management
+
 ```bash
-python init_madagascar_system.py
+# Create a person
+curl -X POST "https://linc-print-backend.onrender.com/api/v1/persons/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "surname": "Rakoto",
+    "first_name": "Jean",
+    "person_nature": "01",
+    "birth_date": "1990-05-15",
+    "cell_phone": "+261341234567"
+  }'
 ```
 
-4. **Start the server**:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+## System Architecture
 
-5. **Access the API**:
-- API Documentation: http://localhost:8000/docs
-- Health Check: http://localhost:8000/health
+### Core Modules
 
-## 🔐 Default Credentials
+1. **Authentication & Authorization**
+   - JWT token-based authentication
+   - Role-based access control (RBAC)
+   - Permission-based endpoint security
 
-After initialization, use these credentials:
+2. **User Management**
+   - User CRUD operations
+   - Role assignment and management
+   - Permission system integration
 
-| Username | Password | Role | Description |
-|----------|----------|------|-------------|
-| admin | MadagascarAdmin2024! | All roles | System administrator |
-| clerk1 | Clerk123! | Clerk | License processing clerk |
-| supervisor1 | Supervisor123! | Supervisor | Processing supervisor |
-| printer1 | Printer123! | Printer | Print-only access |
+3. **Person Management** 
+   - Madagascar-specific person records
+   - ID document management (Madagascar ID, Passport)
+   - Address management with Madagascar postal codes
+   - Duplicate detection with similarity scoring
 
-## 📊 Database Configuration
+### Database Schema
 
-### Production Database (Render.com)
+- **Users & Roles**: Authentication and authorization
+- **Persons**: Natural person records with Madagascar specifics
+- **Person Aliases**: ID documents with primary selection
+- **Person Addresses**: Madagascar address format with postal codes
+- **Audit Tables**: Comprehensive change tracking
 
-```env
-DATABASE_URL="postgresql://linc_print_user:RpXGDpwfEt69Er7vwctZs20VNpxYj5Eb@dpg-d1ckfd8dl3ps73fovhsg-a.oregon-postgres.render.com/linc_print"
-```
+## User Roles & Permissions
 
-### Connection Details
+### Admin (admin/MadagascarAdmin2024!)
+- Complete system access
+- User and role management
+- All person management operations
 
-- **Hostname**: dpg-d1ckfd8dl3ps73fovhsg-a.oregon-postgres.render.com
-- **Port**: 5432
-- **Database**: linc_print
-- **Username**: linc_print_user
-- **Password**: RpXGDpwfEt69Er7vwctZs20VNpxYj5Eb
+### Clerk (clerk1/Clerk123!)
+- Person management (create, read, update, search)
+- Document and address management
+- Duplicate detection
+- Essential for license application processing
 
-## 🔑 API Endpoints
+### Supervisor (supervisor1/Supervisor123!)
+- All clerk permissions
+- Additional deletion capabilities
+- User management permissions
+
+### Printer (printer1/Printer123!)
+- Printing operations only
+- No person management access
+
+## API Endpoints
 
 ### Authentication
-
 - `POST /api/v1/auth/login` - User login
-- `POST /api/v1/auth/logout` - User logout
-- `POST /api/v1/auth/refresh` - Refresh access token
-- `POST /api/v1/auth/change-password` - Change password
 - `GET /api/v1/auth/me` - Current user info
+- `POST /api/v1/auth/refresh` - Refresh token
 
-### User Management
+### Person Management
+- `POST /api/v1/persons/` - Create person
+- `GET /api/v1/persons/{id}` - Get person details
+- `PUT /api/v1/persons/{id}` - Update person
+- `DELETE /api/v1/persons/{id}` - Delete person
+- `GET /api/v1/persons/search` - Search persons
+- `POST /api/v1/persons/check-duplicates` - Check duplicates
 
-- `GET /api/v1/users/` - List users (paginated, searchable)
-- `POST /api/v1/users/` - Create user
-- `GET /api/v1/users/{id}` - Get user details
-- `PUT /api/v1/users/{id}` - Update user
-- `DELETE /api/v1/users/{id}` - Soft delete user
+### Document Management
+- `POST /api/v1/persons/{id}/aliases` - Add document
+- `GET /api/v1/persons/{id}/aliases` - List documents
+- `PUT /api/v1/persons/{id}/aliases/{alias_id}` - Update document
+- `DELETE /api/v1/persons/{id}/aliases/{alias_id}` - Delete document
+- `POST /api/v1/persons/{id}/aliases/{alias_id}/set-primary` - Set primary
 
-### Role Management
+### Address Management
+- `POST /api/v1/persons/{id}/addresses` - Add address
+- `GET /api/v1/persons/{id}/addresses` - List addresses
+- `PUT /api/v1/persons/{id}/addresses/{addr_id}` - Update address
+- `DELETE /api/v1/persons/{id}/addresses/{addr_id}` - Delete address
+- `POST /api/v1/persons/{id}/addresses/{addr_id}/set-primary` - Set primary
 
-- `GET /api/v1/roles/` - List roles
-- `POST /api/v1/roles/` - Create role
-- `GET /api/v1/roles/{id}` - Get role details
-- `PUT /api/v1/roles/{id}` - Update role
+### Admin Endpoints
+- `POST /admin/init-tables` - Initialize database tables
+- `POST /admin/init-users` - Initialize users, roles, permissions
+- `POST /admin/drop-tables` - Drop all tables (development only)
 
-### Permission Management
+## Madagascar-Specific Features
 
-- `GET /api/v1/permissions/` - List permissions
-- `GET /api/v1/permissions/by-category` - Grouped by category
-- `GET /api/v1/permissions/check/{permission}` - Check permission
+### ID Documents
+- **Madagascar ID (MG_ID)**: National identity card (CIN/CNI)
+- **Passport**: International travel document with expiry tracking
 
-## 👥 User Roles & Permissions
+### Address Format
+```json
+{
+  "street_line1": "Lot 67 Parcelle 1139",
+  "street_line2": "Quartier Ambohipo",
+  "locality": "Antananarivo", 
+  "postal_code": "101",
+  "town": "Antananarivo",
+  "country": "MADAGASCAR"
+}
+```
 
-### Clerk Role
-- Full application processing capabilities
-- License application: create, read, update
-- Card management: order, issue, reorder
-- Biometric data: capture, view, update
-- Payment processing
-- Local printing access
-- Basic reports
+### Phone Numbers
+- Format: `0AA BB BB BBB` (local) or `+261 AA BB BB BBB` (international)
+- Default country code: +261
 
-### Supervisor Role
-- All clerk capabilities plus:
-- License application approval
-- Card order approval
-- QA approval/rejection
-- Payment refunds
-- Advanced reports and analytics
-- Data export capabilities
+### Duplicate Detection
+Weighted similarity scoring:
+- Birth date match: 30%
+- Surname similarity: 25% (fuzzy)
+- First name similarity: 20% (fuzzy)
+- Phone number match: 15%
+- Address similarity: 10%
 
-### Printer Role
-- Print-only access for distributed printing:
-- Local and cross-location printing
-- Print queue management
-- Printer status monitoring
+## API Documentation
 
-## 🚀 Deployment
+Access interactive documentation:
+- **Swagger UI**: https://linc-print-backend.onrender.com/api/v1/docs
+- **ReDoc**: https://linc-print-backend.onrender.com/api/v1/redoc
 
-### Render.com Deployment
+## Environment Configuration
 
-1. **Backend**: Deploy to Render.com with PostgreSQL database
-2. **Environment**: Configure production environment variables
-3. **Initialization**: Run init script to setup default data
-4. **Monitoring**: Use Render's built-in monitoring
+Key environment variables:
+- `DATABASE_URL`: PostgreSQL connection string
+- `SECRET_KEY`: JWT signing key
+- `CORS_ORIGINS`: Allowed CORS origins
+- `DEBUG`: Debug mode (development only)
 
-### Build Command
+## Development
+
+### Local Setup
 ```bash
+# Clone repository
+git clone <repository-url>
+cd linc-print-backend
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Set environment variables
+cp env.example .env
+# Edit .env with your configuration
+
+# Run development server
+python -m uvicorn app.main:app --reload
 ```
 
-### Start Command
+### Testing
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Test authentication
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "MadagascarAdmin2024!"}'
+
+# Test person creation
+curl -X POST "http://localhost:8000/api/v1/persons/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"surname": "Test", "first_name": "User", "person_nature": "01", "birth_date": "1990-01-01"}'
 ```
 
-## 📝 API Documentation
+## Deployment
 
-- **Interactive Docs**: http://localhost:8000/docs (Swagger UI)
-- **OpenAPI Schema**: http://localhost:8000/openapi.json
-- **ReDoc**: http://localhost:8000/redoc
+### Render.com Configuration
+- **Python Version**: 3.11.0
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-## 🔧 Testing
+### Environment Variables (Production)
+- `DATABASE_URL`: PostgreSQL connection string
+- `SECRET_KEY`: Strong JWT signing key
+- `CORS_ORIGINS`: Production frontend URLs
+- `DEBUG`: False
 
-Run the comprehensive test suite:
+## Future Modules
 
-```bash
-python test_system.py
-```
+The system is designed for easy expansion:
 
-## 📋 Environment Variables
+1. **License Applications**: Process driver's license applications
+2. **Printing System**: Distributed card printing management
+3. **Document Management**: Scan and store supporting documents
+4. **Reporting**: Compliance and operational reports
+5. **Integration**: Connect with existing government systems
 
-Key environment variables (see `env.example`):
+## Security Features
 
-```env
-SECRET_KEY="your-secret-key"
-DATABASE_URL="postgresql://..."
-COUNTRY_CODE="MG"
-DEFAULT_TIMEZONE="Indian/Antananarivo"
-DEFAULT_CURRENCY="MGA"
-DEFAULT_LANGUAGE="en"
-```
+- JWT-based authentication with configurable expiration
+- Role-based access control with granular permissions
+- SQL injection protection via SQLAlchemy ORM
+- CORS configuration for secure cross-origin requests
+- Comprehensive audit trails for all operations
+- Soft delete for data integrity
 
-## 🏗️ Architecture
+## Support
 
-- **FastAPI**: Modern, fast web framework
-- **SQLAlchemy**: Database ORM
-- **PostgreSQL**: Production database
-- **JWT**: Authentication tokens
-- **Pydantic**: Data validation
-- **Uvicorn**: ASGI server
+For technical support or questions:
+1. Check API documentation at `/api/v1/docs`
+2. Review server logs for error details
+3. Verify user permissions with `/api/v1/auth/me`
+4. Test with different user roles to isolate permission issues
 
----
+## License
 
-## 📋 TODO: Future Development Roadmap
-
-### Priority 1: Core Functionality
-- [ ] **Persons Module**: Madagascar citizen ID validation and management
-- [ ] **Applications Module**: License application processing workflow
-- [ ] **Printing Module**: Distributed card printing system
-- [ ] **Locations Module**: Multi-office management
-
-### Priority 2: Location System Enhancement
-- [ ] **Device Registration**: Automatic location detection via MAC address
-- [ ] **Location-Specific URLs**: Subdomain or path-based location routing
-- [ ] **IP-Based Detection**: Automatic location assignment with fallback
-- [ ] **Hybrid Approach**: Device registration + manual selection
-
-### Priority 3: Security & Compliance
-- [ ] **Enhanced Authentication**: 2FA, rate limiting, session management
-- [ ] **Audit System**: Comprehensive activity logging and reporting
-- [ ] **Data Import**: Integration with existing systems
-- [ ] **Performance Optimization**: Caching and monitoring
-
-### Priority 4: Production Features
-- [ ] **OCR Integration**: Document processing automation
-- [ ] **Backup Systems**: Automated backup and recovery
-- [ ] **Monitoring**: Health checks and alerting
-- [ ] **Admin Controls**: Remove admin endpoints or secure properly
-
-**Next Steps**:
-1. Deploy frontend (React/TypeScript)
-2. Implement remaining modules (Persons, Applications, etc.)
-3. Add ISO 18013 compliance features
-4. Configure distributed printing workflow
+This project is developed for the Government of Madagascar's Driver's License modernization initiative.

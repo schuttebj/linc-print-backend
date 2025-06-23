@@ -217,17 +217,62 @@ async def initialize_users():
         db = next(get_db())
         
         try:
-            # Create permissions
+            # Create permissions - Updated to include Person module permissions
             permissions_data = [
+                # User Management Permissions
                 ("users.create", "Create Users", "Create new user accounts", "users", "user", "create"),
-                ("users.read", "Read Users", "View user information", "users", "user", "read"), 
-                ("users.update", "Update Users", "Modify user accounts", "users", "user", "update"),
-                ("users.delete", "Delete Users", "Remove user accounts", "users", "user", "delete"),
+                ("users.read", "View Users", "View user information", "users", "user", "read"),
+                ("users.update", "Update Users", "Update user information", "users", "user", "update"),
+                ("users.delete", "Delete Users", "Delete user accounts", "users", "user", "delete"),
+                ("users.activate", "Activate Users", "Activate user accounts", "users", "user", "activate"),
+                ("users.deactivate", "Deactivate Users", "Deactivate user accounts", "users", "user", "deactivate"),
+                ("users.audit", "View User Audit", "View user audit logs", "users", "user", "audit"),
+                
+                # Role Management Permissions
                 ("roles.create", "Create Roles", "Create new roles", "roles", "role", "create"),
-                ("roles.read", "Read Roles", "View role information", "roles", "role", "read"),
-                ("roles.update", "Update Roles", "Modify roles", "roles", "role", "update"),
-                ("roles.delete", "Delete Roles", "Remove roles", "roles", "role", "delete"),
-                ("permissions.read", "Read Permissions", "View permissions", "permissions", "permission", "read"),
+                ("roles.read", "View Roles", "View role information", "roles", "role", "read"),
+                ("roles.update", "Update Roles", "Update role information", "roles", "role", "update"),
+                ("roles.delete", "Delete Roles", "Delete roles", "roles", "role", "delete"),
+                ("roles.assign_permissions", "Assign Role Permissions", "Assign permissions to roles", "roles", "role", "assign_permissions"),
+                
+                # Permission Management
+                ("permissions.read", "View Permissions", "View permission information", "permissions", "permission", "read"),
+                ("permissions.check_others", "Check Other User Permissions", "Check permissions for other users", "permissions", "permission", "check_others"),
+                
+                # Person Management Permissions
+                ("persons.create", "Create Persons", "Create new person records", "persons", "person", "create"),
+                ("persons.read", "View Persons", "View person information", "persons", "person", "read"),
+                ("persons.update", "Update Persons", "Update person information", "persons", "person", "update"),
+                ("persons.delete", "Delete Persons", "Delete person records", "persons", "person", "delete"),
+                ("persons.search", "Search Persons", "Search and filter person records", "persons", "person", "search"),
+                ("persons.check_duplicates", "Check Person Duplicates", "Check for potential duplicate persons", "persons", "person", "check_duplicates"),
+                
+                # Person Alias (Document) Management Permissions
+                ("person_aliases.create", "Create Person Documents", "Add identification documents to persons", "persons", "person_alias", "create"),
+                ("person_aliases.read", "View Person Documents", "View person identification documents", "persons", "person_alias", "read"),
+                ("person_aliases.update", "Update Person Documents", "Update person identification documents", "persons", "person_alias", "update"),
+                ("person_aliases.delete", "Delete Person Documents", "Delete person identification documents", "persons", "person_alias", "delete"),
+                ("person_aliases.set_primary", "Set Primary Document", "Set primary identification document", "persons", "person_alias", "set_primary"),
+                
+                # Person Address Management Permissions
+                ("person_addresses.create", "Create Person Addresses", "Add addresses to persons", "persons", "person_address", "create"),
+                ("person_addresses.read", "View Person Addresses", "View person addresses", "persons", "person_address", "read"),
+                ("person_addresses.update", "Update Person Addresses", "Update person addresses", "persons", "person_address", "update"),
+                ("person_addresses.delete", "Delete Person Addresses", "Delete person addresses", "persons", "person_address", "delete"),
+                ("person_addresses.set_primary", "Set Primary Address", "Set primary address per type", "persons", "person_address", "set_primary"),
+                
+                # License Application Permissions (placeholders for future modules)
+                ("license_applications.create", "Create License Applications", "Create new license applications", "license_applications", "license_application", "create"),
+                ("license_applications.read", "View License Applications", "View license applications", "license_applications", "license_application", "read"),
+                ("license_applications.update", "Update License Applications", "Update license applications", "license_applications", "license_application", "update"),
+                ("license_applications.delete", "Delete License Applications", "Delete license applications", "license_applications", "license_application", "delete"),
+                ("license_applications.approve", "Approve License Applications", "Approve license applications", "license_applications", "license_application", "approve"),
+                
+                # Printing Permissions
+                ("printing.local_print", "Local Printing", "Print at local location", "printing", "print_job", "local_print"),
+                ("printing.cross_location_print", "Cross-Location Printing", "Print at other locations", "printing", "print_job", "cross_location_print"),
+                ("printing.manage_queue", "Manage Print Queue", "Manage printing queue", "printing", "print_job", "manage_queue"),
+                ("printing.monitor_status", "Monitor Printer Status", "Monitor printer status", "printing", "printer", "monitor_status"),
             ]
             
             permissions = {}
@@ -240,7 +285,8 @@ async def initialize_users():
                         description=description,
                         category=category,
                         resource=resource,
-                        action=action
+                        action=action,
+                        is_system_permission=True
                     )
                     db.add(perm)
                     db.flush()
@@ -248,12 +294,36 @@ async def initialize_users():
                 else:
                     permissions[name] = existing
             
+            # Define role permissions - Updated to include Person module
+            clerk_permissions = [
+                "license_applications.create", "license_applications.read", "license_applications.update",
+                "printing.local_print", "printing.monitor_status",
+                # Person management (essential for license applications)
+                "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
+                "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
+                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary"
+            ]
+            
+            supervisor_permissions = clerk_permissions + [
+                "license_applications.approve",
+                "users.read", "users.update", "roles.read", "permissions.read",
+                # Additional person management permissions for supervisors
+                "persons.delete", "person_aliases.delete", "person_addresses.delete"
+            ]
+            
+            printer_permissions = [
+                "printing.local_print", "printing.cross_location_print",
+                "printing.manage_queue", "printing.monitor_status"
+            ]
+            
+            admin_permissions = [perm for perm in permissions.keys()]  # All permissions
+            
             # Create roles
             roles_data = [
-                ("admin", "Administrator", "Full system access", ["users.create", "users.read", "users.update", "users.delete", "roles.create", "roles.read", "roles.update", "roles.delete", "permissions.read"]),
-                ("clerk", "Clerk", "License processing clerk", ["users.read", "roles.read", "permissions.read"]),
-                ("supervisor", "Supervisor", "License processing supervisor", ["users.read", "users.update", "roles.read", "permissions.read"]),
-                ("printer", "Printer", "Card printing operator", ["permissions.read"])
+                ("admin", "Administrator", "Full system access", admin_permissions),
+                ("clerk", "Clerk", "License processing clerk with person management", clerk_permissions),
+                ("supervisor", "Supervisor", "License processing supervisor with additional permissions", supervisor_permissions),
+                ("printer", "Printer", "Card printing operator", printer_permissions)
             ]
             
             roles = {}
@@ -337,6 +407,17 @@ async def initialize_users():
                     "employee_id": "SUP001",
                     "department": "License Processing",
                     "roles": ["supervisor"]
+                },
+                {
+                    "username": "printer1",
+                    "email": "printer1@madagascar-license.gov.mg", 
+                    "password": "Printer123!",
+                    "first_name": "Paul",
+                    "last_name": "Andry",
+                    "madagascar_id_number": "CIN456789123",
+                    "employee_id": "PRT001",
+                    "department": "Card Production",
+                    "roles": ["printer"]
                 }
             ]
             
@@ -375,18 +456,22 @@ async def initialize_users():
             
             return {
                 "status": "success",
-                "message": "Users initialized successfully",
+                "message": "Users, roles, and permissions initialized successfully",
+                "modules_initialized": ["users", "roles", "permissions", "persons"],
                 "admin_credentials": {
                     "username": "admin",
                     "password": "MadagascarAdmin2024!",
                     "email": "admin@madagascar-license.gov.mg"
                 },
                 "test_users": [
-                    {"username": "clerk1", "password": "Clerk123!"},
-                    {"username": "supervisor1", "password": "Supervisor123!"}
+                    {"username": "clerk1", "password": "Clerk123!", "permissions": "person management + license processing"},
+                    {"username": "supervisor1", "password": "Supervisor123!", "permissions": "all clerk permissions + deletions"},
+                    {"username": "printer1", "password": "Printer123!", "permissions": "printing operations only"}
                 ],
                 "created_users": created_users,
-                "note": "location_id parameter in login is optional - you can ignore it for testing",
+                "permissions_created": len(permissions_data),
+                "roles_created": len(roles_data),
+                "note": "Person module is now fully integrated with permissions system",
                 "timestamp": time.time()
             }
             
