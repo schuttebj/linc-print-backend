@@ -14,11 +14,12 @@ TODO: Authentication Enhancements
 - TODO: Add account lockout after failed attempts
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+import uuid
 
 from app.core.database import get_db
 from app.core.security import (
@@ -43,37 +44,44 @@ def get_current_user(
     """
     Get current authenticated user from JWT token
     """
-    token = credentials.credentials
-    payload = verify_token(token)
-    
-    if payload is None:
+    try:
+        # Verify and decode the JWT token
+        payload = verify_token(credentials.credentials)
+        if payload is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Get user from token payload
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Find user in database
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
+            detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user_id: str = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload"
-        )
-    
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
-        )
-    
-    if user.status != UserStatus.ACTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"User account is {user.status.value}"
-        )
-    
-    return user
 
 
 def log_user_action(
@@ -85,18 +93,29 @@ def log_user_action(
     error_message: Optional[str] = None,
     details: Optional[dict] = None
 ):
-    """Log user action for audit trail"""
+    """
+    Log user actions for audit trail
+    
+    TODO: Enhanced Audit Logging
+    - Add geolocation logging
+    - Implement log retention policies
+    - Add real-time security alerts
+    - Enhanced details for sensitive operations
+    """
+    import json
+    
     audit_log = UserAuditLog(
         user_id=user.id,
         action=action,
         ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent") if request else None,
-        endpoint=str(request.url) if request else None,
-        method=request.method if request else None,
+        user_agent=request.headers.get("user-agent"),
+        endpoint=str(request.url.path),
+        method=request.method,
         success=success,
         error_message=error_message,
-        details=str(details) if details else None
+        details=json.dumps(details) if details else None
     )
+    
     db.add(audit_log)
     db.commit()
 
@@ -105,10 +124,12 @@ def log_user_action(
 async def login(
     login_data: LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
     Authenticate user and return access tokens
+    Sets refresh token as httpOnly cookie for security
     """
     # Find user by username or email
     user = db.query(User).filter(
@@ -155,6 +176,16 @@ async def login(
     
     db.commit()
     
+    # Set refresh token as httpOnly cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=30 * 24 * 60 * 60,  # 30 days
+        httponly=True,
+        secure=True,  # HTTPS only
+        samesite="none"  # Allow cross-domain
+    )
+    
     # Log successful login
     log_user_action(
         db, user, "login_success", request,
@@ -163,7 +194,7 @@ async def login(
     
     return LoginResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token="",  # Don't send in response, use cookie instead
         token_type="bearer",
         expires_in=480 * 60,  # 8 hours in seconds
         user=UserResponse.from_orm(user)
@@ -173,6 +204,7 @@ async def login(
 @router.post("/logout", summary="User Logout")
 async def logout(
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -186,6 +218,14 @@ async def logout(
     
     db.commit()
     
+    # Clear refresh token cookie
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=True,
+        samesite="none"
+    )
+    
     # Log logout
     log_user_action(db, current_user, "logout", request)
     
@@ -194,14 +234,22 @@ async def logout(
 
 @router.post("/refresh", response_model=TokenRefreshResponse, summary="Refresh Access Token")
 async def refresh_token(
-    refresh_data: TokenRefreshRequest,
     request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    Refresh access token using refresh token
+    Refresh access token using refresh token from httpOnly cookie
     """
-    payload = verify_token(refresh_data.refresh_token)
+    # Get refresh token from cookie
+    refresh_token = request.cookies.get("refresh_token")
+    
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No refresh token provided"
+        )
+    
+    payload = verify_token(refresh_token)
     
     if payload is None or payload.get("type") != "refresh":
         raise HTTPException(
