@@ -20,9 +20,6 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.6
 
-# File Handling (minimal for deployment)
-Pillow==9.0.1
-
 # Utilities
 python-dotenv==1.0.0
 
