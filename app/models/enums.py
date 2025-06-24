@@ -27,8 +27,8 @@ class PersonNature(PythonEnum):
 
 class AddressType(PythonEnum):
     """Madagascar address types"""
-    RESIDENTIAL = "residential"  # Physical residence
-    POSTAL = "postal"           # Postal/mailing address
+    RESIDENTIAL = "RESIDENTIAL"  # Physical residence
+    POSTAL = "POSTAL"           # Postal/mailing address
 
 
 class UserStatus(PythonEnum):
@@ -54,4 +54,109 @@ class OfficeType(PythonEnum):
     """Office types for locations"""
     MAIN = "MAIN"           # Main office
     MOBILE = "MOBILE"       # Mobile unit
-    TEMPORARY = "TEMPORARY" # Temporary office 
+    TEMPORARY = "TEMPORARY" # Temporary office
+
+
+class LanguageCode(PythonEnum):
+    """Madagascar supported languages"""
+    MALAGASY = "mg"         # Malagasy (official language)
+    FRENCH = "fr"           # French (official language)
+    ENGLISH = "en"          # English (international)
+
+
+class NationalityCode(PythonEnum):
+    """Nationality codes for Madagascar system"""
+    MADAGASCAR = "MG"       # Malagasy nationality
+    FRANCE = "FR"           # French nationality
+    UNITED_STATES = "US"    # American nationality
+    UNITED_KINGDOM = "GB"   # British nationality
+    SOUTH_AFRICA = "ZA"     # South African nationality
+    OTHER = "OTHER"         # Other nationalities
+
+
+class PhoneCountryCode(PythonEnum):
+    """Phone country codes for Madagascar system"""
+    MADAGASCAR = "+261"     # Madagascar
+    SOUTH_AFRICA = "+27"    # South Africa
+    FRANCE = "+33"          # France
+    USA = "+1"              # United States
+    UK = "+44"              # United Kingdom
+
+
+class CountryCode(PythonEnum):
+    """Country codes for document issuance"""
+    MADAGASCAR = "MG"       # Madagascar
+    FRANCE = "FR"           # France
+    UNITED_STATES = "US"    # United States
+    UNITED_KINGDOM = "GB"   # United Kingdom
+    SOUTH_AFRICA = "ZA"     # South Africa
+    OTHER = "OTHER"         # Other countries
+
+
+# Province display names mapping for frontend
+PROVINCE_DISPLAY_NAMES = {
+    ProvinceCode.ANTANANARIVO: "ANTANANARIVO",
+    ProvinceCode.ANTSIRANANA: "ANTSIRANANA (DIEGO SUAREZ)",
+    ProvinceCode.FIANARANTSOA: "FIANARANTSOA", 
+    ProvinceCode.MAHAJANGA: "MAHAJANGA",
+    ProvinceCode.TOAMASINA: "TOAMASINA",
+    ProvinceCode.TOLIARA: "TOLIARA",
+}
+
+# Language display names mapping for frontend
+LANGUAGE_DISPLAY_NAMES = {
+    LanguageCode.MALAGASY: "MALAGASY",
+    LanguageCode.FRENCH: "FRANÇAIS",
+    LanguageCode.ENGLISH: "ENGLISH",
+}
+
+# Nationality display names mapping for frontend
+NATIONALITY_DISPLAY_NAMES = {
+    NationalityCode.MADAGASCAR: "MALAGASY",
+    NationalityCode.FRANCE: "FRENCH",
+    NationalityCode.UNITED_STATES: "AMERICAN",
+    NationalityCode.UNITED_KINGDOM: "BRITISH",
+    NationalityCode.SOUTH_AFRICA: "SOUTH AFRICAN",
+    NationalityCode.OTHER: "OTHER",
+}
+
+# Phone country code display names mapping for frontend
+PHONE_COUNTRY_DISPLAY_NAMES = {
+    PhoneCountryCode.MADAGASCAR: "MADAGASCAR",
+    PhoneCountryCode.SOUTH_AFRICA: "SOUTH AFRICA", 
+    PhoneCountryCode.FRANCE: "FRANCE",
+    PhoneCountryCode.USA: "USA",
+    PhoneCountryCode.UK: "UK",
+}
+
+# Country display names mapping for frontend
+COUNTRY_DISPLAY_NAMES = {
+    CountryCode.MADAGASCAR: "Madagascar",
+    CountryCode.FRANCE: "France",
+    CountryCode.UNITED_STATES: "United States", 
+    CountryCode.UNITED_KINGDOM: "United Kingdom",
+    CountryCode.SOUTH_AFRICA: "South Africa",
+    CountryCode.OTHER: "Other",
+}
+
+# Document type display names and requirements
+DOCUMENT_TYPE_INFO = {
+    MadagascarIDType.MADAGASCAR_ID: {
+        "label": "MADAGASCAR ID (CIN/CNI)",
+        "requires_expiry": False,
+    },
+    MadagascarIDType.PASSPORT: {
+        "label": "PASSPORT", 
+        "requires_expiry": True,
+    },
+    MadagascarIDType.FOREIGN_ID: {
+        "label": "FOREIGN ID",
+        "requires_expiry": True,
+    },
+}
+
+# Person nature display names
+PERSON_NATURE_DISPLAY_NAMES = {
+    PersonNature.MALE: "MALE (LEHILAHY)",
+    PersonNature.FEMALE: "FEMALE (VEHIVAVY)",
+} 
