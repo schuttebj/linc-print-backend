@@ -669,10 +669,11 @@ async def initialize_locations():
                 
                 if not existing:
                     location_create = LocationCreate(**loc_data)
+                    # Use None for system initialization instead of string
                     location = crud_location.create_with_codes(
                         db=db,
                         obj_in=location_create,
-                        created_by="admin_init"
+                        created_by=None
                     )
                     created_locations.append({
                         "code": location.code,
@@ -821,7 +822,7 @@ async def initialize_location_users():
                             db=db,
                             obj_in=user_create,
                             location_id=location.id,
-                            created_by="admin_init"
+                            created_by=None
                         )
                         
                         created_users.append({
