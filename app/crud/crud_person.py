@@ -20,6 +20,61 @@ from app.schemas.person import (
 )
 
 
+def capitalize_person_data(person: Person) -> Person:
+    """
+    Ensure all text fields in person data are capitalized
+    Applies to both the person and related aliases/addresses
+    """
+    if not person:
+        return person
+    
+    # Capitalize person text fields
+    if person.surname:
+        person.surname = person.surname.upper()
+    if person.first_name:
+        person.first_name = person.first_name.upper()
+    if person.middle_name:
+        person.middle_name = person.middle_name.upper()
+    if person.person_nature:
+        person.person_nature = person.person_nature.upper()
+    if person.nationality_code:
+        person.nationality_code = person.nationality_code.upper()
+    if person.preferred_language:
+        person.preferred_language = person.preferred_language.lower()  # Language codes stay lowercase
+    if person.email_address:
+        person.email_address = person.email_address.upper()
+    
+    # Capitalize alias text fields
+    for alias in person.aliases:
+        if alias.document_type:
+            alias.document_type = alias.document_type.upper()
+        if alias.document_number:
+            alias.document_number = alias.document_number.upper()
+        if alias.country_of_issue:
+            alias.country_of_issue = alias.country_of_issue.upper()
+        if alias.name_in_document:
+            alias.name_in_document = alias.name_in_document.upper()
+    
+    # Capitalize address text fields
+    for address in person.addresses:
+        if address.address_type:
+            address.address_type = address.address_type.upper()
+        if address.street_line1:
+            address.street_line1 = address.street_line1.upper()
+        if address.street_line2:
+            address.street_line2 = address.street_line2.upper()
+        if address.locality:
+            address.locality = address.locality.upper()
+        if address.town:
+            address.town = address.town.upper()
+        if address.country:
+            address.country = address.country.upper()
+        if address.province_code:
+            address.province_code = address.province_code.upper()
+    
+    return person
+
+
 class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
     """CRUD operations for Person entities"""
     
@@ -31,7 +86,7 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         created_by: Optional[str] = None
     ) -> Person:
         """
-        Create person with aliases and addresses
+        Create person with aliases and addresses - ALL CAPITALIZED
         Handles primary document/address validation
         """
         # Create person record
@@ -67,14 +122,23 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         
         db.commit()
         db.refresh(db_person)
+        
+        # Ensure returned data is capitalized
+        db_person = capitalize_person_data(db_person)
+        
         return db_person
     
     def get_with_details(self, db: Session, id: UUID) -> Optional[Person]:
-        """Get person with all related data (aliases and addresses)"""
-        return db.query(Person).options(
+        """Get person with all related data (aliases and addresses) - ALL CAPITALIZED"""
+        person = db.query(Person).options(
             joinedload(Person.aliases),
             joinedload(Person.addresses)
         ).filter(Person.id == id).first()
+        
+        if person:
+            person = capitalize_person_data(person)
+        
+        return person
     
     def search_persons(
         self, 
@@ -83,7 +147,7 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         search_params: PersonSearchRequest
     ) -> Tuple[List[Person], int]:
         """
-        Advanced person search with multiple criteria
+        Advanced person search with multiple criteria - ALL CAPITALIZED RESULTS
         Returns (results, total_count)
         """
         query = db.query(Person).options(
@@ -93,16 +157,16 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         
         # Apply filters
         if search_params.surname:
-            query = query.filter(Person.surname.ilike(f"%{search_params.surname}%"))
+            query = query.filter(Person.surname.ilike(f"%{search_params.surname.upper()}%"))
         
         if search_params.first_name:
-            query = query.filter(Person.first_name.ilike(f"%{search_params.first_name}%"))
+            query = query.filter(Person.first_name.ilike(f"%{search_params.first_name.upper()}%"))
         
         if search_params.birth_date:
             query = query.filter(Person.birth_date == search_params.birth_date)
         
         if search_params.nationality_code:
-            query = query.filter(Person.nationality_code == search_params.nationality_code)
+            query = query.filter(Person.nationality_code == search_params.nationality_code.upper())
         
         if search_params.is_active is not None:
             query = query.filter(Person.is_active == search_params.is_active)
@@ -111,11 +175,11 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         alias_filters = []
         if search_params.document_number:
             alias_filters.append(
-                PersonAlias.document_number.ilike(f"%{search_params.document_number}%")
+                PersonAlias.document_number.ilike(f"%{search_params.document_number.upper()}%")
             )
         if search_params.document_type:
             alias_filters.append(
-                PersonAlias.document_type == search_params.document_type
+                PersonAlias.document_type == search_params.document_type.upper()
             )
         
         if alias_filters:
@@ -124,7 +188,7 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         # Search by address locality
         if search_params.locality:
             query = query.join(PersonAddress).filter(
-                PersonAddress.locality.ilike(f"%{search_params.locality}%")
+                PersonAddress.locality.ilike(f"%{search_params.locality.upper()}%")
             )
         
         # Search by phone number
@@ -143,6 +207,10 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         query = query.offset(search_params.skip).limit(search_params.limit)
         
         results = query.all()
+        
+        # Capitalize all results
+        results = [capitalize_person_data(person) for person in results]
+        
         return results, total_count
     
     def find_potential_duplicates(

@@ -23,8 +23,8 @@ class PersonNature(str):
 
 
 class AddressType(str):
-    RESIDENTIAL = "residential"
-    POSTAL = "postal"
+    RESIDENTIAL = "RESIDENTIAL"
+    POSTAL = "POSTAL"
 
 
 # Base schemas
@@ -41,14 +41,20 @@ class PersonAliasBase(BaseModel):
 
     @validator('document_type')
     def validate_document_type(cls, v):
-        if v not in [IdentificationType.MADAGASCAR_ID, IdentificationType.PASSPORT]:
+        v = v.upper() if v else ''
+        if v not in ['MG_ID', 'PASSPORT']:
             raise ValueError('Document type must be MG_ID or PASSPORT')
         return v
 
+    @validator('document_number', 'country_of_issue', 'name_in_document')
+    def capitalize_text_fields(cls, v):
+        """Automatically capitalize text fields"""
+        return v.upper() if v else v
+
     @validator('expiry_date')
     def validate_passport_expiry(cls, v, values):
-        if values.get('document_type') == IdentificationType.PASSPORT and not v:
-            raise ValueError('Expiry date is required for passport documents')
+        if values.get('document_type') == 'PASSPORT' and not v:
+            raise ValueError('Expiry date is required for passports')
         return v
 
     @validator('document_number')
@@ -95,7 +101,7 @@ class PersonAliasResponse(PersonAliasBase):
 
 class PersonAddressBase(BaseModel):
     """Base schema for person addresses"""
-    address_type: str = Field(..., description="Address type: residential or postal")
+    address_type: str = Field(..., description="Address type: RESIDENTIAL or POSTAL")
     is_primary: bool = Field(default=False, description="Primary address of this type")
     street_line1: Optional[str] = Field(None, max_length=100, description="Lot/parcel details or P.O. Box")
     street_line2: Optional[str] = Field(None, max_length=100, description="Additional street detail or neighborhood")
@@ -108,22 +114,27 @@ class PersonAddressBase(BaseModel):
 
     @validator('address_type')
     def validate_address_type(cls, v):
-        if v not in [AddressType.RESIDENTIAL, AddressType.POSTAL]:
-            raise ValueError('Address type must be residential or postal')
+        v = v.upper() if v else ''
+        if v not in ['RESIDENTIAL', 'POSTAL']:
+            raise ValueError('Address type must be RESIDENTIAL or POSTAL')
         return v
+
+    @validator('street_line1', 'street_line2', 'locality', 'town', 'country', 'province_code')
+    def capitalize_address_fields(cls, v):
+        """Automatically capitalize address text fields"""
+        return v.upper() if v else v
 
     @validator('postal_code')
     def validate_postal_code(cls, v):
-        """Validate Madagascar postal code format (3 digits)"""
-        if not re.match(r'^\d{3}$', v):
-            raise ValueError('Madagascar postal code must be exactly 3 digits')
+        if v and not v.isdigit():
+            raise ValueError('Postal code must contain only digits')
         return v
 
     @validator('locality', 'town')
     def validate_required_fields(cls, v):
-        if not v or len(v.strip()) == 0:
-            raise ValueError('This field cannot be empty')
-        return v.strip()
+        if not v or not v.strip():
+            raise ValueError('This field is required')
+        return v
 
 
 class PersonAddressCreate(PersonAddressBase):
@@ -177,53 +188,55 @@ class PersonBase(BaseModel):
 
     @validator('person_nature')
     def validate_person_nature(cls, v):
-        if v not in [PersonNature.MALE, PersonNature.FEMALE]:
+        v = v.upper() if v else ''
+        if v not in ['01', '02']:
             raise ValueError('Person nature must be 01 (Male) or 02 (Female)')
         return v
 
-    @validator('surname', 'first_name')
-    def validate_required_names(cls, v):
-        if not v or len(v.strip()) == 0:
-            raise ValueError('This field cannot be empty')
-        return v.strip().title()
+    @validator('surname', 'first_name', 'middle_name')
+    def capitalize_names(cls, v):
+        """Automatically capitalize name fields"""
+        return v.upper() if v else v
 
-    @validator('middle_name')
-    def validate_middle_name(cls, v):
-        if v:
-            return v.strip().title()
-        return v
+    @validator('nationality_code')
+    def capitalize_nationality(cls, v):
+        """Automatically capitalize nationality code"""
+        return v.upper() if v else 'MG'
+
+    @validator('email_address')
+    def capitalize_email(cls, v):
+        """Automatically capitalize email address"""
+        return str(v).upper() if v else v
 
     @validator('preferred_language')
     def validate_language(cls, v):
-        valid_languages = ['mg', 'fr', 'en']  # Malagasy, French, English
-        if v not in valid_languages:
-            raise ValueError('Language must be mg (Malagasy), fr (French), or en (English)')
+        """Validate and normalize language code (keep lowercase)"""
+        v = v.lower() if v else 'mg'
+        if v not in ['mg', 'fr', 'en']:
+            raise ValueError('Preferred language must be mg, fr, or en')
         return v
 
     @validator('cell_phone')
     def validate_cell_phone(cls, v, values):
-        """
-        Validate Madagascar phone number format
-        Local: 0AA BB BB BBB (10 digits)
-        TODO: Add comprehensive Madagascar phone validation
-        """
-        if v:
-            # Remove spaces and dashes
-            cleaned = re.sub(r'[\s\-]', '', v)
-            if not re.match(r'^0\d{9}$', cleaned):
-                raise ValueError('Madagascar cell phone must be 10 digits starting with 0 (format: 0AA BB BB BBB)')
-            return cleaned
+        """Validate Madagascar cell phone format"""
+        if not v:
+            return v
+        
+        # Auto-prepend 0 if missing for Madagascar format
+        if not v.startswith('0') and len(v) == 9:
+            v = '0' + v
+        
+        # Validate 10 digits starting with 0
+        if not (len(v) == 10 and v.startswith('0') and v.isdigit()):
+            raise ValueError('Cell phone must be 10 digits starting with 0 (e.g., 0815598453)')
+        
         return v
 
     @validator('work_phone')
     def validate_work_phone(cls, v):
-        """TODO: Add work phone validation (landline format may differ)"""
-        if v:
-            # Basic validation for now
-            cleaned = re.sub(r'[\s\-\+]', '', v)
-            if len(cleaned) < 7 or len(cleaned) > 15:
-                raise ValueError('Work phone must be between 7 and 15 digits')
-            return v.strip()
+        """Validate work phone number"""
+        if v and not v.replace('+', '').replace('-', '').replace(' ', '').isdigit():
+            raise ValueError('Work phone must contain only numbers, spaces, hyphens, and plus signs')
         return v
 
 

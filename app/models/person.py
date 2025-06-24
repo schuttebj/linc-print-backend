@@ -4,7 +4,7 @@ Database models for natural persons only (no organizations)
 Adapted for Madagascar ID system, address format, and phone structure
 """
 
-from sqlalchemy import Column, String, DateTime, Boolean, Text, ForeignKey, Integer, Date, Numeric
+from sqlalchemy import Column, String, DateTime, Boolean, Text, ForeignKey, Integer, Date, Numeric, func, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -13,6 +13,20 @@ from enum import Enum as PythonEnum
 import uuid
 
 from app.models.base import BaseModel
+
+
+def capitalize_text_fields(target, value, oldvalue, initiator):
+    """Event listener to capitalize text fields automatically"""
+    if value and isinstance(value, str):
+        return value.upper()
+    return value
+
+
+def lowercase_language_field(target, value, oldvalue, initiator):
+    """Event listener to keep language fields lowercase"""
+    if value and isinstance(value, str):
+        return value.lower()
+    return value
 
 
 class IdentificationType(PythonEnum):
@@ -93,7 +107,17 @@ class Person(BaseModel):
     # license_applications = relationship("LicenseApplication", back_populates="person")
     
     def __repr__(self):
-        return f"<Person(id={self.id}, name='{self.surname}, {self.first_name}', nature='{self.person_nature}')>"
+        return f"<Person(surname='{self.surname}', first_name='{self.first_name}', id={self.id})>"
+
+
+# Event listeners for automatic capitalization
+event.listen(Person.surname, 'set', capitalize_text_fields)
+event.listen(Person.first_name, 'set', capitalize_text_fields)
+event.listen(Person.middle_name, 'set', capitalize_text_fields)
+event.listen(Person.person_nature, 'set', capitalize_text_fields)
+event.listen(Person.nationality_code, 'set', capitalize_text_fields)
+event.listen(Person.email_address, 'set', capitalize_text_fields)
+event.listen(Person.preferred_language, 'set', lowercase_language_field)
 
 
 class PersonAlias(BaseModel):
@@ -135,7 +159,14 @@ class PersonAlias(BaseModel):
     person = relationship("Person", back_populates="aliases")
     
     def __repr__(self):
-        return f"<PersonAlias(id={self.id}, type='{self.document_type}', number='{self.document_number}', primary={self.is_primary})>"
+        return f"<PersonAlias(document_type='{self.document_type}', document_number='{self.document_number}', person_id={self.person_id})>"
+
+
+# Event listeners for PersonAlias automatic capitalization
+event.listen(PersonAlias.document_type, 'set', capitalize_text_fields)
+event.listen(PersonAlias.document_number, 'set', capitalize_text_fields)
+event.listen(PersonAlias.country_of_issue, 'set', capitalize_text_fields)
+event.listen(PersonAlias.name_in_document, 'set', capitalize_text_fields)
 
 
 class PersonAddress(BaseModel):
@@ -199,6 +230,16 @@ class PersonAddress(BaseModel):
     
     def __repr__(self):
         return f"<PersonAddress(id={self.id}, type='{self.address_type}', locality='{self.locality}', primary={self.is_primary})>"
+
+
+# Event listeners for PersonAddress automatic capitalization
+event.listen(PersonAddress.address_type, 'set', capitalize_text_fields)
+event.listen(PersonAddress.street_line1, 'set', capitalize_text_fields)
+event.listen(PersonAddress.street_line2, 'set', capitalize_text_fields)
+event.listen(PersonAddress.locality, 'set', capitalize_text_fields)
+event.listen(PersonAddress.town, 'set', capitalize_text_fields)
+event.listen(PersonAddress.country, 'set', capitalize_text_fields)
+event.listen(PersonAddress.province_code, 'set', capitalize_text_fields)
 
 
 # TODO: Add PersonDuplicateCheck model when duplicate detection is implemented
