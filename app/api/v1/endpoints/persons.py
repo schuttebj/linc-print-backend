@@ -78,7 +78,7 @@ def create_person(
         )
 
 
-@router.get("/search", response_model=List[PersonSummary])
+@router.get("/search")
 def search_persons(
     *,
     db: Session = Depends(get_db),
@@ -92,12 +92,13 @@ def search_persons(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     locality: Optional[str] = Query(None, description="Search by address locality"),
     phone_number: Optional[str] = Query(None, description="Search by phone number"),
+    include_details: bool = Query(False, description="Include full person details (aliases, addresses) instead of summary"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Number of records to return")
-) -> List[PersonSummary]:
+):
     """
     Search persons with multiple criteria
-    Returns summary information for list views
+    Returns summary information for list views by default, or full details if include_details=true
     Requires persons.search permission
     """
     # Parse birth_date if provided
@@ -128,30 +129,39 @@ def search_persons(
     
     persons, total_count = crud_person.person.search_persons(db=db, search_params=search_params)
     
-    # Convert to summary format
-    summaries = []
-    for person in persons:
-        # Get primary document info
-        primary_alias = next((a for a in person.aliases if a.is_primary), None)
+    if include_details:
+        # Return full person details with aliases and addresses
+        detailed_persons = []
+        for person in persons:
+            detailed_person = crud_person.person.get_with_details(db=db, id=person.id)
+            if detailed_person:
+                detailed_persons.append(detailed_person)
+        return detailed_persons
+    else:
+        # Convert to summary format for backwards compatibility
+        summaries = []
+        for person in persons:
+            # Get primary document info
+            primary_alias = next((a for a in person.aliases if a.is_primary), None)
+            
+            summary = PersonSummary(
+                id=person.id,
+                surname=person.surname,
+                first_name=person.first_name,
+                middle_name=person.middle_name,
+                person_nature=person.person_nature,
+                birth_date=person.birth_date,
+                nationality_code=person.nationality_code,
+                is_active=person.is_active,
+                primary_document=primary_alias.document_number if primary_alias else None,
+                primary_document_type=primary_alias.document_type if primary_alias else None
+            )
+            summaries.append(summary)
         
-        summary = PersonSummary(
-            id=person.id,
-            surname=person.surname,
-            first_name=person.first_name,
-            middle_name=person.middle_name,
-            person_nature=person.person_nature,
-            birth_date=person.birth_date,
-            nationality_code=person.nationality_code,
-            is_active=person.is_active,
-            primary_document=primary_alias.document_number if primary_alias else None,
-            primary_document_type=primary_alias.document_type if primary_alias else None
-        )
-        summaries.append(summary)
-    
-    # TODO: Add total_count to response headers
-    # response.headers["X-Total-Count"] = str(total_count)
-    
-    return summaries
+        # TODO: Add total_count to response headers
+        # response.headers["X-Total-Count"] = str(total_count)
+        
+        return summaries
 
 
 @router.get("/{person_id}", response_model=PersonResponse)
