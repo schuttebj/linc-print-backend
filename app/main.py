@@ -294,6 +294,12 @@ async def initialize_users():
                 ("license_applications.delete", "Delete License Applications", "Delete license applications", "license_applications", "license_application", "delete"),
                 ("license_applications.approve", "Approve License Applications", "Approve license applications", "license_applications", "license_application", "approve"),
                 
+                # Location Management Permissions
+                ("locations.create", "Create Locations", "Create new office locations", "locations", "location", "create"),
+                ("locations.read", "View Locations", "View location information", "locations", "location", "read"),
+                ("locations.update", "Update Locations", "Update location information", "locations", "location", "update"),
+                ("locations.delete", "Delete Locations", "Delete office locations", "locations", "location", "delete"),
+                
                 # Printing Permissions
                 ("printing.local_print", "Local Printing", "Print at local location", "printing", "print_job", "local_print"),
                 ("printing.cross_location_print", "Cross-Location Printing", "Print at other locations", "printing", "print_job", "cross_location_print"),
@@ -327,14 +333,18 @@ async def initialize_users():
                 # Person management (essential for license applications)
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
-                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary"
+                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary",
+                # Basic location viewing for clerks
+                "locations.read"
             ]
             
             supervisor_permissions = clerk_permissions + [
                 "license_applications.approve",
                 "users.read", "users.update", "roles.read", "permissions.read",
                 # Additional person management permissions for supervisors
-                "persons.delete", "person_aliases.delete", "person_addresses.delete"
+                "persons.delete", "person_aliases.delete", "person_addresses.delete",
+                # Location management for supervisors
+                "locations.read", "locations.update"
             ]
             
             printer_permissions = [
@@ -511,6 +521,409 @@ async def initialize_users():
             content={
                 "status": "error",
                 "message": f"Failed to initialize users: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
+@app.post("/admin/init-locations", tags=["Admin"])
+async def initialize_locations():
+    """Initialize Madagascar locations with all provinces and sample offices"""
+    try:
+        from app.core.database import get_db
+        from app.models.user import Location
+        from app.schemas.location import LocationCreate, ProvinceCodeEnum, OfficeTypeEnum
+        from app.crud.crud_location import location as crud_location
+        
+        db = next(get_db())
+        
+        try:
+            # Madagascar provinces and sample locations
+            locations_data = [
+                # Antananarivo Province (T)
+                {
+                    "name": "ANTANANARIVO CENTRAL OFFICE",
+                    "province_code": ProvinceCodeEnum.ANTANANARIVO,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "ANTANANARIVO",
+                    "street_address": "LOT II M 85 ANDRAVOAHANGY",
+                    "postal_code": "101",
+                    "phone_number": "+261 20 22 123 45",
+                    "email": "antananarivo.central@gov.mg",
+                    "manager_name": "RAKOTO JEAN MARIE",
+                    "max_daily_capacity": 100,
+                    "max_staff_capacity": 15,
+                    "operating_hours": '{"monday": "08:00-17:00", "tuesday": "08:00-17:00", "wednesday": "08:00-17:00", "thursday": "08:00-17:00", "friday": "08:00-17:00", "saturday": "08:00-12:00"}',
+                    "special_notes": "Main headquarters office with full services"
+                },
+                {
+                    "name": "ANTANANARIVO BRANCH OFFICE",
+                    "province_code": ProvinceCodeEnum.ANTANANARIVO,
+                    "office_number": "02",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "ANTANANARIVO",
+                    "street_address": "AVENUE DE L'INDEPENDENCE",
+                    "postal_code": "101",
+                    "phone_number": "+261 20 22 678 90",
+                    "email": "antananarivo.branch@gov.mg",
+                    "manager_name": "RABE MARIE CLAIRE",
+                    "max_daily_capacity": 75,
+                    "max_staff_capacity": 12
+                },
+                
+                # Fianarantsoa Province (F)
+                {
+                    "name": "FIANARANTSOA MAIN OFFICE",
+                    "province_code": ProvinceCodeEnum.FIANARANTSOA,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "FIANARANTSOA",
+                    "street_address": "RUE PRINCIPALE",
+                    "phone_number": "+261 75 123 456",
+                    "email": "fianarantsoa.main@gov.mg",
+                    "manager_name": "ANDRY PAUL HENRI",
+                    "max_daily_capacity": 60,
+                    "max_staff_capacity": 10
+                },
+                
+                # Toamasina Province (A)
+                {
+                    "name": "TOAMASINA PORT OFFICE",
+                    "province_code": ProvinceCodeEnum.TOAMASINA,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "TOAMASINA",
+                    "street_address": "BOULEVARD JOFFRE",
+                    "phone_number": "+261 53 123 789",
+                    "email": "toamasina.port@gov.mg",
+                    "manager_name": "RAZAFY LANTO",
+                    "max_daily_capacity": 80,
+                    "max_staff_capacity": 12
+                },
+                
+                # Mahajanga Province (M)
+                {
+                    "name": "MAHAJANGA COASTAL OFFICE",
+                    "province_code": ProvinceCodeEnum.MAHAJANGA,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "MAHAJANGA",
+                    "street_address": "AVENUE DE LA REPUBLIQUE",
+                    "phone_number": "+261 62 987 654",
+                    "email": "mahajanga.coastal@gov.mg",
+                    "manager_name": "RANDRIA SOLO",
+                    "max_daily_capacity": 50,
+                    "max_staff_capacity": 8
+                },
+                
+                # Antsiranana Province (D)
+                {
+                    "name": "ANTSIRANANA NORTHERN OFFICE",
+                    "province_code": ProvinceCodeEnum.ANTSIRANANA,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "ANTSIRANANA",
+                    "street_address": "RUE COLBERT",
+                    "phone_number": "+261 82 456 123",
+                    "email": "antsiranana.north@gov.mg",
+                    "manager_name": "RASOLOFO HERY",
+                    "max_daily_capacity": 45,
+                    "max_staff_capacity": 7
+                },
+                
+                # Toliara Province (U)
+                {
+                    "name": "TOLIARA SOUTHERN OFFICE",
+                    "province_code": ProvinceCodeEnum.TOLIARA,
+                    "office_number": "01",
+                    "office_type": OfficeTypeEnum.MAIN,
+                    "locality": "TOLIARA",
+                    "street_address": "AVENUE DE LA LIBERATION",
+                    "phone_number": "+261 94 321 987",
+                    "email": "toliara.south@gov.mg",
+                    "manager_name": "RABARY MIORA",
+                    "max_daily_capacity": 40,
+                    "max_staff_capacity": 6
+                },
+                {
+                    "name": "TOLIARA MOBILE UNIT",
+                    "province_code": ProvinceCodeEnum.TOLIARA,
+                    "office_number": "02",
+                    "office_type": OfficeTypeEnum.MOBILE,
+                    "locality": "TOLIARA",
+                    "manager_name": "RAHARISON DAVID",
+                    "max_daily_capacity": 25,
+                    "max_staff_capacity": 4,
+                    "special_notes": "Mobile unit serving remote areas"
+                }
+            ]
+            
+            created_locations = []
+            for loc_data in locations_data:
+                # Check if location already exists
+                existing = db.query(Location).filter(
+                    Location.province_code == loc_data["province_code"].value,
+                    Location.office_number == loc_data["office_number"]
+                ).first()
+                
+                if not existing:
+                    location_create = LocationCreate(**loc_data)
+                    location = crud_location.create_with_codes(
+                        db=db,
+                        obj_in=location_create,
+                        created_by="admin_init"
+                    )
+                    created_locations.append({
+                        "code": location.code,
+                        "full_code": location.full_code,
+                        "name": location.name,
+                        "province": location.province_name,
+                        "type": location.office_type
+                    })
+            
+            # Get statistics
+            stats = crud_location.get_location_statistics(db=db)
+            
+            return {
+                "status": "success",
+                "message": "Madagascar locations initialized successfully",
+                "created_locations": created_locations,
+                "total_locations": stats["total_locations"],
+                "locations_by_province": stats["locations_by_province"],
+                "locations_by_type": stats["locations_by_type"],
+                "total_capacity": stats["total_staff_capacity"],
+                "note": "All 6 Madagascar provinces represented with sample offices",
+                "timestamp": time.time()
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to initialize locations: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to initialize locations: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
+@app.post("/admin/init-location-users", tags=["Admin"])
+async def initialize_location_users():
+    """Initialize users with location-based usernames for testing"""
+    try:
+        from app.core.database import get_db
+        from app.models.user import User, Role, Location
+        from app.schemas.user import UserCreate, MadagascarIDTypeEnum
+        from app.crud.crud_user import user as crud_user
+        from app.crud.crud_location import location as crud_location
+        
+        db = next(get_db())
+        
+        try:
+            # Get existing roles
+            admin_role = db.query(Role).filter(Role.name == "admin").first()
+            clerk_role = db.query(Role).filter(Role.name == "clerk").first()
+            supervisor_role = db.query(Role).filter(Role.name == "supervisor").first()
+            printer_role = db.query(Role).filter(Role.name == "printer").first()
+            
+            if not all([admin_role, clerk_role, supervisor_role, printer_role]):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": "error",
+                        "message": "Roles not found. Please run /admin/init-users first.",
+                        "timestamp": time.time()
+                    }
+                )
+            
+            # Get existing locations
+            locations = crud_location.get_operational_locations(db=db)
+            if not locations:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": "error",
+                        "message": "No locations found. Please run /admin/init-locations first.",
+                        "timestamp": time.time()
+                    }
+                )
+            
+            # Test users data for each location
+            user_templates = [
+                {
+                    "email_template": "clerk.{location}@gov.mg",
+                    "first_name": "MARIE",
+                    "last_name": "RAZAFY",
+                    "madagascar_id_number_template": "1{province_num:02d}234567890",
+                    "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                    "password": "Clerk123!",
+                    "employee_id_template": "CLK{location}001",
+                    "department": "LICENSE PROCESSING",
+                    "roles": [clerk_role.id]
+                },
+                {
+                    "email_template": "supervisor.{location}@gov.mg",
+                    "first_name": "JEAN",
+                    "last_name": "RAKOTO",
+                    "madagascar_id_number_template": "2{province_num:02d}987654321",
+                    "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                    "password": "Supervisor123!",
+                    "employee_id_template": "SUP{location}001",
+                    "department": "LICENSE PROCESSING",
+                    "roles": [supervisor_role.id]
+                },
+                {
+                    "email_template": "printer.{location}@gov.mg",
+                    "first_name": "PAUL",
+                    "last_name": "ANDRY",
+                    "madagascar_id_number_template": "3{province_num:02d}456789123",
+                    "id_document_type": MadagascarIDTypeEnum.PASSPORT,
+                    "password": "Printer123!",
+                    "employee_id_template": "PRT{location}001",
+                    "department": "CARD PRODUCTION",
+                    "roles": [printer_role.id]
+                }
+            ]
+            
+            # Province number mapping for ID generation
+            province_numbers = {"T": 1, "D": 2, "F": 3, "M": 4, "A": 5, "U": 6}
+            
+            created_users = []
+            for location in locations:
+                province_num = province_numbers.get(location.province_code, 0)
+                
+                for template in user_templates:
+                    # Generate user data for this location
+                    user_data = {
+                        "email": template["email_template"].format(location=location.code.lower()),
+                        "first_name": template["first_name"],
+                        "last_name": template["last_name"],
+                        "madagascar_id_number": template["madagascar_id_number_template"].format(province_num=province_num),
+                        "id_document_type": template["id_document_type"],
+                        "password": template["password"],
+                        "confirm_password": template["password"],
+                        "phone_number": f"+261 {30 + province_num} {location.office_number} {template['roles'][0].__hash__() % 1000:03d}",
+                        "employee_id": template["employee_id_template"].format(location=location.code),
+                        "department": template["department"],
+                        "role_ids": template["roles"]
+                    }
+                    
+                    # Check if user already exists
+                    existing = crud_user.get_by_email(db=db, email=user_data["email"])
+                    if not existing:
+                        user_create = UserCreate(**user_data)
+                        user = crud_user.create_with_location(
+                            db=db,
+                            obj_in=user_create,
+                            location_id=location.id,
+                            created_by="admin_init"
+                        )
+                        
+                        created_users.append({
+                            "username": user.username,
+                            "email": user.email,
+                            "full_name": user.full_name,
+                            "location_code": user.assigned_location_code,
+                            "location_name": location.name,
+                            "roles": [role.name for role in user.roles],
+                            "password": template["password"]
+                        })
+            
+            # Update location staff counts
+            for location in locations:
+                location_users = crud_user.get_by_location(db=db, location_id=location.id)
+                location.current_staff_count = len(location_users)
+            
+            db.commit()
+            
+            return {
+                "status": "success",
+                "message": "Location-based users created successfully",
+                "created_users": created_users,
+                "total_users_created": len(created_users),
+                "locations_with_users": len(locations),
+                "username_format": "Location-based usernames (e.g., T010001, F010002)",
+                "note": "Each operational location now has clerk, supervisor, and printer users",
+                "timestamp": time.time()
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to initialize location users: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to initialize location users: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
+@app.post("/admin/reset-database", tags=["Admin"])
+async def reset_database():
+    """Complete database reset - Drop, recreate, and initialize everything"""
+    try:
+        # Step 1: Drop all tables
+        drop_result = await drop_all_tables()
+        if drop_result.get("status") != "success":
+            return drop_result
+        
+        # Step 2: Initialize tables
+        init_result = await initialize_tables()
+        if init_result.get("status") != "success":
+            return init_result
+        
+        # Step 3: Initialize users and roles
+        users_result = await initialize_users()
+        if users_result.get("status") != "success":
+            return users_result
+        
+        # Step 4: Initialize locations
+        locations_result = await initialize_locations()
+        if locations_result.get("status") != "success":
+            return locations_result
+        
+        # Step 5: Initialize location-based users
+        location_users_result = await initialize_location_users()
+        if location_users_result.get("status") != "success":
+            return location_users_result
+        
+        return {
+            "status": "success",
+            "message": "Complete database reset successful",
+            "steps_completed": [
+                "Tables dropped",
+                "Tables recreated", 
+                "Base users and roles initialized",
+                "Madagascar locations initialized",
+                "Location-based users created"
+            ],
+            "summary": {
+                "permissions_created": users_result.get("permissions_created", 0),
+                "roles_created": users_result.get("roles_created", 0),
+                "locations_created": len(locations_result.get("created_locations", [])),
+                "location_users_created": location_users_result.get("total_users_created", 0)
+            },
+            "admin_credentials": users_result.get("admin_credentials"),
+            "note": "Madagascar License System fully initialized with location-based user management",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reset database: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to reset database: {str(e)}",
                 "timestamp": time.time()
             }
         )

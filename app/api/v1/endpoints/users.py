@@ -19,6 +19,8 @@ from app.schemas.user import (
     UserQueryParams, UserStatusEnum, MadagascarIDTypeEnum
 )
 from app.api.v1.endpoints.auth import get_current_user, log_user_action
+from app.crud.crud_user import user as crud_user
+from app.crud.crud_location import location as crud_location
 
 router = APIRouter()
 
@@ -164,39 +166,29 @@ async def get_user(
 @router.post("/", response_model=UserResponse, summary="Create User")
 async def create_user(
     user_data: UserCreate,
-    request: Request,
+    location_id: uuid.UUID = Query(..., description="Location ID for user assignment"),
+    request: Request = Request,
     current_user: User = Depends(require_permission("users.create")),
     db: Session = Depends(get_db)
 ):
     """
-    Create new user
+    Create new user with location-based username generation
     """
-    # Check if username already exists
-    existing_user = db.query(User).filter(
-        or_(
-            User.username == user_data.username.lower(),
-            User.email == user_data.email.lower(),
-            User.madagascar_id_number == user_data.madagascar_id_number.upper()
-        ),
-        User.is_active == True
-    ).first()
-    
+    # Check if email already exists
+    existing_user = crud_user.get_by_email(db=db, email=user_data.email)
     if existing_user:
-        if existing_user.username == user_data.username.lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists"
-            )
-        elif existing_user.email == user_data.email.lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists"
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Madagascar ID number already exists"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already exists"
+        )
+    
+    # Check if Madagascar ID already exists
+    existing_id_user = crud_user.get_by_madagascar_id(db=db, madagascar_id=user_data.madagascar_id_number)
+    if existing_id_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Madagascar ID number already exists"
+        )
     
     # Check if employee ID exists (if provided)
     if user_data.employee_id:
@@ -210,54 +202,32 @@ async def create_user(
                 detail="Employee ID already exists"
             )
     
-    # Create user
-    user = User(
-        username=user_data.username.lower(),
-        email=user_data.email.lower(),
-        password_hash=get_password_hash(user_data.password),
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        display_name=user_data.display_name,
-        madagascar_id_number=user_data.madagascar_id_number.upper(),
-        id_document_type=user_data.id_document_type,
-        phone_number=user_data.phone_number,
-        employee_id=user_data.employee_id,
-        department=user_data.department,
-        province=user_data.province,
-        region=user_data.region,
-        office_location=user_data.office_location,
-        language=user_data.language,
-        timezone=user_data.timezone,
-        currency=user_data.currency,
-        primary_location_id=user_data.primary_location_id,
-        status=UserStatus.PENDING_ACTIVATION,
-        created_by=current_user.id,
-        updated_by=current_user.id
-    )
-    
-    db.add(user)
-    db.flush()  # Get the user ID
-    
-    # Assign roles
-    if user_data.role_ids:
-        roles = db.query(Role).filter(Role.id.in_(user_data.role_ids)).all()
-        user.roles = roles
-    
-    # Assign locations
-    if user_data.assigned_location_ids:
-        from app.models.user import Location
-        locations = db.query(Location).filter(Location.id.in_(user_data.assigned_location_ids)).all()
-        user.assigned_locations = locations
-    
-    db.commit()
-    db.refresh(user)
+    try:
+        # Create user with location-based username generation
+        user = crud_user.create_with_location(
+            db=db,
+            obj_in=user_data,
+            location_id=location_id,
+            created_by=str(current_user.id)
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}"
+        )
     
     # Log user creation
     log_user_action(
         db, current_user, "user_created", request,
         details={
             "created_user_id": str(user.id),
-            "username": user.username,
+            "generated_username": user.username,
+            "location_code": user.assigned_location_code,
             "roles": [role.name for role in user.roles]
         }
     )
@@ -532,4 +502,238 @@ async def get_user_audit_logs(
         "page": page,
         "per_page": per_page,
         "total_pages": math.ceil(total / per_page)
+    }
+
+
+@router.post("/{user_id}/assign-location", response_model=UserResponse, summary="Assign User to Location")
+async def assign_user_to_location(
+    user_id: uuid.UUID,
+    location_id: uuid.UUID,
+    is_primary: bool = Query(False, description="Set as primary location"),
+    request: Request = Request,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """
+    Assign user to location (primary or additional)
+    """
+    try:
+        user = crud_user.assign_to_location(
+            db=db,
+            user_id=user_id,
+            location_id=location_id,
+            is_primary=is_primary,
+            updated_by=str(current_user.id)
+        )
+        
+        # Log location assignment
+        log_user_action(
+            db, current_user, "user_location_assigned", request,
+            details={
+                "user_id": str(user_id),
+                "location_id": str(location_id),
+                "is_primary": is_primary,
+                "new_username": user.username if is_primary else None
+            }
+        )
+        
+        return UserResponse.from_orm(user)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/{user_id}/remove-location/{location_id}", response_model=UserResponse, summary="Remove User from Location")
+async def remove_user_from_location(
+    user_id: uuid.UUID,
+    location_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """
+    Remove user from location assignment
+    """
+    try:
+        user = crud_user.remove_from_location(
+            db=db,
+            user_id=user_id,
+            location_id=location_id,
+            updated_by=str(current_user.id)
+        )
+        
+        # Log location removal
+        log_user_action(
+            db, current_user, "user_location_removed", request,
+            details={
+                "user_id": str(user_id),
+                "location_id": str(location_id)
+            }
+        )
+        
+        return UserResponse.from_orm(user)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/{user_id}/assign-roles", response_model=UserResponse, summary="Assign Roles to User")
+async def assign_roles_to_user(
+    user_id: uuid.UUID,
+    role_ids: List[uuid.UUID],
+    request: Request,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """
+    Assign roles to user
+    """
+    try:
+        user = crud_user.assign_roles(
+            db=db,
+            user_id=user_id,
+            role_ids=role_ids,
+            updated_by=str(current_user.id)
+        )
+        
+        # Log role assignment
+        log_user_action(
+            db, current_user, "user_roles_assigned", request,
+            details={
+                "user_id": str(user_id),
+                "role_ids": [str(rid) for rid in role_ids],
+                "role_names": [role.name for role in user.roles]
+            }
+        )
+        
+        return UserResponse.from_orm(user)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/location/{location_id}", response_model=List[UserResponse], summary="Get Users by Location")
+async def get_users_by_location(
+    location_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("users.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all users assigned to a specific location
+    """
+    users = crud_user.get_by_location(db=db, location_id=location_id)
+    
+    # Log location user access
+    log_user_action(
+        db, current_user, "location_users_accessed", request,
+        details={
+            "location_id": str(location_id),
+            "user_count": len(users)
+        }
+    )
+    
+    return [UserResponse.from_orm(user) for user in users]
+
+
+@router.get("/location/{location_id}/statistics", summary="Get Location User Statistics")
+async def get_location_user_statistics(
+    location_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("users.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get user statistics for a specific location
+    """
+    stats = crud_user.get_location_statistics(db=db, location_id=location_id)
+    
+    # Log statistics access
+    log_user_action(
+        db, current_user, "location_user_statistics_accessed", request,
+        details={
+            "location_id": str(location_id),
+            "total_users": stats["total_users"]
+        }
+    )
+    
+    return stats
+
+
+@router.get("/search/advanced", response_model=UserListResponse, summary="Advanced User Search")
+async def advanced_user_search(
+    request: Request,
+    search_params: UserQueryParams = Depends(),
+    current_user: User = Depends(require_permission("users.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Advanced user search with comprehensive filtering
+    """
+    users, total = crud_user.search_users(db=db, search_params=search_params)
+    
+    # Calculate pagination info
+    total_pages = math.ceil(total / search_params.per_page)
+    
+    # Log advanced search
+    log_user_action(
+        db, current_user, "advanced_user_search", request,
+        details={
+            "search_params": search_params.dict(),
+            "total_results": total
+        }
+    )
+    
+    return UserListResponse(
+        users=[UserResponse.from_orm(user) for user in users],
+        total=total,
+        page=search_params.page,
+        per_page=search_params.per_page,
+        total_pages=total_pages
+    )
+
+
+@router.get("/{user_id}/permissions", summary="Get User Permissions")
+async def get_user_permissions(
+    user_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("users.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all permissions for a user (from roles and individual assignments)
+    """
+    permissions = crud_user.get_user_permissions(db=db, user_id=user_id)
+    
+    # Log permission access
+    log_user_action(
+        db, current_user, "user_permissions_accessed", request,
+        details={
+            "user_id": str(user_id),
+            "permission_count": len(permissions)
+        }
+    )
+    
+    return {
+        "user_id": user_id,
+        "permissions": [
+            {
+                "id": str(perm.id),
+                "name": perm.name,
+                "display_name": perm.display_name,
+                "category": perm.category,
+                "resource": perm.resource,
+                "action": perm.action
+            }
+            for perm in permissions
+        ]
     } 

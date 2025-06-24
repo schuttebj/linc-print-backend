@@ -14,6 +14,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from enum import Enum as PythonEnum
 import uuid
+import re
 
 from app.models.base import BaseModel
 
@@ -53,10 +54,9 @@ class UserStatus(PythonEnum):
 
 class MadagascarIDType(PythonEnum):
     """Madagascar ID document types"""
-    CIN = "CIN"           # Carte d'Identité Nationale
-    CNI = "CNI"           # Carte Nationale d'Identité
-    PASSPORT = "PASSPORT" # Passport
-    BIRTH_CERT = "BIRTH_CERT"  # Birth certificate (for minors)
+    MADAGASCAR_ID = "MADAGASCAR_ID"  # CIN/CNI - Carte d'Identité Nationale
+    PASSPORT = "PASSPORT"            # Passport
+    FOREIGN_ID = "FOREIGN_ID"        # Foreign ID document
 
 
 class User(BaseModel):
@@ -82,7 +82,7 @@ class User(BaseModel):
     __tablename__ = "users"
     
     # Authentication credentials
-    username = Column(String(50), nullable=False, unique=True, index=True, comment="Unique username for login")
+    username = Column(String(50), nullable=False, unique=True, index=True, comment="Location-based username (e.g., T010001)")
     email = Column(String(255), nullable=False, unique=True, index=True, comment="Email address")
     password_hash = Column(String(255), nullable=False, comment="Hashed password")
     
@@ -92,8 +92,12 @@ class User(BaseModel):
     display_name = Column(String(200), nullable=True, comment="Display name for UI")
     
     # Madagascar ID information
-    madagascar_id_number = Column(String(20), nullable=False, index=True, comment="CIN/CNI number")
+    madagascar_id_number = Column(String(20), nullable=False, index=True, comment="CIN/CNI/Passport number")
     id_document_type = Column(SQLEnum(MadagascarIDType), nullable=False, comment="Type of ID document")
+    
+    # Location-based user identification
+    location_user_code = Column(String(10), nullable=True, unique=True, comment="Location-based user code (e.g., T010001)")
+    assigned_location_code = Column(String(5), nullable=True, comment="Location code where user is assigned (e.g., T01)")
     
     # Account status and settings
     status = Column(SQLEnum(UserStatus), nullable=False, default=UserStatus.PENDING_ACTIVATION, comment="Account status")
@@ -200,6 +204,57 @@ class User(BaseModel):
             
         # Check assigned locations
         return any(location.id == location_id for location in self.assigned_locations)
+    
+    @classmethod
+    def generate_username_from_location(cls, location: 'Location') -> str:
+        """Generate username based on location code"""
+        return location.generate_next_user_code()
+    
+    @classmethod
+    def validate_username_format(cls, username: str) -> bool:
+        """Validate username follows Madagascar location format (e.g., T010001)"""
+        # Pattern: Province code (1 letter) + Office number (2 digits) + User number (4 digits)
+        pattern = r'^[TDFMAU]\d{6}$'
+        return bool(re.match(pattern, username))
+    
+    @classmethod
+    def extract_location_code_from_username(cls, username: str) -> str:
+        """Extract location code from username (e.g., T010001 -> T01)"""
+        if cls.validate_username_format(username):
+            return username[:3]  # First 3 characters (province + office number)
+        return ""
+    
+    @property
+    def location_display_code(self) -> str:
+        """Get display-friendly location code with MG- prefix"""
+        if self.assigned_location_code:
+            return f"MG-{self.assigned_location_code}"
+        return "NO LOCATION"
+    
+    def update_location_assignment(self, location: 'Location', db_session) -> None:
+        """Update user's location assignment and generate new username if needed"""
+        # Update location codes
+        self.assigned_location_code = location.code
+        
+        # If username doesn't match location format, generate new one
+        if not self.validate_username_format(self.username) or not self.username.startswith(location.user_code_prefix):
+            old_username = self.username
+            new_username = location.generate_next_user_code()
+            
+            # Check if new username is available
+            existing_user = db_session.query(User).filter(User.username == new_username).first()
+            if existing_user:
+                raise ValueError(f"Username {new_username} already exists")
+            
+            self.username = new_username
+            self.location_user_code = new_username
+            
+            # Increment location's user counter
+            location.increment_user_counter(db_session)
+            
+            return old_username, new_username
+        
+        return None, None
 
 
 class Role(BaseModel):
@@ -333,17 +388,110 @@ class UserAuditLog(BaseModel):
 # Location model placeholder for relationships (will be implemented in locations module)
 class Location(BaseModel):
     """
-    Location model placeholder for user assignment relationships
-    Full implementation will be in the locations module
+    Location model for Madagascar License System offices
+    Supports distributed printing with location-based user codes
+    
+    Location Code Format: MG-{PROVINCE_CODE}{OFFICE_NUMBER}
+    User Code Format: {PROVINCE_CODE}{OFFICE_NUMBER}{USER_NUMBER}
+    
+    Examples:
+    - Location: MG-T01 (Antananarivo, Office 01)
+    - User: T010001 (First user at T01)
     """
     __tablename__ = "locations"
     
-    name = Column(String(200), nullable=False, comment="Location name")
-    code = Column(String(20), nullable=False, unique=True, comment="Location code")
-    location_type = Column(String(50), nullable=False, comment="Type of location (office, test_center, etc.)")
+    # Basic information
+    name = Column(String(200), nullable=False, comment="Location name (e.g., 'Antananarivo Central Office')")
+    code = Column(String(20), nullable=False, unique=True, comment="Location code (e.g., 'T01' for Antananarivo Office 01)")
+    full_code = Column(String(20), nullable=False, unique=True, comment="Full location code with MG- prefix (e.g., 'MG-T01')")
+    
+    # Madagascar province mapping
+    province_code = Column(String(1), nullable=False, comment="Madagascar province code (T, D, F, M, A, U)")
+    province_name = Column(String(50), nullable=False, comment="Full province name")
+    office_number = Column(String(2), nullable=False, comment="Office number within province (01-99)")
+    
+    # Office classification
+    office_type = Column(String(20), nullable=False, default="MAIN", comment="Office type: MAIN, MOBILE, TEMPORARY")
+    
+    # Address information
+    street_address = Column(String(255), nullable=True, comment="Street address")
+    locality = Column(String(100), nullable=False, comment="City/town/locality")
+    postal_code = Column(String(10), nullable=True, comment="Postal code")
+    
+    # Contact information
+    phone_number = Column(String(20), nullable=True, comment="Office phone number")
+    email = Column(String(100), nullable=True, comment="Office email address")
+    manager_name = Column(String(100), nullable=True, comment="Office manager name")
+    
+    # Operational settings
+    is_operational = Column(Boolean, default=True, nullable=False, comment="Whether office is currently operational")
+    accepts_applications = Column(Boolean, default=True, nullable=False, comment="Accepts new license applications")
+    accepts_renewals = Column(Boolean, default=True, nullable=False, comment="Accepts license renewals")
+    accepts_collections = Column(Boolean, default=True, nullable=False, comment="Accepts license collections")
+    
+    # Capacity management
+    max_daily_capacity = Column(Integer, default=50, nullable=False, comment="Maximum applications per day")
+    current_staff_count = Column(Integer, default=0, nullable=False, comment="Current number of staff")
+    max_staff_capacity = Column(Integer, default=10, nullable=False, comment="Maximum staff capacity")
+    
+    # User code generation tracking
+    next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (1-9999)")
+    
+    # Operating hours and notes
+    operating_hours = Column(Text, nullable=True, comment="JSON string with operating hours")
+    special_notes = Column(Text, nullable=True, comment="Special instructions or notes")
     
     # Relationships
     assigned_users = relationship("User", secondary=user_locations, back_populates="assigned_locations")
+    primary_users = relationship("User", foreign_keys="User.primary_location_id", back_populates="primary_location")
     
     def __repr__(self):
-        return f"<Location(id={self.id}, name='{self.name}', code='{self.code}')>" 
+        return f"<Location(id={self.id}, code='{self.code}', name='{self.name}', type='{self.office_type}')>"
+    
+    @property
+    def display_code(self) -> str:
+        """Get display-friendly code with MG- prefix"""
+        return self.full_code
+    
+    @property
+    def user_code_prefix(self) -> str:
+        """Get the prefix for user codes at this location"""
+        return f"{self.province_code}{self.office_number}"
+    
+    def generate_next_user_code(self) -> str:
+        """Generate the next user code for this location"""
+        user_code = f"{self.user_code_prefix}{self.next_user_number:04d}"
+        return user_code
+    
+    def increment_user_counter(self, db_session) -> None:
+        """Increment the user counter after creating a new user"""
+        if self.next_user_number >= 9999:
+            raise ValueError(f"Maximum user capacity (9999) reached for location {self.code}")
+        
+        self.next_user_number += 1
+        db_session.commit()
+    
+    @classmethod
+    def validate_province_code(cls, province_code: str) -> bool:
+        """Validate Madagascar province code"""
+        valid_codes = ["T", "D", "F", "M", "A", "U"]  # Antananarivo, Antsiranana, Fianarantsoa, Mahajanga, Toamasina, Toliara
+        return province_code.upper() in valid_codes
+    
+    @classmethod
+    def get_province_name(cls, province_code: str) -> str:
+        """Get full province name from code"""
+        province_map = {
+            "T": "ANTANANARIVO",
+            "D": "ANTSIRANANA", 
+            "F": "FIANARANTSOA",
+            "M": "MAHAJANGA",
+            "A": "TOAMASINA",
+            "U": "TOLIARA"
+        }
+        return province_map.get(province_code.upper(), "UNKNOWN")
+    
+    @classmethod
+    def validate_office_type(cls, office_type: str) -> bool:
+        """Validate office type"""
+        valid_types = ["MAIN", "MOBILE", "TEMPORARY"]
+        return office_type.upper() in valid_types 

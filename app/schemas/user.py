@@ -23,10 +23,9 @@ class UserStatusEnum(str, Enum):
 
 class MadagascarIDTypeEnum(str, Enum):
     """Madagascar ID type enum for API"""
-    CIN = "CIN"
-    CNI = "CNI"
+    MADAGASCAR_ID = "MADAGASCAR_ID"
     PASSPORT = "PASSPORT"
-    BIRTH_CERT = "BIRTH_CERT"
+    FOREIGN_ID = "FOREIGN_ID"
 
 
 # Base schemas
@@ -39,8 +38,12 @@ class UserBase(BaseModel):
     display_name: Optional[str] = Field(None, max_length=200, description="Display name")
     
     # Madagascar-specific fields
-    madagascar_id_number: str = Field(..., min_length=5, max_length=20, description="CIN/CNI number")
+    madagascar_id_number: str = Field(..., min_length=5, max_length=20, description="CIN/CNI/Passport number")
     id_document_type: MadagascarIDTypeEnum = Field(..., description="Type of ID document")
+    
+    # Location-based assignment
+    primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location assignment")
+    assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Additional location assignments")
     
     # Contact information
     phone_number: Optional[str] = Field(None, max_length=20, description="Phone number")
@@ -98,6 +101,10 @@ class UserUpdate(BaseModel):
     madagascar_id_number: Optional[str] = Field(None, min_length=5, max_length=20)
     id_document_type: Optional[MadagascarIDTypeEnum] = None
     
+    # Location-based assignment
+    primary_location_id: Optional[uuid.UUID] = None
+    assigned_location_ids: Optional[List[uuid.UUID]] = None
+    
     # Contact information
     phone_number: Optional[str] = Field(None, max_length=20)
     employee_id: Optional[str] = Field(None, max_length=50)
@@ -120,8 +127,6 @@ class UserUpdate(BaseModel):
     
     # Role and location assignments
     role_ids: Optional[List[uuid.UUID]] = None
-    primary_location_id: Optional[uuid.UUID] = None
-    assigned_location_ids: Optional[List[uuid.UUID]] = None
 
 
 class UserPasswordChange(BaseModel):
