@@ -5,7 +5,9 @@ Pydantic schemas for request/response validation
 # Person schemas
 from app.schemas.person import (
     PersonBase, PersonCreate, PersonUpdate, PersonResponse,
-    PersonListResponse, PersonSearchRequest, PersonSearchResponse
+    PersonSummary, PersonSearchRequest, PersonDuplicateCheckResponse,
+    PersonAliasCreate, PersonAliasUpdate, PersonAliasResponse,
+    PersonAddressCreate, PersonAddressUpdate, PersonAddressResponse
 )
 
 # User schemas  
