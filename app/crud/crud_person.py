@@ -107,17 +107,19 @@ class CRUDPerson(CRUDBase[Person, PersonCreate, PersonUpdate]):
         if search_params.is_active is not None:
             query = query.filter(Person.is_active == search_params.is_active)
         
-        # Search by document number (join with aliases)
+        # Search by document number and/or type (single join with aliases)
+        alias_filters = []
         if search_params.document_number:
-            query = query.join(PersonAlias).filter(
+            alias_filters.append(
                 PersonAlias.document_number.ilike(f"%{search_params.document_number}%")
             )
-        
-        # Filter by document type
         if search_params.document_type:
-            query = query.join(PersonAlias).filter(
+            alias_filters.append(
                 PersonAlias.document_type == search_params.document_type
             )
+        
+        if alias_filters:
+            query = query.join(PersonAlias).filter(and_(*alias_filters))
         
         # Search by address locality
         if search_params.locality:
