@@ -398,7 +398,7 @@ async def initialize_users():
                     last_name="Administrator",
                     display_name="System Administrator",
                     madagascar_id_number="ADM001",
-                    id_document_type=MadagascarIDType.CIN,
+                    id_document_type=MadagascarIDType.MADAGASCAR_ID,
                     phone_number="+261340000000",
                     employee_id="ADM001",
                     department="IT Administration",
@@ -468,7 +468,7 @@ async def initialize_users():
                         first_name=user_data["first_name"],
                         last_name=user_data["last_name"],
                         madagascar_id_number=user_data["madagascar_id_number"],
-                        id_document_type=MadagascarIDType.CIN,
+                        id_document_type=MadagascarIDType.MADAGASCAR_ID,
                         employee_id=user_data["employee_id"],
                         department=user_data["department"],
                         country_code="MG",
@@ -873,26 +873,36 @@ async def reset_database():
     try:
         # Step 1: Drop all tables
         drop_result = await drop_all_tables()
+        if isinstance(drop_result, JSONResponse):
+            return drop_result
         if drop_result.get("status") != "success":
             return drop_result
         
         # Step 2: Initialize tables
         init_result = await initialize_tables()
+        if isinstance(init_result, JSONResponse):
+            return init_result
         if init_result.get("status") != "success":
             return init_result
         
         # Step 3: Initialize users and roles
         users_result = await initialize_users()
+        if isinstance(users_result, JSONResponse):
+            return users_result
         if users_result.get("status") != "success":
             return users_result
         
         # Step 4: Initialize locations
         locations_result = await initialize_locations()
+        if isinstance(locations_result, JSONResponse):
+            return locations_result
         if locations_result.get("status") != "success":
             return locations_result
         
         # Step 5: Initialize location-based users
         location_users_result = await initialize_location_users()
+        if isinstance(location_users_result, JSONResponse):
+            return location_users_result
         if location_users_result.get("status") != "success":
             return location_users_result
         
