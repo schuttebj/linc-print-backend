@@ -16,7 +16,7 @@ services:
           name: madagascar-license-db
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: 'https://madagascar-license-frontend.vercel.app,http://localhost:3000,http://localhost:5173'
+        value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
       - key: FILE_STORAGE_BASE_PATH
         value: /tmp/madagascar-license-data
       - key: COUNTRY_CODE
