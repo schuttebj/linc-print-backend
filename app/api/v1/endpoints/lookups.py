@@ -4,10 +4,7 @@ Provides standardized dropdown data from backend enums
 """
 
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends
-
-from app.api.v1.endpoints.auth import get_current_user
-from app.models.user import User
+from fastapi import APIRouter
 from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
@@ -20,9 +17,7 @@ router = APIRouter()
 
 
 @router.get("/document-types", response_model=List[Dict[str, Any]])
-async def get_document_types(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+async def get_document_types() -> List[Dict[str, Any]]:
     """Get all available document types with display information"""
     return [
         {
@@ -35,9 +30,7 @@ async def get_document_types(
 
 
 @router.get("/person-natures", response_model=List[Dict[str, str]])
-async def get_person_natures(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_person_natures() -> List[Dict[str, str]]:
     """Get all available person nature/gender options"""
     return [
         {
@@ -49,9 +42,7 @@ async def get_person_natures(
 
 
 @router.get("/address-types", response_model=List[Dict[str, str]])
-async def get_address_types(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_address_types() -> List[Dict[str, str]]:
     """Get all available address types"""
     return [
         {
@@ -63,9 +54,7 @@ async def get_address_types(
 
 
 @router.get("/languages", response_model=List[Dict[str, str]])
-async def get_languages(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_languages() -> List[Dict[str, str]]:
     """Get all supported languages"""
     return [
         {
@@ -77,9 +66,7 @@ async def get_languages(
 
 
 @router.get("/nationalities", response_model=List[Dict[str, str]])
-async def get_nationalities(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_nationalities() -> List[Dict[str, str]]:
     """Get all supported nationality codes"""
     return [
         {
@@ -91,9 +78,7 @@ async def get_nationalities(
 
 
 @router.get("/phone-country-codes", response_model=List[Dict[str, str]])
-async def get_phone_country_codes(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_phone_country_codes() -> List[Dict[str, str]]:
     """Get all supported phone country codes"""
     return [
         {
@@ -105,9 +90,7 @@ async def get_phone_country_codes(
 
 
 @router.get("/countries", response_model=List[Dict[str, str]])
-async def get_countries(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_countries() -> List[Dict[str, str]]:
     """Get all supported country codes"""
     return [
         {
@@ -119,9 +102,7 @@ async def get_countries(
 
 
 @router.get("/provinces", response_model=List[Dict[str, str]])
-async def get_provinces(
-    current_user: User = Depends(get_current_user)
-) -> List[Dict[str, str]]:
+async def get_provinces() -> List[Dict[str, str]]:
     """Get all Madagascar province codes"""
     return [
         {
@@ -133,9 +114,7 @@ async def get_provinces(
 
 
 @router.get("/all", response_model=Dict[str, Any])
-async def get_all_lookups(
-    current_user: User = Depends(get_current_user)
-) -> Dict[str, Any]:
+async def get_all_lookups() -> Dict[str, Any]:
     """Get all lookup data in a single request for efficiency"""
     return {
         "document_types": [
