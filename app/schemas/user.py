@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
-from app.models.user import UserStatus, MadagascarIDType
+from app.models.enums import UserStatus, MadagascarIDType
 
 
 class UserStatusEnum(str, Enum):

@@ -17,6 +17,7 @@ import uuid
 import re
 
 from app.models.base import BaseModel
+from app.models.enums import MadagascarIDType, UserStatus
 
 # Association table for many-to-many relationship between users and roles
 user_roles = Table(
@@ -43,20 +44,7 @@ user_locations = Table(
 )
 
 
-class UserStatus(PythonEnum):
-    """User account status for Madagascar License System"""
-    ACTIVE = "active"
-    INACTIVE = "inactive" 
-    SUSPENDED = "suspended"
-    LOCKED = "locked"
-    PENDING_ACTIVATION = "pending_activation"
 
-
-class MadagascarIDType(PythonEnum):
-    """Madagascar ID document types"""
-    MADAGASCAR_ID = "MADAGASCAR_ID"  # CIN/CNI - Carte d'Identité Nationale
-    PASSPORT = "PASSPORT"            # Passport
-    FOREIGN_ID = "FOREIGN_ID"        # Foreign ID document
 
 
 class User(BaseModel):

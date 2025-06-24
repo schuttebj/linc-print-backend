@@ -9,6 +9,8 @@ from enum import Enum
 import uuid
 from datetime import datetime
 
+from app.models.enums import ProvinceCode, OfficeType
+
 
 class OfficeTypeEnum(str, Enum):
     """Office type enum for API"""

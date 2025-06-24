@@ -8,21 +8,26 @@ from pydantic import BaseModel, Field, validator, EmailStr
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
+from enum import Enum
 import re
 
 
-# Enums for validation
-class IdentificationType(str):
-    MADAGASCAR_ID = "MG_ID"
+# Import standardized enums
+from app.models.enums import MadagascarIDType, PersonNature, AddressType
+
+# Schema-specific enums for validation
+class IdentificationTypeEnum(str, Enum):
+    MADAGASCAR_ID = "MADAGASCAR_ID"
     PASSPORT = "PASSPORT"
+    FOREIGN_ID = "FOREIGN_ID"
 
 
-class PersonNature(str):
+class PersonNatureEnum(str, Enum):
     MALE = "01"
     FEMALE = "02"
 
 
-class AddressType(str):
+class AddressTypeEnum(str, Enum):
     RESIDENTIAL = "RESIDENTIAL"
     POSTAL = "POSTAL"
 
@@ -30,7 +35,7 @@ class AddressType(str):
 # Base schemas
 class PersonAliasBase(BaseModel):
     """Base schema for person identification documents"""
-    document_type: str = Field(..., description="Document type: MG_ID or PASSPORT")
+    document_type: str = Field(..., description="Document type: MADAGASCAR_ID, PASSPORT, or FOREIGN_ID")
     document_number: str = Field(..., min_length=1, max_length=50, description="ID/passport number")
     country_of_issue: str = Field(default="MG", max_length=3, description="Country code of issuing country")
     name_in_document: Optional[str] = Field(None, max_length=200, description="Name as appears in document")
@@ -42,8 +47,8 @@ class PersonAliasBase(BaseModel):
     @validator('document_type')
     def validate_document_type(cls, v):
         v = v.upper() if v else ''
-        if v not in ['MG_ID', 'PASSPORT']:
-            raise ValueError('Document type must be MG_ID or PASSPORT')
+        if v not in ['MADAGASCAR_ID', 'PASSPORT', 'FOREIGN_ID']:
+            raise ValueError('Document type must be MADAGASCAR_ID, PASSPORT, or FOREIGN_ID')
         return v
 
     @validator('document_number', 'country_of_issue', 'name_in_document')
@@ -53,8 +58,8 @@ class PersonAliasBase(BaseModel):
 
     @validator('expiry_date')
     def validate_passport_expiry(cls, v, values):
-        if values.get('document_type') == 'PASSPORT' and not v:
-            raise ValueError('Expiry date is required for passports')
+        if values.get('document_type') in ['PASSPORT', 'FOREIGN_ID'] and not v:
+            raise ValueError('Expiry date is required for passports and foreign IDs')
         return v
 
     @validator('document_number')

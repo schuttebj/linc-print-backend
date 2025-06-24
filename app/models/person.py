@@ -9,10 +9,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime, date
-from enum import Enum as PythonEnum
 import uuid
 
 from app.models.base import BaseModel
+from app.models.enums import MadagascarIDType, PersonNature, AddressType
 
 
 def capitalize_text_fields(target, value, oldvalue, initiator):
@@ -29,28 +29,7 @@ def lowercase_language_field(target, value, oldvalue, initiator):
     return value
 
 
-class IdentificationType(PythonEnum):
-    """
-    Madagascar ID Document Types - Simplified
-    Only supporting Madagascar National ID and Passport for foreigners
-    """
-    MADAGASCAR_ID = "MG_ID"     # Madagascar National ID (CIN/CNI)
-    PASSPORT = "PASSPORT"       # Passport (for foreigners)
 
-
-class PersonNature(PythonEnum):
-    """
-    Person nature - Natural persons only (no organizations)
-    Based on gender for Madagascar system
-    """
-    MALE = "01"                 # Male (natural person)
-    FEMALE = "02"               # Female (natural person)
-
-
-class AddressType(PythonEnum):
-    """Madagascar address types"""
-    RESIDENTIAL = "residential"  # Physical residence
-    POSTAL = "postal"           # Postal/mailing address
 
 
 class Person(BaseModel):
@@ -131,7 +110,7 @@ class PersonAlias(BaseModel):
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True)
     
     # Document identification
-    document_type = Column(String(20), nullable=False, comment="MG_ID or PASSPORT")
+    document_type = Column(String(20), nullable=False, comment="MADAGASCAR_ID, PASSPORT, or FOREIGN_ID")
     document_number = Column(String(50), nullable=False, comment="ID/passport number")
     
     # Document details
