@@ -801,6 +801,7 @@ async def initialize_location_users():
                 for template in user_templates:
                     # Generate user data for this location
                     user_data = {
+                        "username": f"temp_{location.code.lower()}_{template['first_name'].lower()}",  # Temporary, will be overridden
                         "email": template["email_template"].format(location=location.code.lower()),
                         "first_name": template["first_name"],
                         "last_name": template["last_name"],
