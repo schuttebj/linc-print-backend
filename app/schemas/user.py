@@ -176,7 +176,7 @@ class LocationResponse(BaseModel):
     id: uuid.UUID
     name: str
     code: str
-    location_type: str
+    office_type: str
     
     model_config = ConfigDict(from_attributes=True)
 
