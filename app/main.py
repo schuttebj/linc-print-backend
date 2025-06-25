@@ -358,7 +358,9 @@ async def initialize_users():
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary",
                 # Basic location viewing and reports for clerks
-                "locations.read", "reports.basic"
+                "locations.read", "reports.basic",
+                # Basic role viewing (needed for user interface)
+                "roles.read", "users.read"
             ]
             
             supervisor_permissions = clerk_permissions + [
@@ -386,7 +388,9 @@ async def initialize_users():
             
             printer_permissions = [
                 "printing.local_print", "printing.cross_location_print",
-                "printing.manage_queue", "printing.monitor_status"
+                "printing.manage_queue", "printing.monitor_status",
+                # Basic role viewing (needed for user interface)
+                "roles.read", "users.read"
             ]
             
             admin_permissions = [perm for perm in permissions.keys()]  # All permissions
