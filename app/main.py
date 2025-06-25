@@ -253,6 +253,9 @@ async def initialize_users():
                 ("users.activate", "Activate Users", "Activate user accounts", "users", "user", "activate"),
                 ("users.deactivate", "Deactivate Users", "Deactivate user accounts", "users", "user", "deactivate"),
                 ("users.audit", "View User Audit", "View user audit logs", "users", "user", "audit"),
+                ("users.bulk_create", "Bulk Create Users", "Create multiple users at once", "users", "user", "bulk_create"),
+                ("users.manage_permissions", "Manage User Permissions", "Override individual user permissions", "users", "user", "manage_permissions"),
+                ("users.view_statistics", "View User Statistics", "View user statistics and analytics", "users", "user", "view_statistics"),
                 
                 # Role Management Permissions
                 ("roles.create", "Create Roles", "Create new roles", "roles", "role", "create"),
@@ -260,6 +263,8 @@ async def initialize_users():
                 ("roles.update", "Update Roles", "Update role information", "roles", "role", "update"),
                 ("roles.delete", "Delete Roles", "Delete roles", "roles", "role", "delete"),
                 ("roles.assign_permissions", "Assign Role Permissions", "Assign permissions to roles", "roles", "role", "assign_permissions"),
+                ("roles.view_hierarchy", "View Role Hierarchy", "View role hierarchy and relationships", "roles", "role", "view_hierarchy"),
+                ("roles.view_statistics", "View Role Statistics", "View role usage statistics", "roles", "role", "view_statistics"),
                 
                 # Permission Management
                 ("permissions.read", "View Permissions", "View permission information", "permissions", "permission", "read"),
@@ -299,12 +304,30 @@ async def initialize_users():
                 ("locations.read", "View Locations", "View location information", "locations", "location", "read"),
                 ("locations.update", "Update Locations", "Update location information", "locations", "location", "update"),
                 ("locations.delete", "Delete Locations", "Delete office locations", "locations", "location", "delete"),
+                ("locations.view_statistics", "View Location Statistics", "View location statistics and analytics", "locations", "location", "view_statistics"),
                 
                 # Printing Permissions
                 ("printing.local_print", "Local Printing", "Print at local location", "printing", "print_job", "local_print"),
                 ("printing.cross_location_print", "Cross-Location Printing", "Print at other locations", "printing", "print_job", "cross_location_print"),
                 ("printing.manage_queue", "Manage Print Queue", "Manage printing queue", "printing", "print_job", "manage_queue"),
                 ("printing.monitor_status", "Monitor Printer Status", "Monitor printer status", "printing", "printer", "monitor_status"),
+                
+                # Provincial Management Permissions (NEW)
+                ("provinces.manage_users", "Manage Provincial Users", "Manage users across entire province", "provinces", "province", "manage_users"),
+                ("provinces.view_statistics", "View Provincial Statistics", "View statistics for entire province", "provinces", "province", "view_statistics"),
+                ("provinces.view_audit_logs", "View Provincial Audit Logs", "View audit logs for entire province", "provinces", "province", "view_audit_logs"),
+                
+                # National Management Permissions (NEW)
+                ("national.manage_all", "National Management", "Full national system management", "national", "system", "manage_all"),
+                ("national.view_statistics", "View National Statistics", "View system-wide statistics", "national", "system", "view_statistics"),
+                ("national.manage_provinces", "Manage All Provinces", "Manage users and settings across all provinces", "national", "system", "manage_provinces"),
+                
+                # Reports Permissions (NEW)
+                ("reports.basic", "Basic Reports", "Generate basic reports", "reports", "report", "basic"),
+                ("reports.advanced", "Advanced Reports", "Generate advanced reports", "reports", "report", "advanced"),
+                ("reports.export", "Export Reports", "Export reports to various formats", "reports", "report", "export"),
+                ("reports.provincial", "Provincial Reports", "Generate province-level reports", "reports", "report", "provincial"),
+                ("reports.national", "National Reports", "Generate national-level reports", "reports", "report", "national"),
             ]
             
             permissions = {}
@@ -326,7 +349,7 @@ async def initialize_users():
                 else:
                     permissions[name] = existing
             
-            # Define role permissions - Updated to include Person module
+            # Define role permissions - Updated to include new features
             clerk_permissions = [
                 "license_applications.create", "license_applications.read", "license_applications.update",
                 "printing.local_print", "printing.monitor_status",
@@ -334,17 +357,31 @@ async def initialize_users():
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary",
-                # Basic location viewing for clerks
-                "locations.read"
+                # Basic location viewing and reports for clerks
+                "locations.read", "reports.basic"
             ]
             
             supervisor_permissions = clerk_permissions + [
                 "license_applications.approve",
-                "users.read", "users.update", "roles.read", "permissions.read",
+                "users.read", "users.update", "users.view_statistics", "roles.read", "permissions.read",
                 # Additional person management permissions for supervisors
                 "persons.delete", "person_aliases.delete", "person_addresses.delete",
                 # Location management for supervisors
-                "locations.read", "locations.update"
+                "locations.read", "locations.update", "locations.view_statistics",
+                # Enhanced reporting for supervisors
+                "reports.advanced", "reports.export"
+            ]
+            
+            traffic_dept_head_permissions = supervisor_permissions + [
+                # User management at provincial level
+                "users.create", "users.update", "users.activate", "users.deactivate", "users.bulk_create",
+                "users.manage_permissions", "users.view_statistics",
+                # Role management
+                "roles.read", "roles.view_hierarchy", "roles.view_statistics",
+                # Provincial oversight
+                "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
+                # Advanced reporting
+                "reports.provincial"
             ]
             
             printer_permissions = [
@@ -370,11 +407,7 @@ async def initialize_users():
                     "name": "traffic_dept_head",
                     "display_name": "Traffic Department Head",
                     "description": "Provincial level administrator - can manage all offices and users within province",
-                    "permissions": supervisor_permissions + [
-                        "users.create", "users.update", "users.activate", "users.deactivate",
-                        "roles.read", "locations.read", "locations.update",
-                        "reports.advanced", "reports.export"
-                    ],
+                    "permissions": traffic_dept_head_permissions,
                     "hierarchy_level": 3,
                     "user_type_restriction": "PROVINCIAL_USER",
                     "scope_type": "province",

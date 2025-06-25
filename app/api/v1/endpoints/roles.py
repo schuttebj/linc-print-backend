@@ -429,7 +429,7 @@ async def get_users_with_role(
 @router.get("/hierarchy", summary="Get Role Hierarchy")
 async def get_role_hierarchy(
     request: Request = Request,
-    current_user: User = Depends(require_permission("roles.read")),
+    current_user: User = Depends(require_permission("roles.view_hierarchy")),
     db: Session = Depends(get_db)
 ):
     """
@@ -578,7 +578,7 @@ async def get_roles_by_user_type(
 @router.get("/statistics", summary="Get Role Statistics")
 async def get_role_statistics(
     request: Request = Request,
-    current_user: User = Depends(require_permission("roles.read")),
+    current_user: User = Depends(require_permission("roles.view_statistics")),
     db: Session = Depends(get_db)
 ):
     """

@@ -1175,7 +1175,7 @@ async def override_user_permissions(
 @router.get("/statistics/summary", summary="Get User Statistics Summary")
 async def get_user_statistics_summary(
     request: Request = Request,
-    current_user: User = Depends(require_permission("users.read")),
+    current_user: User = Depends(require_permission("users.view_statistics")),
     db: Session = Depends(get_db)
 ):
     """
@@ -1228,7 +1228,7 @@ async def get_user_statistics_summary(
 async def get_province_statistics(
     province_code: str,
     request: Request = Request,
-    current_user: User = Depends(require_permission("users.read")),
+    current_user: User = Depends(require_permission("provinces.view_statistics")),
     db: Session = Depends(get_db)
 ):
     """
@@ -1424,7 +1424,7 @@ async def get_province_audit_log(
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     action: Optional[str] = Query(None, description="Filter by action"),
     request: Request = Request,
-    current_user: User = Depends(require_permission("users.audit")),
+    current_user: User = Depends(require_permission("provinces.view_audit_logs")),
     db: Session = Depends(get_db)
 ):
     """
