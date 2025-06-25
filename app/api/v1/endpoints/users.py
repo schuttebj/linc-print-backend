@@ -21,6 +21,7 @@ from app.schemas.user import (
 from app.api.v1.endpoints.auth import get_current_user, log_user_action
 from app.crud.crud_user import user as crud_user
 from app.crud.crud_location import location as crud_location
+from app.services.audit_service import MadagascarAuditService, create_user_context
 
 router = APIRouter()
 
@@ -291,6 +292,22 @@ async def update_user(
                 detail="Madagascar ID number already exists"
             )
     
+    # Capture old data for audit logging
+    old_data = {
+        "username": user.username,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "full_name": user.full_name,
+        "madagascar_id_number": user.madagascar_id_number,
+        "phone_number": user.phone_number,
+        "department": user.department,
+        "job_title": user.job_title,
+        "status": user.status.value if user.status else None,
+        "roles": [role.name for role in user.roles],
+        "primary_location_id": str(user.primary_location_id) if user.primary_location_id else None,
+    }
+    
     # Update fields
     update_data = user_data.dict(exclude_unset=True)
     changes = {}
@@ -327,7 +344,22 @@ async def update_user(
     db.commit()
     db.refresh(user)
     
-    # Log user update
+    # Comprehensive audit logging
+    audit_service = MadagascarAuditService(db)
+    user_context = create_user_context(current_user, request)
+    
+    audit_service.log_data_change(
+        resource_type="USER",
+        resource_id=str(user_id),
+        old_data=old_data,
+        new_data=user_data.dict(exclude_unset=True),
+        user_context=user_context,
+        screen_reference="UserEditPage",
+        endpoint=str(request.url.path),
+        method=request.method
+    )
+    
+    # Legacy audit logging for compatibility
     log_user_action(
         db, current_user, "user_updated", request,
         details={

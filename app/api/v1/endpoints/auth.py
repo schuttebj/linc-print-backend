@@ -32,6 +32,7 @@ from app.schemas.user import (
     LoginRequest, LoginResponse, TokenRefreshRequest, TokenRefreshResponse,
     UserPasswordChange, UserResponse
 )
+from app.services.audit_service import MadagascarAuditService
 
 router = APIRouter()
 security = HTTPBearer()
