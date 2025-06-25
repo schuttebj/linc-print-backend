@@ -476,6 +476,40 @@ class UserAuditLog(BaseModel):
         return f"<UserAuditLog(id={self.id}, user_id={self.user_id}, action='{self.action}', success={self.success})>"
 
 
+class UserPermissionOverride(BaseModel):
+    """
+    Individual user permission overrides for Madagascar License System
+    Allows granting or revoking specific permissions beyond role defaults
+    """
+    __tablename__ = "user_permission_overrides"
+    
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True, comment="User receiving the override")
+    permission_id = Column(UUID(as_uuid=True), ForeignKey('permissions.id'), nullable=False, index=True, comment="Permission being overridden")
+    
+    # Override details
+    granted = Column(Boolean, nullable=False, comment="True=permission granted, False=permission revoked")
+    granted_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who granted the override")
+    reason = Column(Text, nullable=True, comment="Reason for the override")
+    
+    # Expiration (optional)
+    expires_at = Column(DateTime, nullable=True, comment="When the override expires (null = permanent)")
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    permission = relationship("Permission")
+    granted_by_user = relationship("User", foreign_keys=[granted_by])
+    
+    def __repr__(self):
+        return f"<UserPermissionOverride(user_id={self.user_id}, permission={self.permission.name if self.permission else 'Unknown'}, granted={self.granted})>"
+    
+    @property
+    def is_expired(self) -> bool:
+        """Check if override has expired"""
+        if self.expires_at:
+            return self.expires_at < func.now()
+        return False
+
+
 class ProvinceUserCounter(BaseModel):
     """
     Counter table for provincial user code generation

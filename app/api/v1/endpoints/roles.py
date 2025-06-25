@@ -5,7 +5,7 @@ Handles role CRUD operations and role-permission assignments
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
@@ -374,7 +374,7 @@ async def get_users_with_role(
     db: Session = Depends(get_db)
 ):
     """
-    Get users that have this role
+    Get paginated list of users with specific role
     """
     role = db.query(Role).filter(Role.id == role_id, Role.is_active == True).first()
     
@@ -384,35 +384,281 @@ async def get_users_with_role(
             detail="Role not found"
         )
     
-    # Get users with this role
+    # Query users with this role
     query = db.query(User).join(User.roles).filter(
         Role.id == role_id,
         User.is_active == True
+    ).options(
+        joinedload(User.roles),
+        joinedload(User.primary_location)
     )
     
+    # Get total count
     total = query.count()
+    
+    # Apply pagination
     offset = (page - 1) * per_page
     users = query.offset(offset).limit(per_page).all()
     
+    # Calculate pagination info
+    total_pages = math.ceil(total / per_page)
+    
     return {
-        "role": {
-            "id": str(role.id),
-            "name": role.name,
-            "display_name": role.display_name
-        },
+        "role_id": role_id,
+        "role_name": role.name,
         "users": [
             {
                 "id": str(user.id),
                 "username": user.username,
                 "email": user.email,
                 "full_name": user.full_name,
-                "status": user.status.value,
-                "last_login_at": user.last_login_at
+                "status": str(user.status),
+                "primary_location": user.primary_location.name if user.primary_location else None
             }
             for user in users
         ],
         "total": total,
         "page": page,
         "per_page": per_page,
-        "total_pages": math.ceil(total / per_page)
+        "total_pages": total_pages
+    }
+
+
+# NEW ENDPOINTS - Enhanced Role Management
+
+@router.get("/hierarchy", summary="Get Role Hierarchy")
+async def get_role_hierarchy(
+    request: Request = Request,
+    current_user: User = Depends(require_permission("roles.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get roles organized by hierarchy level (1-4)
+    """
+    from app.models.enums import RoleHierarchy
+    
+    # Get all active roles
+    roles = db.query(Role).filter(Role.is_active == True).order_by(Role.hierarchy_level.desc(), Role.name).all()
+    
+    # Organize by hierarchy level
+    hierarchy = {}
+    for role in roles:
+        level = role.hierarchy_level
+        level_name = RoleHierarchy(level).name if hasattr(RoleHierarchy, '_value2member_map_') and level in RoleHierarchy._value2member_map_ else f"Level {level}"
+        
+        if level not in hierarchy:
+            hierarchy[level] = {
+                "level": level,
+                "level_name": level_name,
+                "roles": []
+            }
+        
+        hierarchy[level]["roles"].append({
+            "id": str(role.id),
+            "name": role.name,
+            "display_name": role.display_name,
+            "description": role.description,
+            "user_type_restriction": str(role.user_type_restriction) if role.user_type_restriction else None,
+            "scope_type": role.scope_type,
+            "user_count": len(role.users)
+        })
+    
+    # Log access
+    log_user_action(
+        db, current_user, "role_hierarchy_accessed", request,
+        details={"total_roles": len(roles)}
+    )
+    
+    return {
+        "hierarchy": list(hierarchy.values()),
+        "total_roles": len(roles)
+    }
+
+
+@router.get("/creatable", summary="Get Creatable Roles")
+async def get_creatable_roles(
+    request: Request = Request,
+    current_user: User = Depends(require_permission("roles.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get roles that current user can create based on their hierarchy level
+    """
+    # Get current user's highest role hierarchy level
+    user_max_level = 0
+    for role in current_user.roles:
+        if role.hierarchy_level > user_max_level:
+            user_max_level = role.hierarchy_level
+    
+    # If not superuser, can only create roles with lower hierarchy level
+    if not current_user.is_superuser:
+        creatable_roles = db.query(Role).filter(
+            Role.is_active == True,
+            Role.hierarchy_level < user_max_level
+        ).order_by(Role.hierarchy_level.desc(), Role.name).all()
+    else:
+        # Superuser can create any role
+        creatable_roles = db.query(Role).filter(Role.is_active == True).order_by(Role.hierarchy_level.desc(), Role.name).all()
+    
+    # Log access
+    log_user_action(
+        db, current_user, "creatable_roles_accessed", request,
+        details={"user_max_level": user_max_level, "creatable_count": len(creatable_roles)}
+    )
+    
+    return {
+        "user_hierarchy_level": user_max_level,
+        "can_create_roles": current_user.can_create_roles or current_user.is_superuser,
+        "creatable_roles": [
+            {
+                "id": str(role.id),
+                "name": role.name,
+                "display_name": role.display_name,
+                "hierarchy_level": role.hierarchy_level,
+                "user_type_restriction": str(role.user_type_restriction) if role.user_type_restriction else None,
+                "scope_type": role.scope_type
+            }
+            for role in creatable_roles
+        ]
+    }
+
+
+@router.get("/by-user-type/{user_type}", summary="Get Roles by User Type")
+async def get_roles_by_user_type(
+    user_type: str,
+    request: Request = Request,
+    current_user: User = Depends(require_permission("roles.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get roles available for specific user type
+    """
+    from app.models.enums import UserType
+    
+    # Validate user type
+    try:
+        user_type_enum = UserType(user_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid user type. Must be one of: {[ut.value for ut in UserType]}"
+        )
+    
+    # Get roles for this user type (no restriction or matching restriction)
+    roles = db.query(Role).filter(
+        Role.is_active == True,
+        or_(
+            Role.user_type_restriction == None,  # No restriction
+            Role.user_type_restriction == user_type_enum  # Matching restriction
+        )
+    ).order_by(Role.hierarchy_level.desc(), Role.name).all()
+    
+    # Log access
+    log_user_action(
+        db, current_user, "roles_by_user_type_accessed", request,
+        details={"user_type": user_type, "roles_count": len(roles)}
+    )
+    
+    return {
+        "user_type": user_type,
+        "roles": [
+            {
+                "id": str(role.id),
+                "name": role.name,
+                "display_name": role.display_name,
+                "hierarchy_level": role.hierarchy_level,
+                "scope_type": role.scope_type,
+                "description": role.description
+            }
+            for role in roles
+        ]
+    }
+
+
+@router.get("/statistics", summary="Get Role Statistics")
+async def get_role_statistics(
+    request: Request = Request,
+    current_user: User = Depends(require_permission("roles.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get role usage statistics
+    """
+    # Role count by hierarchy level
+    hierarchy_stats = db.query(
+        Role.hierarchy_level,
+        func.count(Role.id).label('role_count'),
+        func.count(User.id).label('user_count')
+    ).outerjoin(Role.users).filter(
+        Role.is_active == True
+    ).group_by(Role.hierarchy_level).all()
+    
+    # Role count by user type restriction
+    user_type_stats = db.query(
+        Role.user_type_restriction,
+        func.count(Role.id).label('role_count')
+    ).filter(Role.is_active == True).group_by(Role.user_type_restriction).all()
+    
+    # Role count by scope type
+    scope_stats = db.query(
+        Role.scope_type,
+        func.count(Role.id).label('role_count')
+    ).filter(Role.is_active == True).group_by(Role.scope_type).all()
+    
+    # Most used roles
+    most_used_roles = db.query(
+        Role.name,
+        Role.display_name,
+        func.count(User.id).label('user_count')
+    ).join(Role.users).filter(
+        Role.is_active == True,
+        User.is_active == True
+    ).group_by(Role.id, Role.name, Role.display_name).order_by(
+        func.count(User.id).desc()
+    ).limit(10).all()
+    
+    # Total counts
+    total_roles = db.query(Role).filter(Role.is_active == True).count()
+    system_roles = db.query(Role).filter(Role.is_active == True, Role.is_system_role == True).count()
+    
+    # Log access
+    log_user_action(
+        db, current_user, "role_statistics_accessed", request,
+        details={"total_roles": total_roles}
+    )
+    
+    return {
+        "total_roles": total_roles,
+        "system_roles": system_roles,
+        "custom_roles": total_roles - system_roles,
+        "by_hierarchy_level": [
+            {
+                "level": stat[0],
+                "role_count": stat[1],
+                "user_count": stat[2]
+            }
+            for stat in hierarchy_stats
+        ],
+        "by_user_type": [
+            {
+                "user_type": str(stat[0]) if stat[0] else "Any",
+                "role_count": stat[1]
+            }
+            for stat in user_type_stats
+        ],
+        "by_scope": [
+            {
+                "scope": stat[0],
+                "role_count": stat[1]
+            }
+            for stat in scope_stats
+        ],
+        "most_used_roles": [
+            {
+                "name": stat[0],
+                "display_name": stat[1],
+                "user_count": stat[2]
+            }
+            for stat in most_used_roles
+        ]
     } 
