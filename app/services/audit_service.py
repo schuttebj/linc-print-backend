@@ -59,6 +59,7 @@ class AuditLogData:
     endpoint: Optional[str] = None
     method: Optional[str] = None
     location_id: Optional[str] = None
+    session_id: Optional[str] = None
     
     def dict(self):
         return asdict(self)
