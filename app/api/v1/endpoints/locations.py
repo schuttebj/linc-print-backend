@@ -184,6 +184,66 @@ async def get_office_types(
     return {"office_types": office_types}
 
 
+@router.get("/next-code/{province_code}", summary="Generate Next Sequential Location Code")
+async def get_next_location_code(
+    province_code: ProvinceCodeEnum,
+    current_user: User = Depends(require_permission("locations.create")),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate the next sequential location code for a province
+    Returns the next available code like T01, T02, A01, etc.
+    """
+    try:
+        # Get all locations for this province
+        existing_locations = crud_location.get_by_province(
+            db=db, 
+            province_code=province_code.value,
+            skip=0,
+            limit=1000
+        )
+        
+        # Extract numbers from existing codes
+        existing_numbers = []
+        for location in existing_locations:
+            if location.code and location.code.startswith(province_code.value):
+                try:
+                    # Extract number part from codes like T01, T02, etc.
+                    number_part = location.code[1:]  # Remove province letter
+                    existing_numbers.append(int(number_part))
+                except ValueError:
+                    # Skip invalid codes
+                    continue
+        
+        # Find next available number
+        next_number = 1
+        if existing_numbers:
+            existing_numbers.sort()
+            # Find the first gap or increment from the highest
+            for i, num in enumerate(existing_numbers):
+                if i + 1 != num:
+                    next_number = i + 1
+                    break
+            else:
+                next_number = max(existing_numbers) + 1
+        
+        # Format as two digits with leading zero
+        next_code = f"{province_code.value}{next_number:02d}"
+        
+        return {
+            "code": next_code,
+            "province_code": province_code.value,
+            "sequence_number": next_number,
+            "existing_count": len(existing_numbers)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate next location code: {str(e)}"
+        )
+
+
 @router.get("/{location_id}", response_model=LocationResponse, summary="Get Location")
 async def get_location(
     location_id: uuid.UUID,
