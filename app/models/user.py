@@ -17,7 +17,7 @@ import uuid
 import re
 
 from app.models.base import BaseModel
-from app.models.enums import MadagascarIDType, UserStatus
+from app.models.enums import MadagascarIDType, UserStatus, UserType, RoleHierarchy
 
 # Association table for many-to-many relationship between users and roles
 user_roles = Table(
@@ -86,6 +86,11 @@ class User(BaseModel):
     # Location-based user identification
     location_user_code = Column(String(10), nullable=True, unique=True, comment="Location-based user code (e.g., T010001)")
     assigned_location_code = Column(String(5), nullable=True, comment="Location code where user is assigned (e.g., T01)")
+    
+    # User type and role hierarchy - NEW FIELDS
+    user_type = Column(SQLEnum(UserType), nullable=False, default=UserType.LOCATION_USER, comment="User type determines username format and scope")
+    scope_province = Column(String(1), nullable=True, comment="Province scope for provincial users (T, A, etc.)")
+    can_create_roles = Column(Boolean, default=False, nullable=False, comment="Permission to create other user roles")
     
     # Account status and settings
     status = Column(SQLEnum(UserStatus), nullable=False, default=UserStatus.PENDING_ACTIVATION, comment="Account status")
@@ -199,11 +204,104 @@ class User(BaseModel):
         return location.generate_next_user_code()
     
     @classmethod
+    def generate_provincial_username(cls, province_code: str, db_session) -> str:
+        """Generate username for provincial user (e.g., T007, A002)"""
+        from sqlalchemy.orm.exc import NoResultFound
+        
+        try:
+            counter = db_session.query(ProvinceUserCounter).filter(
+                ProvinceUserCounter.province_code == province_code
+            ).one()
+        except NoResultFound:
+            # Create new counter for this province
+            counter = ProvinceUserCounter(province_code=province_code, next_user_number=1)
+            db_session.add(counter)
+            db_session.commit()
+        
+        username = counter.generate_next_user_code()
+        counter.increment_counter(db_session)
+        return username
+    
+    @classmethod
+    def generate_national_username(cls, db_session) -> str:
+        """Generate username for national user (e.g., N001, N002)"""
+        from sqlalchemy.orm.exc import NoResultFound
+        
+        try:
+            counter = db_session.query(NationalUserCounter).filter(
+                NationalUserCounter.counter_type == 'national'
+            ).one()
+        except NoResultFound:
+            # Create new counter
+            counter = NationalUserCounter(counter_type='national', next_user_number=1)
+            db_session.add(counter)
+            db_session.commit()
+        
+        username = counter.generate_next_user_code()
+        counter.increment_counter(db_session)
+        return username
+    
+    @classmethod
+    def generate_username_by_type(cls, user_type: UserType, db_session, location_id: uuid.UUID = None, province_code: str = None) -> str:
+        """Generate username based on user type"""
+        if user_type == UserType.LOCATION_USER:
+            if not location_id:
+                raise ValueError("location_id required for LOCATION_USER")
+            location = db_session.query(Location).filter(Location.id == location_id).first()
+            if not location:
+                raise ValueError(f"Location with id {location_id} not found")
+            return cls.generate_username_from_location(location)
+        
+        elif user_type == UserType.PROVINCIAL_USER:
+            if not province_code:
+                raise ValueError("province_code required for PROVINCIAL_USER")
+            return cls.generate_provincial_username(province_code, db_session)
+        
+        elif user_type == UserType.NATIONAL_USER:
+            return cls.generate_national_username(db_session)
+        
+        else:
+            raise ValueError(f"Unknown user type: {user_type}")
+    
+    @classmethod
     def validate_username_format(cls, username: str) -> bool:
-        """Validate username follows Madagascar location format (e.g., T010001)"""
-        # Pattern: Province code (1 letter) + Office number (2 digits) + User number (4 digits)
-        pattern = r'^[TDFMAU]\d{6}$'
-        return bool(re.match(pattern, username))
+        """
+        Validate username follows Madagascar username formats:
+        - Location Users: {Province}{Office}{User} - T010001, A020003 (7 chars)
+        - Provincial Users: {Province}{3digits} - T007, A002 (4 chars)  
+        - National Users: N{3digits} - N001, N002 (4 chars)
+        """
+        # Location Users: Province code (1 letter) + Office number (2 digits) + User number (4 digits)
+        location_pattern = r'^[TDFMAU]\d{6}$'
+        
+        # Provincial Users: Province code (1 letter) + User number (3 digits)
+        provincial_pattern = r'^[TDFMAU]\d{3}$'
+        
+        # National Users: N + User number (3 digits)
+        national_pattern = r'^N\d{3}$'
+        
+        return bool(
+            re.match(location_pattern, username) or 
+            re.match(provincial_pattern, username) or 
+            re.match(national_pattern, username)
+        )
+    
+    @classmethod
+    def get_user_type_from_username(cls, username: str) -> UserType:
+        """Determine user type from username format"""
+        if re.match(r'^[TDFMAU]\d{6}$', username):
+            return UserType.LOCATION_USER
+        elif re.match(r'^[TDFMAU]\d{3}$', username):
+            return UserType.PROVINCIAL_USER
+        elif re.match(r'^N\d{3}$', username):
+            return UserType.NATIONAL_USER
+        else:
+            raise ValueError(f"Invalid username format: {username}")
+    
+    @classmethod
+    def can_create_user_role(cls, creator_role_level: int, target_role_level: int) -> bool:
+        """Check if creator role can create target role based on hierarchy"""
+        return creator_role_level > target_role_level
     
     @classmethod
     def extract_location_code_from_username(cls, username: str) -> str:
@@ -269,6 +367,11 @@ class Role(BaseModel):
     # Role hierarchy for inheritance (supervisor inherits from clerk)
     parent_role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'), nullable=True, comment="Parent role for inheritance")
     level = Column(Integer, nullable=False, default=0, comment="Role hierarchy level")
+    
+    # NEW FIELDS for enhanced role hierarchy
+    hierarchy_level = Column(Integer, nullable=False, default=1, comment="Hierarchy level (1-4): 1=Clerk, 2=Supervisor, 3=Traffic Dept Head, 4=System Admin")
+    user_type_restriction = Column(SQLEnum(UserType), nullable=True, comment="Restrict role to specific user type")
+    scope_type = Column(String(20), nullable=False, default='location', comment="Role scope: location, province, national")
     
     # Relationships
     users = relationship("User", secondary=user_roles, back_populates="roles")
@@ -371,6 +474,54 @@ class UserAuditLog(BaseModel):
     
     def __repr__(self):
         return f"<UserAuditLog(id={self.id}, user_id={self.user_id}, action='{self.action}', success={self.success})>"
+
+
+class ProvinceUserCounter(BaseModel):
+    """
+    Counter table for provincial user code generation
+    Tracks next user number for each province (T007, A002, etc.)
+    """
+    __tablename__ = "province_user_counters"
+    
+    province_code = Column(String(1), primary_key=True, comment="Province code (T, A, D, F, M, U)")
+    next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (001-999)")
+    
+    def __repr__(self):
+        return f"<ProvinceUserCounter(province_code='{self.province_code}', next_user_number={self.next_user_number})>"
+    
+    def generate_next_user_code(self) -> str:
+        """Generate the next provincial user code"""
+        user_code = f"{self.province_code}{self.next_user_number:03d}"
+        return user_code
+    
+    def increment_counter(self, db_session) -> None:
+        """Increment the user counter"""
+        self.next_user_number += 1
+        db_session.commit()
+
+
+class NationalUserCounter(BaseModel):
+    """
+    Counter table for national user code generation
+    Tracks next user number for national users (N001, N002, etc.)
+    """
+    __tablename__ = "national_user_counters"
+    
+    counter_type = Column(String(20), primary_key=True, default='national', comment="Counter type identifier")
+    next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (001-999)")
+    
+    def __repr__(self):
+        return f"<NationalUserCounter(counter_type='{self.counter_type}', next_user_number={self.next_user_number})>"
+    
+    def generate_next_user_code(self) -> str:
+        """Generate the next national user code"""
+        user_code = f"N{self.next_user_number:03d}"
+        return user_code
+    
+    def increment_counter(self, db_session) -> None:
+        """Increment the user counter"""
+        self.next_user_number += 1
+        db_session.commit()
 
 
 # Location model placeholder for relationships (will be implemented in locations module)

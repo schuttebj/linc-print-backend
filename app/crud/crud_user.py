@@ -30,6 +30,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         created_by: Optional[str] = None
     ) -> User:
         """Create user with location-based username generation"""
+        from app.models.enums import UserType
+        
         # Get location for username generation
         location = crud_location.get(db=db, id=location_id)
         if not location:
@@ -42,8 +44,19 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         if location.current_staff_count >= location.max_staff_capacity:
             raise ValueError(f"Location {location.code} is at maximum capacity")
         
-        # Generate username based on location
-        username = location.generate_next_user_code()
+        # Generate username based on user type
+        user_type = obj_in.user_type if hasattr(obj_in, 'user_type') else UserType.LOCATION_USER
+        
+        if user_type == UserType.LOCATION_USER:
+            username = location.generate_next_user_code()
+        elif user_type == UserType.PROVINCIAL_USER:
+            if not obj_in.scope_province:
+                raise ValueError("scope_province required for PROVINCIAL_USER")
+            username = User.generate_provincial_username(obj_in.scope_province, db)
+        elif user_type == UserType.NATIONAL_USER:
+            username = User.generate_national_username(db)
+        else:
+            raise ValueError(f"Unknown user type: {user_type}")
         
         # Check if username already exists (should not happen with proper generation)
         existing_user = self.get_by_username(db=db, username=username)
@@ -58,11 +71,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
-            "primary_location_id": location_id,
-            "assigned_location_code": location.code,
-            "location_user_code": username,
+            "user_type": user_type,
             "created_by": created_by
         })
+        
+        # Set location-specific fields for location users
+        if user_type == UserType.LOCATION_USER:
+            user_data.update({
+                "primary_location_id": location_id,
+                "assigned_location_code": location.code,
+                "location_user_code": username,
+            })
         
         user = User(**user_data)
         db.add(user)
@@ -73,9 +92,102 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
             user.roles = roles
         
-        # Increment location staff count
-        location.current_staff_count += 1
-        location.increment_user_counter(db)
+        # Increment counters based on user type
+        if user_type == UserType.LOCATION_USER:
+            location.current_staff_count += 1
+            location.increment_user_counter(db)
+        
+        db.commit()
+        db.refresh(user)
+        
+        return user
+    
+    def create_provincial_user(
+        self,
+        db: Session,
+        *,
+        obj_in: UserCreate,
+        province_code: str,
+        created_by: Optional[str] = None
+    ) -> User:
+        """Create provincial user with province-based username generation"""
+        from app.models.enums import UserType
+        
+        # Generate provincial username
+        username = User.generate_provincial_username(province_code, db)
+        
+        # Check if username already exists
+        existing_user = self.get_by_username(db=db, username=username)
+        if existing_user:
+            raise ValueError(f"Username {username} already exists")
+        
+        # Hash password
+        hashed_password = pwd_context.hash(obj_in.password)
+        
+        # Create user object
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data.update({
+            "username": username,
+            "password_hash": hashed_password,
+            "user_type": UserType.PROVINCIAL_USER,
+            "scope_province": province_code,
+            "can_create_roles": True,  # Provincial users can create office-level roles
+            "created_by": created_by
+        })
+        
+        user = User(**user_data)
+        db.add(user)
+        db.flush()
+        
+        # Assign roles
+        if obj_in.role_ids:
+            roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
+            user.roles = roles
+        
+        db.commit()
+        db.refresh(user)
+        
+        return user
+    
+    def create_national_user(
+        self,
+        db: Session,
+        *,
+        obj_in: UserCreate,
+        created_by: Optional[str] = None
+    ) -> User:
+        """Create national user with national username generation"""
+        from app.models.enums import UserType
+        
+        # Generate national username
+        username = User.generate_national_username(db)
+        
+        # Check if username already exists
+        existing_user = self.get_by_username(db=db, username=username)
+        if existing_user:
+            raise ValueError(f"Username {username} already exists")
+        
+        # Hash password
+        hashed_password = pwd_context.hash(obj_in.password)
+        
+        # Create user object
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data.update({
+            "username": username,
+            "password_hash": hashed_password,
+            "user_type": UserType.NATIONAL_USER,
+            "can_create_roles": True,  # National users can create all roles
+            "created_by": created_by
+        })
+        
+        user = User(**user_data)
+        db.add(user)
+        db.flush()
+        
+        # Assign roles
+        if obj_in.role_ids:
+            roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
+            user.roles = roles
         
         db.commit()
         db.refresh(user)

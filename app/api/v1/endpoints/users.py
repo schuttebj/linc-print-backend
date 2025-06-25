@@ -22,6 +22,7 @@ from app.api.v1.endpoints.auth import get_current_user, log_user_action
 from app.crud.crud_user import user as crud_user
 from app.crud.crud_location import location as crud_location
 from app.services.audit_service import MadagascarAuditService, create_user_context
+from app.models.enums import UserType, RoleHierarchy
 
 router = APIRouter()
 
@@ -167,13 +168,15 @@ async def get_user(
 @router.post("/", response_model=UserResponse, summary="Create User")
 async def create_user(
     user_data: UserCreate,
-    location_id: uuid.UUID = Query(..., description="Location ID for user assignment"),
+    location_id: Optional[uuid.UUID] = Query(None, description="Location ID for location-based users"),
+    province_code: Optional[str] = Query(None, description="Province code for provincial users"),
     request: Request = Request,
     current_user: User = Depends(require_permission("users.create")),
     db: Session = Depends(get_db)
 ):
     """
-    Create new user with location-based username generation
+    Create new user with username generation based on user type
+    Supports location-based, provincial, and national users
     """
     # Check if email already exists
     existing_user = crud_user.get_by_email(db=db, email=user_data.email)
@@ -203,23 +206,77 @@ async def create_user(
                 detail="Employee ID already exists"
             )
     
+    # Validate role hierarchy - creator must have higher level than target roles
+    if user_data.role_ids:
+        target_roles = db.query(Role).filter(Role.id.in_(user_data.role_ids)).all()
+        if not target_roles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role IDs provided"
+            )
+        
+        # Get current user's highest hierarchy level
+        current_user_max_level = 0
+        for role in current_user.roles:
+            if hasattr(role, 'hierarchy_level') and role.hierarchy_level:
+                current_user_max_level = max(current_user_max_level, role.hierarchy_level)
+        
+        # Check if current user can create target roles
+        for target_role in target_roles:
+            target_level = getattr(target_role, 'hierarchy_level', 1)
+            if not current_user.is_superuser and current_user_max_level <= target_level:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cannot create user with role '{target_role.display_name}' - insufficient role hierarchy level"
+                )
+    
+    # Validate user type and required parameters
+    user_type = user_data.user_type if hasattr(user_data, 'user_type') else UserType.LOCATION_USER
+    
     try:
-        # Create user with location-based username generation
-        user = crud_user.create_with_location(
-            db=db,
-            obj_in=user_data,
-            location_id=location_id,
-            created_by=str(current_user.id)
-        )
+        if user_type == UserType.LOCATION_USER:
+            if not location_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="location_id required for LOCATION_USER"
+                )
+            user = crud_user.create_with_location(
+                db=db, 
+                obj_in=user_data, 
+                location_id=location_id,
+                created_by=current_user.username
+            )
+        
+        elif user_type == UserType.PROVINCIAL_USER:
+            if not province_code:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="province_code required for PROVINCIAL_USER"
+                )
+            user = crud_user.create_provincial_user(
+                db=db,
+                obj_in=user_data,
+                province_code=province_code,
+                created_by=current_user.username
+            )
+        
+        elif user_type == UserType.NATIONAL_USER:
+            user = crud_user.create_national_user(
+                db=db,
+                obj_in=user_data,
+                created_by=current_user.username
+            )
+        
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown user type: {user_type}"
+            )
+    
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create user: {str(e)}"
         )
     
     # Log user creation
@@ -227,8 +284,130 @@ async def create_user(
         db, current_user, "user_created", request,
         details={
             "created_user_id": str(user.id),
-            "generated_username": user.username,
-            "location_code": user.assigned_location_code,
+            "username": user.username,
+            "user_type": user.user_type.value,
+            "roles": [role.name for role in user.roles]
+        }
+    )
+    
+    return UserResponse.from_orm(user)
+
+
+@router.post("/provincial", response_model=UserResponse, summary="Create Provincial User")
+async def create_provincial_user(
+    user_data: UserCreate,
+    province_code: str = Query(..., description="Province code (T, A, D, F, M, U)"),
+    request: Request = Request,
+    current_user: User = Depends(require_permission("users.create")),
+    db: Session = Depends(get_db)
+):
+    """
+    Create provincial user (Traffic Department Head) with province-based username generation
+    """
+    # Validate province code
+    valid_provinces = ["T", "A", "D", "F", "M", "U"]
+    if province_code not in valid_provinces:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid province code. Must be one of: {', '.join(valid_provinces)}"
+        )
+    
+    # Check role hierarchy - only system admins and higher can create provincial users
+    current_user_max_level = 0
+    for role in current_user.roles:
+        if hasattr(role, 'hierarchy_level') and role.hierarchy_level:
+            current_user_max_level = max(current_user_max_level, role.hierarchy_level)
+    
+    if not current_user.is_superuser and current_user_max_level < 4:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only System Administrators can create Provincial users"
+        )
+    
+    # Check if email already exists
+    existing_user = crud_user.get_by_email(db=db, email=user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already exists"
+        )
+    
+    try:
+        user = crud_user.create_provincial_user(
+            db=db,
+            obj_in=user_data,
+            province_code=province_code,
+            created_by=current_user.username
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    
+    # Log user creation
+    log_user_action(
+        db, current_user, "provincial_user_created", request,
+        details={
+            "created_user_id": str(user.id),
+            "username": user.username,
+            "province_code": province_code,
+            "roles": [role.name for role in user.roles]
+        }
+    )
+    
+    return UserResponse.from_orm(user)
+
+
+@router.post("/national", response_model=UserResponse, summary="Create National User")
+async def create_national_user(
+    user_data: UserCreate,
+    request: Request = Request,
+    current_user: User = Depends(require_permission("users.create")),
+    db: Session = Depends(get_db)
+):
+    """
+    Create national user (National Admin) with national username generation
+    """
+    # Check role hierarchy - only system admins can create national users
+    if not current_user.is_superuser:
+        current_user_max_level = 0
+        for role in current_user.roles:
+            if hasattr(role, 'hierarchy_level') and role.hierarchy_level:
+                current_user_max_level = max(current_user_max_level, role.hierarchy_level)
+        
+        if current_user_max_level < 4:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only System Administrators can create National users"
+            )
+    
+    # Check if email already exists
+    existing_user = crud_user.get_by_email(db=db, email=user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already exists"
+        )
+    
+    try:
+        user = crud_user.create_national_user(
+            db=db,
+            obj_in=user_data,
+            created_by=current_user.username
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    
+    # Log user creation
+    log_user_action(
+        db, current_user, "national_user_created", request,
+        details={
+            "created_user_id": str(user.id),
+            "username": user.username,
             "roles": [role.name for role in user.roles]
         }
     )

@@ -40,6 +40,27 @@ class UserStatus(PythonEnum):
     PENDING_ACTIVATION = "PENDING_ACTIVATION"
 
 
+class UserType(PythonEnum):
+    """
+    User types for Madagascar License System
+    Determines username format and access scope
+    """
+    LOCATION_USER = "LOCATION_USER"      # T010001 - Clerks, Supervisors, Printers
+    PROVINCIAL_USER = "PROVINCIAL_USER"  # T007 - Traffic Department Head
+    NATIONAL_USER = "NATIONAL_USER"      # N001 - National Admin
+
+
+class RoleHierarchy(PythonEnum):
+    """
+    Role hierarchy levels for Madagascar License System
+    Higher numbers can create lower numbered roles
+    """
+    SYSTEM_ADMIN = 4        # Can create all roles
+    TRAFFIC_DEPT_HEAD = 3   # Can create Office Supervisor, Clerk
+    OFFICE_SUPERVISOR = 2   # Can create Clerk only
+    CLERK = 1              # Cannot create other users
+
+
 class ProvinceCode(PythonEnum):
     """Madagascar province codes (ISO 3166-2:MG)"""
     ANTANANARIVO = "T"      # MG-T - Antananarivo
@@ -110,6 +131,21 @@ PROVINCE_DISPLAY_NAMES = {
     ProvinceCode.MAHAJANGA: "MAHAJANGA",
     ProvinceCode.TOAMASINA: "TOAMASINA",
     ProvinceCode.TOLIARA: "TOLIARA",
+}
+
+# User type display names mapping for frontend
+USER_TYPE_DISPLAY_NAMES = {
+    UserType.LOCATION_USER: "LOCATION USER",
+    UserType.PROVINCIAL_USER: "PROVINCIAL ADMIN",
+    UserType.NATIONAL_USER: "NATIONAL ADMIN",
+}
+
+# Role hierarchy display names mapping for frontend
+ROLE_HIERARCHY_DISPLAY_NAMES = {
+    RoleHierarchy.SYSTEM_ADMIN: "SYSTEM ADMINISTRATOR",
+    RoleHierarchy.TRAFFIC_DEPT_HEAD: "TRAFFIC DEPARTMENT HEAD",
+    RoleHierarchy.OFFICE_SUPERVISOR: "OFFICE SUPERVISOR", 
+    RoleHierarchy.CLERK: "CLERK",
 }
 
 # Office type display names mapping for frontend

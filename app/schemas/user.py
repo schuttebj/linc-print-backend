@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
-from app.models.enums import UserStatus, MadagascarIDType
+from app.models.enums import UserStatus, MadagascarIDType, UserType, RoleHierarchy
 
 
 class UserStatusEnum(str, Enum):
@@ -28,6 +28,21 @@ class MadagascarIDTypeEnum(str, Enum):
     FOREIGN_ID = "FOREIGN_ID"
 
 
+class UserTypeEnum(str, Enum):
+    """User type enum for API"""
+    LOCATION_USER = "LOCATION_USER"
+    PROVINCIAL_USER = "PROVINCIAL_USER"
+    NATIONAL_USER = "NATIONAL_USER"
+
+
+class RoleHierarchyEnum(int, Enum):
+    """Role hierarchy enum for API"""
+    CLERK = 1
+    OFFICE_SUPERVISOR = 2
+    TRAFFIC_DEPT_HEAD = 3
+    SYSTEM_ADMIN = 4
+
+
 # Base schemas
 class UserBase(BaseModel):
     """Base user schema with common fields"""
@@ -40,6 +55,11 @@ class UserBase(BaseModel):
     # Madagascar-specific fields
     madagascar_id_number: str = Field(..., min_length=5, max_length=20, description="CIN/CNI/Passport number")
     id_document_type: MadagascarIDTypeEnum = Field(..., description="Type of ID document")
+    
+    # NEW FIELDS - User type and role hierarchy
+    user_type: UserTypeEnum = Field(default=UserTypeEnum.LOCATION_USER, description="User type determines username format and scope")
+    scope_province: Optional[str] = Field(None, max_length=1, description="Province scope for provincial users")
+    can_create_roles: bool = Field(default=False, description="Permission to create other user roles")
     
     # Location-based assignment
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location assignment")
@@ -195,6 +215,11 @@ class UserResponse(BaseModel):
     madagascar_id_number: str
     id_document_type: MadagascarIDTypeEnum
     
+    # NEW FIELDS - User type and role hierarchy
+    user_type: UserTypeEnum
+    scope_province: Optional[str]
+    can_create_roles: bool
+    
     # Contact information
     phone_number: Optional[str]
     employee_id: Optional[str]
@@ -311,6 +336,12 @@ class RoleDetailResponse(BaseModel):
     is_system_role: bool
     allowed_modules: List[str]
     level: int
+    
+    # NEW FIELDS - Enhanced role hierarchy
+    hierarchy_level: int
+    user_type_restriction: Optional[UserTypeEnum]
+    scope_type: str
+    
     permissions: List[PermissionResponse]
     parent_role: Optional[RoleResponse]
     child_roles: List[RoleResponse]
@@ -326,6 +357,11 @@ class RoleCreate(BaseModel):
     allowed_modules: List[str] = Field(default=[])
     permission_ids: List[uuid.UUID] = Field(default=[])
     parent_role_id: Optional[uuid.UUID] = None
+    
+    # NEW FIELDS - Enhanced role hierarchy
+    hierarchy_level: int = Field(..., ge=1, le=4, description="Hierarchy level (1-4)")
+    user_type_restriction: Optional[UserTypeEnum] = Field(None, description="Restrict role to specific user type")
+    scope_type: str = Field(default='location', description="Role scope: location, province, national")
 
 
 class RoleUpdate(BaseModel):
@@ -335,6 +371,11 @@ class RoleUpdate(BaseModel):
     allowed_modules: Optional[List[str]] = None
     permission_ids: Optional[List[uuid.UUID]] = None
     parent_role_id: Optional[uuid.UUID] = None
+    
+    # NEW FIELDS - Enhanced role hierarchy
+    hierarchy_level: Optional[int] = Field(None, ge=1, le=4, description="Hierarchy level (1-4)")
+    user_type_restriction: Optional[UserTypeEnum] = Field(None, description="Restrict role to specific user type")
+    scope_type: Optional[str] = Field(None, description="Role scope: location, province, national")
 
 
 # Permission assignment schemas

@@ -354,42 +354,104 @@ async def initialize_users():
             
             admin_permissions = [perm for perm in permissions.keys()]  # All permissions
             
-            # Create roles
+            # Create roles with new hierarchy structure
             roles_data = [
-                ("admin", "Administrator", "Full system access", admin_permissions),
-                ("clerk", "Clerk", "License processing clerk with person management", clerk_permissions),
-                ("supervisor", "Supervisor", "License processing supervisor with additional permissions", supervisor_permissions),
-                ("printer", "Printer", "Card printing operator", printer_permissions)
+                {
+                    "name": "system_admin",
+                    "display_name": "System Administrator", 
+                    "description": "Full system access with all permissions",
+                    "permissions": admin_permissions,
+                    "hierarchy_level": 4,
+                    "user_type_restriction": None,
+                    "scope_type": "national",
+                    "is_system_role": True
+                },
+                {
+                    "name": "traffic_dept_head",
+                    "display_name": "Traffic Department Head",
+                    "description": "Provincial level administrator - can manage all offices and users within province",
+                    "permissions": supervisor_permissions + [
+                        "users.create", "users.update", "users.activate", "users.deactivate",
+                        "roles.read", "locations.read", "locations.update",
+                        "reports.advanced", "reports.export"
+                    ],
+                    "hierarchy_level": 3,
+                    "user_type_restriction": "PROVINCIAL_USER",
+                    "scope_type": "province",
+                    "is_system_role": True
+                },
+                {
+                    "name": "office_supervisor",
+                    "display_name": "Office Supervisor",
+                    "description": "Office level supervisor - can manage clerks and office operations",
+                    "permissions": supervisor_permissions,
+                    "hierarchy_level": 2,
+                    "user_type_restriction": "LOCATION_USER",
+                    "scope_type": "location",
+                    "is_system_role": True
+                },
+                {
+                    "name": "clerk",
+                    "display_name": "Clerk",
+                    "description": "License processing clerk with person management",
+                    "permissions": clerk_permissions,
+                    "hierarchy_level": 1,
+                    "user_type_restriction": "LOCATION_USER",
+                    "scope_type": "location",
+                    "is_system_role": True
+                },
+                {
+                    "name": "printer",
+                    "display_name": "Printer",
+                    "description": "Card printing operator",
+                    "permissions": printer_permissions,
+                    "hierarchy_level": 1,
+                    "user_type_restriction": "LOCATION_USER",
+                    "scope_type": "location",
+                    "is_system_role": True
+                }
             ]
             
             roles = {}
-            for role_name, display_name, description, role_permissions in roles_data:
-                existing = db.query(Role).filter(Role.name == role_name).first()
+            for role_data in roles_data:
+                existing = db.query(Role).filter(Role.name == role_data["name"]).first()
                 if not existing:
+                    from app.models.enums import UserType
+                    
+                    # Convert user_type_restriction string to enum
+                    user_type_restriction = None
+                    if role_data["user_type_restriction"]:
+                        user_type_restriction = UserType(role_data["user_type_restriction"])
+                    
                     role = Role(
-                        name=role_name,
-                        display_name=display_name,
-                        description=description,
-                        is_system_role=True,
-                        level=0
+                        name=role_data["name"],
+                        display_name=role_data["display_name"],
+                        description=role_data["description"],
+                        is_system_role=role_data["is_system_role"],
+                        level=0,  # Keep for backward compatibility
+                        hierarchy_level=role_data["hierarchy_level"],
+                        user_type_restriction=user_type_restriction,
+                        scope_type=role_data["scope_type"]
                     )
                     db.add(role)
                     db.flush()
                     
                     # Assign permissions to role
                     role_permission_objects = []
-                    for perm_name in role_permissions:
+                    for perm_name in role_data["permissions"]:
                         if perm_name in permissions:
                             role_permission_objects.append(permissions[perm_name])
                     
                     role.permissions = role_permission_objects
-                    roles[role_name] = role
+                    roles[role_data["name"]] = role
                 else:
-                    roles[role_name] = existing
+                    roles[role_data["name"]] = existing
             
             # Create admin user
             admin = db.query(User).filter(User.username == "admin").first()
             if not admin:
+                from app.models.enums import UserType
+                
                 admin = User(
                     username="admin",
                     email="admin@madagascar-license.gov.mg",
@@ -402,6 +464,8 @@ async def initialize_users():
                     phone_number="+261340000000",
                     employee_id="ADM001",
                     department="IT Administration",
+                    user_type=UserType.NATIONAL_USER,
+                    can_create_roles=True,
                     country_code="MG",
                     province="Antananarivo",
                     region="Analamanga",
@@ -418,7 +482,7 @@ async def initialize_users():
                 db.flush()
                 
                 # Assign admin role
-                admin.roles = [roles["admin"]]
+                admin.roles = [roles["system_admin"]]
             
             # Create test users
             test_users = [
@@ -431,6 +495,7 @@ async def initialize_users():
                     "madagascar_id_number": "CIN123456789",
                     "employee_id": "CLK001",
                     "department": "License Processing",
+                    "user_type": "LOCATION_USER",
                     "roles": ["clerk"]
                 },
                 {
@@ -442,7 +507,8 @@ async def initialize_users():
                     "madagascar_id_number": "CIN987654321",
                     "employee_id": "SUP001",
                     "department": "License Processing",
-                    "roles": ["supervisor"]
+                    "user_type": "LOCATION_USER",
+                    "roles": ["office_supervisor"]
                 },
                 {
                     "username": "printer1",
@@ -453,6 +519,7 @@ async def initialize_users():
                     "madagascar_id_number": "CIN456789123",
                     "employee_id": "PRT001",
                     "department": "Card Production",
+                    "user_type": "LOCATION_USER",
                     "roles": ["printer"]
                 }
             ]
@@ -461,6 +528,8 @@ async def initialize_users():
             for user_data in test_users:
                 existing = db.query(User).filter(User.username == user_data["username"]).first()
                 if not existing:
+                    from app.models.enums import UserType
+                    
                     user = User(
                         username=user_data["username"],
                         email=user_data["email"],
@@ -471,6 +540,7 @@ async def initialize_users():
                         id_document_type=MadagascarIDType.MADAGASCAR_ID,
                         employee_id=user_data["employee_id"],
                         department=user_data["department"],
+                        user_type=UserType(user_data["user_type"]),
                         country_code="MG",
                         province="Antananarivo",
                         region="Analamanga",
@@ -727,9 +797,9 @@ async def initialize_location_users():
         
         try:
             # Get existing roles
-            admin_role = db.query(Role).filter(Role.name == "admin").first()
+            admin_role = db.query(Role).filter(Role.name == "system_admin").first()
             clerk_role = db.query(Role).filter(Role.name == "clerk").first()
-            supervisor_role = db.query(Role).filter(Role.name == "supervisor").first()
+            supervisor_role = db.query(Role).filter(Role.name == "office_supervisor").first()
             printer_role = db.query(Role).filter(Role.name == "printer").first()
             
             if not all([admin_role, clerk_role, supervisor_role, printer_role]):
