@@ -69,7 +69,19 @@ async def list_locations(
         sort_order=sort_order
     )
     
-    locations, total = crud_location.search_locations(db=db, search_params=search_params)
+    # Calculate skip for pagination
+    skip = (page - 1) * per_page
+    
+    # Call CRUD method with individual parameters
+    locations, total = crud_location.search_locations(
+        db=db,
+        search=search,
+        province_code=province_code.value if province_code else None,
+        office_type=office_type.value if office_type else None,
+        is_operational=is_operational,
+        skip=skip,
+        limit=per_page
+    )
     
     # Calculate pagination info
     total_pages = math.ceil(total / per_page)
