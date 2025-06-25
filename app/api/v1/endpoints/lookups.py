@@ -8,9 +8,11 @@ from fastapi import APIRouter
 from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
+    UserStatus, OfficeType, EquipmentStatus,
     PROVINCE_DISPLAY_NAMES, LANGUAGE_DISPLAY_NAMES, NATIONALITY_DISPLAY_NAMES,
     PHONE_COUNTRY_DISPLAY_NAMES, COUNTRY_DISPLAY_NAMES, DOCUMENT_TYPE_INFO,
-    PERSON_NATURE_DISPLAY_NAMES
+    PERSON_NATURE_DISPLAY_NAMES, OFFICE_TYPE_DISPLAY_NAMES,
+    EQUIPMENT_STATUS_DISPLAY_NAMES, USER_STATUS_DISPLAY_NAMES
 )
 
 router = APIRouter()
@@ -113,6 +115,42 @@ async def get_provinces() -> List[Dict[str, str]]:
     ]
 
 
+@router.get("/user-statuses", response_model=List[Dict[str, str]])
+async def get_user_statuses() -> List[Dict[str, str]]:
+    """Get all user status options"""
+    return [
+        {
+            "value": status.value,
+            "label": USER_STATUS_DISPLAY_NAMES[status]
+        }
+        for status in UserStatus
+    ]
+
+
+@router.get("/office-types", response_model=List[Dict[str, str]])
+async def get_office_types() -> List[Dict[str, str]]:
+    """Get all office type options"""
+    return [
+        {
+            "value": office_type.value,
+            "label": OFFICE_TYPE_DISPLAY_NAMES[office_type]
+        }
+        for office_type in OfficeType
+    ]
+
+
+@router.get("/equipment-statuses", response_model=List[Dict[str, str]])
+async def get_equipment_statuses() -> List[Dict[str, str]]:
+    """Get all equipment status options"""
+    return [
+        {
+            "value": status.value,
+            "label": EQUIPMENT_STATUS_DISPLAY_NAMES[status]
+        }
+        for status in EquipmentStatus
+    ]
+
+
 @router.get("/all", response_model=Dict[str, Any])
 async def get_all_lookups() -> Dict[str, Any]:
     """Get all lookup data in a single request for efficiency"""
@@ -173,5 +211,26 @@ async def get_all_lookups() -> Dict[str, Any]:
                 "name": PROVINCE_DISPLAY_NAMES[province]
             }
             for province in ProvinceCode
+        ],
+        "user_statuses": [
+            {
+                "value": status.value,
+                "label": USER_STATUS_DISPLAY_NAMES[status]
+            }
+            for status in UserStatus
+        ],
+        "office_types": [
+            {
+                "value": office_type.value,
+                "label": OFFICE_TYPE_DISPLAY_NAMES[office_type]
+            }
+            for office_type in OfficeType
+        ],
+        "equipment_statuses": [
+            {
+                "value": status.value,
+                "label": EQUIPMENT_STATUS_DISPLAY_NAMES[status]
+            }
+            for status in EquipmentStatus
         ]
     } 

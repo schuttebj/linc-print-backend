@@ -33,11 +33,11 @@ class AddressType(PythonEnum):
 
 class UserStatus(PythonEnum):
     """User account status for Madagascar License System"""
-    ACTIVE = "active"
-    INACTIVE = "inactive" 
-    SUSPENDED = "suspended"
-    LOCKED = "locked"
-    PENDING_ACTIVATION = "pending_activation"
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE" 
+    SUSPENDED = "SUSPENDED"
+    LOCKED = "LOCKED"
+    PENDING_ACTIVATION = "PENDING_ACTIVATION"
 
 
 class ProvinceCode(PythonEnum):
@@ -53,15 +53,24 @@ class ProvinceCode(PythonEnum):
 class OfficeType(PythonEnum):
     """Office types for locations"""
     MAIN = "MAIN"           # Main office
+    BRANCH = "BRANCH"       # Branch office
+    KIOSK = "KIOSK"         # Service kiosk
     MOBILE = "MOBILE"       # Mobile unit
     TEMPORARY = "TEMPORARY" # Temporary office
 
 
+class EquipmentStatus(PythonEnum):
+    """Equipment status for locations"""
+    OPERATIONAL = "OPERATIONAL"  # Fully operational
+    MAINTENANCE = "MAINTENANCE"  # Under maintenance
+    OFFLINE = "OFFLINE"          # Offline/not working
+
+
 class LanguageCode(PythonEnum):
     """Madagascar supported languages"""
-    MALAGASY = "mg"         # Malagasy (official language)
-    FRENCH = "fr"           # French (official language)
-    ENGLISH = "en"          # English (international)
+    MALAGASY = "MG"         # Malagasy (official language)
+    FRENCH = "FR"           # French (official language)
+    ENGLISH = "EN"          # English (international)
 
 
 class NationalityCode(PythonEnum):
@@ -103,6 +112,31 @@ PROVINCE_DISPLAY_NAMES = {
     ProvinceCode.TOLIARA: "TOLIARA",
 }
 
+# Office type display names mapping for frontend
+OFFICE_TYPE_DISPLAY_NAMES = {
+    OfficeType.MAIN: "MAIN OFFICE",
+    OfficeType.BRANCH: "BRANCH OFFICE",
+    OfficeType.KIOSK: "SERVICE KIOSK",
+    OfficeType.MOBILE: "MOBILE UNIT",
+    OfficeType.TEMPORARY: "TEMPORARY OFFICE",
+}
+
+# Equipment status display names mapping for frontend
+EQUIPMENT_STATUS_DISPLAY_NAMES = {
+    EquipmentStatus.OPERATIONAL: "OPERATIONAL",
+    EquipmentStatus.MAINTENANCE: "MAINTENANCE",
+    EquipmentStatus.OFFLINE: "OFFLINE",
+}
+
+# User status display names mapping for frontend
+USER_STATUS_DISPLAY_NAMES = {
+    UserStatus.ACTIVE: "ACTIVE",
+    UserStatus.INACTIVE: "INACTIVE",
+    UserStatus.SUSPENDED: "SUSPENDED",
+    UserStatus.LOCKED: "LOCKED",
+    UserStatus.PENDING_ACTIVATION: "PENDING ACTIVATION",
+}
+
 # Language display names mapping for frontend
 LANGUAGE_DISPLAY_NAMES = {
     LanguageCode.MALAGASY: "MALAGASY",
@@ -131,12 +165,12 @@ PHONE_COUNTRY_DISPLAY_NAMES = {
 
 # Country display names mapping for frontend
 COUNTRY_DISPLAY_NAMES = {
-    CountryCode.MADAGASCAR: "Madagascar",
-    CountryCode.FRANCE: "France",
-    CountryCode.UNITED_STATES: "United States", 
-    CountryCode.UNITED_KINGDOM: "United Kingdom",
-    CountryCode.SOUTH_AFRICA: "South Africa",
-    CountryCode.OTHER: "Other",
+    CountryCode.MADAGASCAR: "MADAGASCAR",
+    CountryCode.FRANCE: "FRANCE",
+    CountryCode.UNITED_STATES: "UNITED STATES", 
+    CountryCode.UNITED_KINGDOM: "UNITED KINGDOM",
+    CountryCode.SOUTH_AFRICA: "SOUTH AFRICA",
+    CountryCode.OTHER: "OTHER",
 }
 
 # Document type display names and requirements
