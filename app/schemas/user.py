@@ -14,11 +14,11 @@ from app.models.enums import UserStatus, MadagascarIDType
 
 class UserStatusEnum(str, Enum):
     """User status enum for API"""
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    SUSPENDED = "suspended"
-    LOCKED = "locked"
-    PENDING_ACTIVATION = "pending_activation"
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
+    LOCKED = "LOCKED"
+    PENDING_ACTIVATION = "PENDING_ACTIVATION"
 
 
 class MadagascarIDTypeEnum(str, Enum):
