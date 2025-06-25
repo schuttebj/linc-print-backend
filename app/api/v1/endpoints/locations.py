@@ -5,7 +5,7 @@ Handles location CRUD operations, search, and user code generation
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 import math
 
@@ -450,9 +450,9 @@ async def get_location_by_code(
     db: Session = Depends(get_db)
 ):
     """
-    Get location by code (e.g., T01 or MG-T01)
+    Get location by code (e.g., T01, MG-T01)
     """
-    # Handle both formats (T01 and MG-T01)
+    # Handle both short code (T01) and full code (MG-T01)
     if location_code.startswith("MG-"):
         location = crud_location.get_by_full_code(db=db, full_code=location_code)
     else:
@@ -461,7 +461,7 @@ async def get_location_by_code(
     if not location:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Location not found"
+            detail=f"Location with code '{location_code}' not found"
         )
     
     # Log location access
@@ -470,4 +470,311 @@ async def get_location_by_code(
         details={"location_code": location_code, "location_id": str(location.id)}
     )
     
-    return LocationResponse.from_orm(location) 
+    return LocationResponse.from_orm(location)
+
+
+# ENHANCED LOCATION MANAGEMENT - Madagascar Analysis Requirements
+
+@router.get("/province/{province_code}/statistics", summary="Get Province Location Statistics")
+async def get_province_location_statistics(
+    province_code: ProvinceCodeEnum,
+    request: Request = Request,
+    current_user: User = Depends(require_permission("locations.view_statistics")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed location statistics for a specific province
+    (For Traffic Department Head oversight)
+    """
+    from app.models.user import User as UserModel
+    
+    # Get all locations in this province
+    locations = crud_location.get_by_province(
+        db=db, 
+        province_code=province_code.value, 
+        skip=0, 
+        limit=1000
+    )
+    
+    # Calculate province statistics
+    total_locations = len(locations)
+    operational_locations = len([l for l in locations if l.is_operational])
+    
+    # Office type breakdown
+    office_types = {}
+    for location in locations:
+        office_types[location.office_type] = office_types.get(location.office_type, 0) + 1
+    
+    # Capacity analysis
+    total_capacity = sum(l.max_staff_capacity for l in locations)
+    current_staff = sum(l.current_staff_count for l in locations)
+    daily_capacity = sum(l.max_daily_capacity for l in locations)
+    
+    # Service capability analysis
+    accepts_applications = len([l for l in locations if l.accepts_applications])
+    accepts_renewals = len([l for l in locations if l.accepts_renewals])
+    accepts_collections = len([l for l in locations if l.accepts_collections])
+    
+    # User distribution
+    province_users = db.query(UserModel).filter(
+        UserModel.is_active == True,
+        UserModel.province == province_code.value
+    ).count()
+    
+    # Location details
+    location_details = []
+    for location in locations:
+        location_details.append({
+            "id": str(location.id),
+            "name": location.name,
+            "code": location.code,
+            "locality": location.locality,
+            "office_type": location.office_type,
+            "is_operational": location.is_operational,
+            "staff_count": location.current_staff_count,
+            "staff_capacity": location.max_staff_capacity,
+            "daily_capacity": location.max_daily_capacity,
+            "utilization": (location.current_staff_count / location.max_staff_capacity * 100) if location.max_staff_capacity > 0 else 0,
+            "services": {
+                "applications": location.accepts_applications,
+                "renewals": location.accepts_renewals,
+                "collections": location.accepts_collections
+            }
+        })
+    
+    # Log access
+    log_user_action(
+        db, current_user, "province_location_statistics_accessed", request,
+        details={"province_code": province_code.value, "total_locations": total_locations}
+    )
+    
+    return {
+        "province_code": province_code.value,
+        "province_name": {
+            "T": "ANTANANARIVO",
+            "A": "TOAMASINA", 
+            "D": "ANTSIRANANA",
+            "F": "FIANARANTSOA",
+            "M": "MAHAJANGA",
+            "U": "TOLIARA"
+        }.get(province_code.value, "UNKNOWN"),
+        "summary": {
+            "total_locations": total_locations,
+            "operational_locations": operational_locations,
+            "total_staff_capacity": total_capacity,
+            "current_staff": current_staff,
+            "total_daily_capacity": daily_capacity,
+            "capacity_utilization": round((current_staff / total_capacity * 100) if total_capacity > 0 else 0, 2),
+            "province_users": province_users
+        },
+        "service_coverage": {
+            "accepts_applications": accepts_applications,
+            "accepts_renewals": accepts_renewals,
+            "accepts_collections": accepts_collections,
+            "coverage_percentage": round((operational_locations / total_locations * 100) if total_locations > 0 else 0, 2)
+        },
+        "office_types": office_types,
+        "locations": location_details
+    }
+
+
+@router.post("/province/{province_code}/validate-expansion", summary="Validate Province Expansion Plan")
+async def validate_province_expansion(
+    province_code: ProvinceCodeEnum,
+    expansion_plan: Dict[str, Any],
+    request: Request = Request,
+    current_user: User = Depends(require_permission("locations.create")),
+    db: Session = Depends(get_db)
+):
+    """
+    Validate a province expansion plan for new offices
+    (For Traffic Department Head planning)
+    """
+    # Get current locations in province
+    current_locations = crud_location.get_by_province(
+        db=db, 
+        province_code=province_code.value,
+        skip=0,
+        limit=1000
+    )
+    
+    current_office_numbers = {loc.office_number for loc in current_locations}
+    
+    # Validate proposed new offices
+    validation_results = []
+    proposed_offices = expansion_plan.get("new_offices", [])
+    
+    for office in proposed_offices:
+        office_number = office.get("office_number")
+        office_name = office.get("name")
+        locality = office.get("locality")
+        
+        validation = {
+            "office_number": office_number,
+            "name": office_name,
+            "locality": locality,
+            "is_valid": True,
+            "issues": []
+        }
+        
+        # Check if office number is already used
+        if office_number in current_office_numbers:
+            validation["is_valid"] = False
+            validation["issues"].append(f"Office number {office_number} already exists in {province_code.value}")
+        
+        # Check office number format
+        if not office_number or len(office_number) != 2 or not office_number.isdigit():
+            validation["is_valid"] = False
+            validation["issues"].append("Office number must be 2 digits (01-99)")
+        
+        # Check for duplicate localities
+        existing_localities = {loc.locality.upper() for loc in current_locations}
+        if locality and locality.upper() in existing_localities:
+            validation["issues"].append(f"Warning: Locality '{locality}' already has an office")
+        
+        validation_results.append(validation)
+    
+    # Overall validation summary
+    valid_offices = [v for v in validation_results if v["is_valid"]]
+    total_proposed = len(proposed_offices)
+    
+    # Calculate capacity impact
+    total_new_capacity = sum(office.get("max_staff_capacity", 10) for office in proposed_offices if office.get("office_number") not in current_office_numbers)
+    current_capacity = sum(loc.max_staff_capacity for loc in current_locations)
+    
+    # Log validation
+    log_user_action(
+        db, current_user, "province_expansion_validated", request,
+        details={
+            "province_code": province_code.value,
+            "proposed_offices": total_proposed,
+            "valid_offices": len(valid_offices)
+        }
+    )
+    
+    return {
+        "province_code": province_code.value,
+        "validation_summary": {
+            "total_proposed": total_proposed,
+            "valid_offices": len(valid_offices),
+            "invalid_offices": total_proposed - len(valid_offices),
+            "can_proceed": len(valid_offices) > 0
+        },
+        "capacity_impact": {
+            "current_capacity": current_capacity,
+            "additional_capacity": total_new_capacity,
+            "total_capacity_after": current_capacity + total_new_capacity,
+            "capacity_increase_percentage": round((total_new_capacity / current_capacity * 100) if current_capacity > 0 else 0, 2)
+        },
+        "validation_results": validation_results,
+        "next_available_numbers": [f"{i:02d}" for i in range(1, 100) if f"{i:02d}" not in current_office_numbers][:10]
+    }
+
+
+@router.get("/capacity-analysis", summary="Get System-wide Capacity Analysis")
+async def get_capacity_analysis(
+    request: Request = Request,
+    current_user: User = Depends(require_permission("locations.view_statistics")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get system-wide capacity analysis across all provinces
+    (For National Admin oversight)
+    """
+    from app.models.user import User as UserModel
+    
+    # Get all locations
+    all_locations = crud_location.get_multi(db=db, skip=0, limit=1000)
+    
+    # Province-level analysis
+    province_analysis = {}
+    total_system_capacity = 0
+    total_system_staff = 0
+    total_system_daily_capacity = 0
+    
+    provinces = ["T", "A", "D", "F", "M", "U"]
+    province_names = {
+        "T": "ANTANANARIVO",
+        "A": "TOAMASINA", 
+        "D": "ANTSIRANANA",
+        "F": "FIANARANTSOA",
+        "M": "MAHAJANGA",
+        "U": "TOLIARA"
+    }
+    
+    for province_code in provinces:
+        province_locations = [l for l in all_locations if l.province_code == province_code]
+        
+        if province_locations:
+            staff_capacity = sum(l.max_staff_capacity for l in province_locations)
+            current_staff = sum(l.current_staff_count for l in province_locations)
+            daily_capacity = sum(l.max_daily_capacity for l in province_locations)
+            operational = len([l for l in province_locations if l.is_operational])
+            
+            # Get user count for this province
+            province_users = db.query(UserModel).filter(
+                UserModel.is_active == True,
+                UserModel.province == province_code
+            ).count()
+            
+            province_analysis[province_code] = {
+                "name": province_names[province_code],
+                "locations": len(province_locations),
+                "operational_locations": operational,
+                "staff_capacity": staff_capacity,
+                "current_staff": current_staff,
+                "daily_capacity": daily_capacity,
+                "users": province_users,
+                "utilization": round((current_staff / staff_capacity * 100) if staff_capacity > 0 else 0, 2),
+                "coverage": round((operational / len(province_locations) * 100) if province_locations else 0, 2)
+            }
+            
+            total_system_capacity += staff_capacity
+            total_system_staff += current_staff
+            total_system_daily_capacity += daily_capacity
+    
+    # Office type distribution
+    office_type_stats = {}
+    for location in all_locations:
+        office_type_stats[location.office_type] = office_type_stats.get(location.office_type, 0) + 1
+    
+    # Service coverage analysis
+    service_stats = {
+        "applications": len([l for l in all_locations if l.accepts_applications]),
+        "renewals": len([l for l in all_locations if l.accepts_renewals]),
+        "collections": len([l for l in all_locations if l.accepts_collections])
+    }
+    
+    # Log access
+    log_user_action(
+        db, current_user, "system_capacity_analysis_accessed", request,
+        details={"total_locations": len(all_locations)}
+    )
+    
+    return {
+        "system_summary": {
+            "total_locations": len(all_locations),
+            "operational_locations": len([l for l in all_locations if l.is_operational]),
+            "total_staff_capacity": total_system_capacity,
+            "current_staff": total_system_staff,
+            "total_daily_capacity": total_system_daily_capacity,
+            "system_utilization": round((total_system_staff / total_system_capacity * 100) if total_system_capacity > 0 else 0, 2)
+        },
+        "province_analysis": province_analysis,
+        "office_type_distribution": office_type_stats,
+        "service_coverage": service_stats,
+        "capacity_recommendations": {
+            "underutilized_provinces": [
+                code for code, data in province_analysis.items() 
+                if data["utilization"] < 50 and data["staff_capacity"] > 0
+            ],
+            "overutilized_provinces": [
+                code for code, data in province_analysis.items() 
+                if data["utilization"] > 90
+            ],
+            "expansion_candidates": [
+                code for code, data in province_analysis.items() 
+                if data["locations"] < 5 and data["utilization"] > 80
+            ]
+        }
+    } 
