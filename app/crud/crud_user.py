@@ -45,7 +45,11 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             raise ValueError(f"Location {location.code} is at maximum capacity")
         
         # Generate username based on user type
-        user_type = obj_in.user_type if hasattr(obj_in, 'user_type') else UserType.LOCATION_USER
+        # Convert Pydantic enum to SQLAlchemy enum
+        if hasattr(obj_in, 'user_type') and obj_in.user_type:
+            user_type = UserType(obj_in.user_type.value)
+        else:
+            user_type = UserType.LOCATION_USER
         
         if user_type == UserType.LOCATION_USER:
             username = location.generate_next_user_code()
