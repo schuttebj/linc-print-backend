@@ -8,11 +8,11 @@ from fastapi import APIRouter
 from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
-    UserStatus, OfficeType, EquipmentStatus,
+    UserStatus, OfficeType,
     PROVINCE_DISPLAY_NAMES, LANGUAGE_DISPLAY_NAMES, NATIONALITY_DISPLAY_NAMES,
     PHONE_COUNTRY_DISPLAY_NAMES, COUNTRY_DISPLAY_NAMES, DOCUMENT_TYPE_INFO,
     PERSON_NATURE_DISPLAY_NAMES, OFFICE_TYPE_DISPLAY_NAMES,
-    EQUIPMENT_STATUS_DISPLAY_NAMES, USER_STATUS_DISPLAY_NAMES
+    USER_STATUS_DISPLAY_NAMES
 )
 
 router = APIRouter()
@@ -139,16 +139,8 @@ async def get_office_types() -> List[Dict[str, str]]:
     ]
 
 
-@router.get("/equipment-statuses", response_model=List[Dict[str, str]])
-async def get_equipment_statuses() -> List[Dict[str, str]]:
-    """Get all equipment status options"""
-    return [
-        {
-            "value": status.value,
-            "label": EQUIPMENT_STATUS_DISPLAY_NAMES[status]
-        }
-        for status in EquipmentStatus
-    ]
+# Equipment status endpoints removed - no longer needed for location management
+# Location operational status is handled by the is_operational boolean field
 
 
 @router.get("/all", response_model=Dict[str, Any])
