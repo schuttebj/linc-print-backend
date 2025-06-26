@@ -72,7 +72,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -98,6 +98,10 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         if obj_in.role_ids:
             roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
             user.roles = roles
+        
+        # Apply permission overrides if provided
+        if obj_in.permission_overrides:
+            self._apply_permission_overrides(db, user.id, obj_in.permission_overrides, created_by)
         
         # Increment counters based on user type
         if user_type == UserType.LOCATION_USER:
@@ -132,7 +136,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -152,6 +156,10 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         if obj_in.role_ids:
             roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
             user.roles = roles
+        
+        # Apply permission overrides if provided
+        if obj_in.permission_overrides:
+            self._apply_permission_overrides(db, user.id, obj_in.permission_overrides, created_by)
         
         db.commit()
         db.refresh(user)
@@ -180,7 +188,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -199,6 +207,10 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         if obj_in.role_ids:
             roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
             user.roles = roles
+        
+        # Apply permission overrides if provided
+        if obj_in.permission_overrides:
+            self._apply_permission_overrides(db, user.id, obj_in.permission_overrides, created_by)
         
         db.commit()
         db.refresh(user)
@@ -227,7 +239,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -246,6 +258,10 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         if obj_in.role_ids:
             roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
             user.roles = roles
+        
+        # Apply permission overrides if provided
+        if obj_in.permission_overrides:
+            self._apply_permission_overrides(db, user.id, obj_in.permission_overrides, created_by)
         
         db.commit()
         db.refresh(user)
@@ -560,6 +576,66 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "recent_logins": recent_logins,
             "activity_rate": (recent_logins / total_users * 100) if total_users > 0 else 0
         }
+    
+    def _apply_permission_overrides(
+        self, 
+        db: Session, 
+        user_id: uuid.UUID, 
+        permission_overrides: Dict[str, bool], 
+        granted_by: Optional[str] = None
+    ) -> None:
+        """Apply permission overrides for a user during creation or update"""
+        from app.models.user import Permission, UserPermissionOverride
+        
+        # Get all permissions that need to be overridden
+        permission_names = list(permission_overrides.keys())
+        permissions = db.query(Permission).filter(Permission.name.in_(permission_names)).all()
+        
+        # Create permission overrides
+        for permission in permissions:
+            if permission.name in permission_overrides:
+                granted = permission_overrides[permission.name]
+                
+                # Check if override already exists
+                existing_override = db.query(UserPermissionOverride).filter(
+                    UserPermissionOverride.user_id == user_id,
+                    UserPermissionOverride.permission_id == permission.id
+                ).first()
+                
+                if existing_override:
+                    # Update existing override
+                    existing_override.granted = granted
+                    if granted_by:
+                        # Handle granted_by as either string or UUID
+                        if isinstance(granted_by, str):
+                            try:
+                                existing_override.granted_by = uuid.UUID(granted_by)
+                            except ValueError:
+                                # If it's not a valid UUID string, it might be a username
+                                # In this case, we'd need to look up the user, but for now skip
+                                pass
+                        else:
+                            existing_override.granted_by = granted_by
+                else:
+                    # Create new override
+                    granted_by_uuid = None
+                    if granted_by:
+                        if isinstance(granted_by, str):
+                            try:
+                                granted_by_uuid = uuid.UUID(granted_by)
+                            except ValueError:
+                                # If it's not a valid UUID string, skip for now
+                                pass
+                        else:
+                            granted_by_uuid = granted_by
+                    
+                    override = UserPermissionOverride(
+                        user_id=user_id,
+                        permission_id=permission.id,
+                        granted=granted,
+                        granted_by=granted_by_uuid
+                    )
+                    db.add(override)
 
 
 # Create instance

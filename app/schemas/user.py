@@ -103,6 +103,10 @@ class UserCreate(UserBase):
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location ID")
     assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Assigned location IDs")
     
+    # Permission management fields
+    permission_names: Optional[List[str]] = Field(None, description="Final list of permission names for the user")
+    permission_overrides: Optional[Dict[str, bool]] = Field(None, description="Permission overrides (differences from role defaults)")
+    
     @validator('confirm_password')
     def passwords_match(cls, v, values):
         if 'password' in values and v != values['password']:
