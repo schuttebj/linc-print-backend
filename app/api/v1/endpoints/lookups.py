@@ -8,11 +8,11 @@ from fastapi import APIRouter
 from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
-    UserStatus, OfficeType,
+    UserStatus, OfficeType, UserType,
     PROVINCE_DISPLAY_NAMES, LANGUAGE_DISPLAY_NAMES, NATIONALITY_DISPLAY_NAMES,
     PHONE_COUNTRY_DISPLAY_NAMES, COUNTRY_DISPLAY_NAMES, DOCUMENT_TYPE_INFO,
     PERSON_NATURE_DISPLAY_NAMES, OFFICE_TYPE_DISPLAY_NAMES,
-    USER_STATUS_DISPLAY_NAMES
+    USER_STATUS_DISPLAY_NAMES, USER_TYPE_DISPLAY_NAMES
 )
 
 router = APIRouter()
@@ -127,6 +127,18 @@ async def get_user_statuses() -> List[Dict[str, str]]:
     ]
 
 
+@router.get("/user-types", response_model=List[Dict[str, str]])
+async def get_user_types() -> List[Dict[str, str]]:
+    """Get all user type options"""
+    return [
+        {
+            "value": user_type.value,
+            "label": USER_TYPE_DISPLAY_NAMES[user_type]
+        }
+        for user_type in UserType
+    ]
+
+
 @router.get("/office-types", response_model=List[Dict[str, str]])
 async def get_office_types() -> List[Dict[str, str]]:
     """Get all office type options"""
@@ -210,6 +222,13 @@ async def get_all_lookups() -> Dict[str, Any]:
                 "label": USER_STATUS_DISPLAY_NAMES[status]
             }
             for status in UserStatus
+        ],
+        "user_types": [
+            {
+                "value": user_type.value,
+                "label": USER_TYPE_DISPLAY_NAMES[user_type]
+            }
+            for user_type in UserType
         ],
         "office_types": [
             {
