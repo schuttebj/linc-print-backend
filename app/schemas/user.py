@@ -58,7 +58,7 @@ class UserBase(BaseModel):
     id_document_type: MadagascarIDTypeEnum = Field(..., description="Type of ID document")
     
     # NEW FIELDS - User type and role hierarchy
-    user_type: UserTypeEnum = Field(default="LOCATION_USER", description="User type determines username format and scope")
+    user_type: UserTypeEnum = Field(default=UserTypeEnum.LOCATION_USER, description="User type determines username format and scope")
     scope_province: Optional[str] = Field(None, max_length=1, description="Province scope for provincial users")
     can_create_roles: bool = Field(default=False, description="Permission to create other user roles")
     
