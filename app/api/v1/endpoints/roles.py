@@ -69,6 +69,7 @@ async def list_roles(
 
 @router.get("/creatable", summary="Get Creatable Roles")
 async def get_creatable_roles(
+    include_permissions: bool = Query(False, description="Include role permissions in response"),
     request: Request = Request,
     current_user: User = Depends(require_permission("roles.read")),
     db: Session = Depends(get_db)
@@ -82,15 +83,20 @@ async def get_creatable_roles(
         if role.hierarchy_level > user_max_level:
             user_max_level = role.hierarchy_level
     
+    # Build query with optional permissions
+    query = db.query(Role)
+    if include_permissions:
+        query = query.options(joinedload(Role.permissions))
+    
     # If not superuser, can only create roles with lower hierarchy level
     if not current_user.is_superuser:
-        creatable_roles = db.query(Role).filter(
+        creatable_roles = query.filter(
             Role.is_active == True,
             Role.hierarchy_level < user_max_level
         ).order_by(Role.hierarchy_level.desc(), Role.name).all()
     else:
         # Superuser can create any role
-        creatable_roles = db.query(Role).filter(Role.is_active == True).order_by(Role.hierarchy_level.desc(), Role.name).all()
+        creatable_roles = query.filter(Role.is_active == True).order_by(Role.hierarchy_level.desc(), Role.name).all()
     
     # Log access
     log_user_action(
@@ -98,20 +104,40 @@ async def get_creatable_roles(
         details={"user_max_level": user_max_level, "creatable_count": len(creatable_roles)}
     )
     
+    # Build role data with optional permissions
+    role_data = []
+    for role in creatable_roles:
+        role_info = {
+            "id": str(role.id),
+            "name": role.name,
+            "display_name": role.display_name,
+            "hierarchy_level": role.hierarchy_level,
+            "user_type_restriction": str(role.user_type_restriction) if role.user_type_restriction else None,
+            "scope_type": role.scope_type,
+            "description": role.description
+        }
+        
+        # Include permissions if requested
+        if include_permissions and hasattr(role, 'permissions'):
+            role_info["permissions"] = [
+                {
+                    "id": str(perm.id),
+                    "name": perm.name,
+                    "display_name": perm.display_name,
+                    "description": perm.description,
+                    "category": perm.category,
+                    "resource": perm.resource,
+                    "action": perm.action
+                }
+                for perm in role.permissions
+            ]
+        
+        role_data.append(role_info)
+    
     return {
         "user_hierarchy_level": user_max_level,
         "can_create_roles": current_user.can_create_roles or current_user.is_superuser,
-        "creatable_roles": [
-            {
-                "id": str(role.id),
-                "name": role.name,
-                "display_name": role.display_name,
-                "hierarchy_level": role.hierarchy_level,
-                "user_type_restriction": str(role.user_type_restriction) if role.user_type_restriction else None,
-                "scope_type": role.scope_type
-            }
-            for role in creatable_roles
-        ]
+        "creatable_roles": role_data
     }
 
 
