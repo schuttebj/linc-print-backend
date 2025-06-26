@@ -746,7 +746,12 @@ async def initialize_locations():
                 ).first()
                 
                 if not existing:
-                    location_create = LocationCreate(**loc_data)
+                    # Convert enum objects to their string values
+                    processed_data = loc_data.copy()
+                    processed_data["province_code"] = loc_data["province_code"].value
+                    processed_data["office_type"] = loc_data["office_type"].value
+                    
+                    location_create = LocationCreate(**processed_data)
                     # Use None for system initialization instead of string
                     location = crud_location.create_with_codes(
                         db=db,
