@@ -236,12 +236,5 @@ async def get_all_lookups() -> Dict[str, Any]:
                 "label": OFFICE_TYPE_DISPLAY_NAMES[office_type]
             }
             for office_type in OfficeType
-        ],
-        "equipment_statuses": [
-            {
-                "value": status.value,
-                "label": EQUIPMENT_STATUS_DISPLAY_NAMES[status]
-            }
-            for status in EquipmentStatus
         ]
     } 
