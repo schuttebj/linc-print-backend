@@ -59,7 +59,7 @@ def create_person(
         person = crud_person.person.create_with_details(
             db=db, 
             obj_in=person_in, 
-            created_by=current_user.username
+            created_by=str(current_user.id)
         )
         
         # TODO: Check for duplicates after creation and flag if needed
@@ -327,7 +327,7 @@ def create_person_alias(
         db=db, 
         obj_in=alias_in, 
         person_id=person_id,
-        created_by=current_user.username
+        created_by=str(current_user.id)
     )
     
     return alias
@@ -467,7 +467,7 @@ def create_person_address(
         db=db, 
         obj_in=address_in, 
         person_id=person_id,
-        created_by=current_user.username
+        created_by=str(current_user.id)
     )
     
     return address

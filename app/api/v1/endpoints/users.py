@@ -236,7 +236,7 @@ async def create_user(
                 db=db, 
                 obj_in=user_data, 
                 location_id=location_id,
-                created_by=current_user.username
+                created_by=str(current_user.id)
             )
         
         elif user_type == UserType.PROVINCIAL_ADMIN:
@@ -249,21 +249,21 @@ async def create_user(
                 db=db,
                 obj_in=user_data,
                 province_code=province_code,
-                created_by=current_user.username
+                created_by=str(current_user.id)
             )
         
         elif user_type == UserType.NATIONAL_ADMIN:
             user = crud_user.create_national_user(
                 db=db,
                 obj_in=user_data,
-                created_by=current_user.username
+                created_by=str(current_user.id)
             )
         
         elif user_type == UserType.SYSTEM_USER:
             user = crud_user.create_system_user(
                 db=db,
                 obj_in=user_data,
-                created_by=current_user.username
+                created_by=str(current_user.id)
             )
         
         else:
@@ -428,7 +428,7 @@ async def create_provincial_user(
             db=db,
             obj_in=user_data,
             province_code=province_code,
-            created_by=current_user.username
+            created_by=str(current_user.id)
         )
     except ValueError as e:
         raise HTTPException(
@@ -488,7 +488,7 @@ async def create_national_user(
         user = crud_user.create_national_user(
             db=db,
             obj_in=user_data,
-            created_by=current_user.username
+            created_by=str(current_user.id)
         )
     except ValueError as e:
         raise HTTPException(
@@ -1450,7 +1450,7 @@ async def bulk_create_users(
                     db=db,
                     obj_in=user_data,
                     location_id=location_id,
-                    created_by=current_user.username
+                    created_by=str(current_user.id)
                 )
             elif user_type == UserType.PROVINCIAL_ADMIN:
                 if not user_data.scope_province:
@@ -1459,13 +1459,13 @@ async def bulk_create_users(
                     db=db,
                     obj_in=user_data,
                     province_code=user_data.scope_province,
-                    created_by=current_user.username
+                    created_by=str(current_user.id)
                 )
             elif user_type == UserType.NATIONAL_ADMIN:
                 user = crud_user.create_national_user(
                     db=db,
                     obj_in=user_data,
-                    created_by=current_user.username
+                    created_by=str(current_user.id)
                 )
             else:
                 raise ValueError(f"Unknown user type: {user_type}")
