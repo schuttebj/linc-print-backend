@@ -31,7 +31,7 @@ class CRUDLocation(CRUDBase[Location, LocationCreate, LocationUpdate]):
         logger.info(f"CRUD received office_type: {obj_in.office_type} (type: {type(obj_in.office_type)})")
         
         # Generate location codes
-        code = f"{obj_in.province_code}{obj_in.office_number}"
+        code = f"{obj_in.province_code.value}{obj_in.office_number}"
         full_code = f"MG-{code}"
         
         logger.info(f"Generated code: {code}")
@@ -47,14 +47,15 @@ class CRUDLocation(CRUDBase[Location, LocationCreate, LocationUpdate]):
             "U": "TOLIARA"
         }
         
-        province_name = province_names.get(obj_in.province_code, "UNKNOWN")
+        province_name = province_names.get(obj_in.province_code.value, "UNKNOWN")
         
         # Create location object
         location_data = obj_in.dict()
         location_data.update({
             "code": code,
             "full_code": full_code,
-            "province_code": obj_in.province_code,
+            "province_code": obj_in.province_code.value,
+            "office_type": obj_in.office_type.value,
             "province_name": province_name,
             "next_user_number": 1,
             "current_staff_count": 0,

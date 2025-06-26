@@ -746,22 +746,8 @@ async def initialize_locations():
                 ).first()
                 
                 if not existing:
-                    # Convert enum objects to their string values
-                    processed_data = loc_data.copy()
-                    processed_data["province_code"] = loc_data["province_code"].value
-                    processed_data["office_type"] = loc_data["office_type"].value
-                    
-                    # Debug logging
-                    logger.info(f"Original province_code: {loc_data['province_code']}")
-                    logger.info(f"Converted province_code: {processed_data['province_code']}")
-                    logger.info(f"Original office_type: {loc_data['office_type']}")
-                    logger.info(f"Converted office_type: {processed_data['office_type']}")
-                    
-                    location_create = LocationCreate(**processed_data)
-                    
-                    # Debug the LocationCreate object
-                    logger.info(f"LocationCreate province_code: {location_create.province_code}")
-                    logger.info(f"LocationCreate office_type: {location_create.office_type}")
+                    # Pass enum objects directly to LocationCreate - it will handle them properly
+                    location_create = LocationCreate(**loc_data)
                     
                     # Use None for system initialization instead of string
                     location = crud_location.create_with_codes(
