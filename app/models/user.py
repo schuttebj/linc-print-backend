@@ -577,7 +577,7 @@ class UserPermissionOverride(BaseModel):
     expires_at = Column(DateTime, nullable=True, comment="When the override expires (null = permanent)")
     
     # Relationships
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship("User", foreign_keys=[user_id], overlaps="permission_overrides")
     permission = relationship("Permission")
     granted_by_user = relationship("User", foreign_keys=[granted_by])
     
