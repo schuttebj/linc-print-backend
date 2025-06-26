@@ -285,7 +285,7 @@ async def validate_user_creation_scope(
     """
     Validate that current user can create users in the specified scope
     """
-    from app.models.location import Location
+    from app.models.user import Location
     
     # Superuser can create anywhere
     if current_user.is_superuser:
