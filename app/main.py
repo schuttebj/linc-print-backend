@@ -395,39 +395,15 @@ async def initialize_users():
             
             admin_permissions = [perm for perm in permissions.keys()]  # All permissions
             
-            # Create roles with new hierarchy structure
+            # Create roles with corrected structure - only office-level roles
             roles_data = [
-                {
-                    "name": "system_admin",
-                    "display_name": "System Administrator", 
-                    "description": "Technical system administrator - database management, system configuration, and technical maintenance only",
-                    "permissions": admin_permissions,
-                    "hierarchy_level": 4,
-                    "user_type_restriction": None,  # Can be assigned to any user type for technical purposes
-                    "scope_type": "system",
-                    "is_system_role": True
-                },
-                {
-                    "name": "national_admin",
-                    "display_name": "National Administrator",
-                    "description": "National level administrator - can manage all provinces, offices and users nationwide",
-                    "permissions": traffic_dept_head_permissions + [
-                        # Additional national-level permissions
-                        "system.manage_provinces", "system.manage_locations", "system.nationwide_statistics",
-                        "reports.national", "roles.create", "roles.update", "roles.delete"
-                    ],
-                    "hierarchy_level": 3,
-                    "user_type_restriction": "NATIONAL_USER",
-                    "scope_type": "national",
-                    "is_system_role": True
-                },
                 {
                     "name": "office_supervisor",
                     "display_name": "Office Supervisor",
                     "description": "Office level supervisor - can manage clerks and office operations",
                     "permissions": supervisor_permissions,
                     "hierarchy_level": 2,
-                    "user_type_restriction": "LOCATION_USER",
+                    "user_type_restriction": UserType.LOCATION_USER,
                     "scope_type": "location",
                     "is_system_role": True
                 },
@@ -437,7 +413,7 @@ async def initialize_users():
                     "description": "License processing clerk with person management",
                     "permissions": clerk_permissions,
                     "hierarchy_level": 1,
-                    "user_type_restriction": "LOCATION_USER",
+                    "user_type_restriction": UserType.LOCATION_USER,
                     "scope_type": "location",
                     "is_system_role": True
                 },
@@ -447,7 +423,7 @@ async def initialize_users():
                     "description": "Card printing operator",
                     "permissions": printer_permissions,
                     "hierarchy_level": 1,
-                    "user_type_restriction": "LOCATION_USER",
+                    "user_type_restriction": UserType.LOCATION_USER,
                     "scope_type": "location",
                     "is_system_role": True
                 }
@@ -457,13 +433,6 @@ async def initialize_users():
             for role_data in roles_data:
                 existing = db.query(Role).filter(Role.name == role_data["name"]).first()
                 if not existing:
-                    from app.models.enums import UserType
-                    
-                    # Convert user_type_restriction string to enum
-                    user_type_restriction = None
-                    if role_data["user_type_restriction"]:
-                        user_type_restriction = UserType(role_data["user_type_restriction"])
-                    
                     role = Role(
                         name=role_data["name"],
                         display_name=role_data["display_name"],
@@ -471,7 +440,7 @@ async def initialize_users():
                         is_system_role=role_data["is_system_role"],
                         level=0,  # Keep for backward compatibility
                         hierarchy_level=role_data["hierarchy_level"],
-                        user_type_restriction=user_type_restriction,
+                        user_type_restriction=role_data["user_type_restriction"],
                         scope_type=role_data["scope_type"]
                     )
                     db.add(role)
@@ -489,76 +458,36 @@ async def initialize_users():
                     roles[role_data["name"]] = existing
             
             # Create admin user
-            admin = db.query(User).filter(User.username == "admin").first()
-            if not admin:
-                from app.models.enums import UserType
-                
-                admin = User(
-                    username="admin",
-                    email="admin@madagascar-license.gov.mg",
-                    password_hash=get_password_hash("MadagascarAdmin2024!"),
-                    first_name="System",
-                    last_name="Administrator",
-                    display_name="System Administrator",
-                    madagascar_id_number="ADM001",
-                    id_document_type=MadagascarIDType.MADAGASCAR_ID,
-                    phone_number="+261340000000",
-                    employee_id="ADM001",
-                    department="IT Administration",
-                    user_type=UserType.NATIONAL_USER,  # Keep as NATIONAL_USER for username format
-                    can_create_roles=True,
-                    country_code="MG",
-                    province="Antananarivo",
-                    region="Analamanga",
-                    office_location="Central Office",
-                    language="en",
-                    timezone="Indian/Antananarivo",
-                    currency="MGA",
-                    status=UserStatus.ACTIVE,
-                    is_superuser=True,  # System admin with full superuser privileges
-                    is_verified=True
-                )
-                
-                db.add(admin)
-                db.flush()
-                
-                # Assign system admin role (highest level)
-                admin.roles = [roles["system_admin"]]
+            admin = User(
+                username="admin",
+                email="admin@madagascar-license.gov.mg",
+                password_hash=get_password_hash("Admin123"),
+                first_name="System",
+                last_name="Administrator",
+                display_name="System Administrator",
+                madagascar_id_number="ADM001",
+                id_document_type=MadagascarIDType.MADAGASCAR_ID,
+                phone_number="+261340000000",
+                employee_id="ADM001",
+                department="IT Administration",
+                user_type=UserType.NATIONAL_USER,  # Keep as NATIONAL_USER for username format
+                can_create_roles=True,
+                country_code="MG",
+                province="Antananarivo",
+                region="Analamanga",
+                office_location="Central Office",
+                language="en",
+                timezone="Indian/Antananarivo",
+                currency="MGA",
+                status=UserStatus.ACTIVE,
+                is_superuser=True,  # Superuser with no role needed - inherent full permissions
+                is_verified=True
+            )
             
-            # Create operational national user
-            national_admin = db.query(User).filter(User.username == "N001").first()
-            if not national_admin:
-                national_admin = User(
-                    username="N001",
-                    email="national.admin@madagascar-license.gov.mg",
-                    password_hash=get_password_hash("NationalAdmin2024!"),
-                    first_name="National",
-                    last_name="Administrator",
-                    display_name="National Administrator",
-                    madagascar_id_number="NAT001",
-                    id_document_type=MadagascarIDType.MADAGASCAR_ID,
-                    phone_number="+261340000001",
-                    employee_id="NAT001",
-                    department="National Administration",
-                    user_type=UserType.NATIONAL_USER,
-                    can_create_roles=False,  # Can't create roles, only assign existing ones
-                    country_code="MG",
-                    province="Antananarivo",
-                    region="Analamanga",
-                    office_location="National Office",
-                    language="en",
-                    timezone="Indian/Antananarivo",
-                    currency="MGA",
-                    status=UserStatus.ACTIVE,
-                    is_superuser=False,  # Regular national admin with role-based permissions
-                    is_verified=True
-                )
-                
-                db.add(national_admin)
-                db.flush()
-                
-                # Assign national admin role
-                national_admin.roles = [roles["national_admin"]]
+            db.add(admin)
+            db.flush()
+            
+            # Admin doesn't need role assignment - superuser has all permissions
             
             # Create test users
             test_users = [
@@ -571,7 +500,7 @@ async def initialize_users():
                     "madagascar_id_number": "CIN123456789",
                     "employee_id": "CLK001",
                     "department": "License Processing",
-                    "user_type": "LOCATION_USER",
+                    "user_type": UserType.LOCATION_USER,
                     "roles": ["clerk"]
                 },
                 {
@@ -583,7 +512,7 @@ async def initialize_users():
                     "madagascar_id_number": "CIN987654321",
                     "employee_id": "SUP001",
                     "department": "License Processing",
-                    "user_type": "LOCATION_USER",
+                    "user_type": UserType.LOCATION_USER,
                     "roles": ["office_supervisor"]
                 },
                 {
@@ -595,7 +524,7 @@ async def initialize_users():
                     "madagascar_id_number": "CIN456789123",
                     "employee_id": "PRT001",
                     "department": "Card Production",
-                    "user_type": "LOCATION_USER",
+                    "user_type": UserType.LOCATION_USER,
                     "roles": ["printer"]
                 }
             ]
@@ -604,8 +533,6 @@ async def initialize_users():
             for user_data in test_users:
                 existing = db.query(User).filter(User.username == user_data["username"]).first()
                 if not existing:
-                    from app.models.enums import UserType
-                    
                     user = User(
                         username=user_data["username"],
                         email=user_data["email"],
@@ -616,10 +543,12 @@ async def initialize_users():
                         id_document_type=MadagascarIDType.MADAGASCAR_ID,
                         employee_id=user_data["employee_id"],
                         department=user_data["department"],
-                        user_type=UserType(user_data["user_type"]),
+                        user_type=user_data["user_type"],
+                        phone_number="+261340000002",
                         country_code="MG",
                         province="Antananarivo",
-                        region="Analamanga",
+                        region="Analamanga", 
+                        office_location="Central Office",
                         language="en",
                         timezone="Indian/Antananarivo",
                         currency="MGA",
@@ -647,13 +576,6 @@ async def initialize_users():
                     "role": "system_admin",
                     "note": "Technical system administrator with full superuser privileges"
                 },
-                "national_admin_credentials": {
-                    "username": "N001",
-                    "password": "NationalAdmin2024!",
-                    "email": "national.admin@madagascar-license.gov.mg", 
-                    "role": "national_admin",
-                    "note": "Operational national administrator with role-based permissions"
-                },
                 "test_users": [
                     {"username": "clerk1", "password": "Clerk123!", "permissions": "person management + license processing"},
                     {"username": "supervisor1", "password": "Supervisor123!", "permissions": "all clerk permissions + deletions"},
@@ -662,7 +584,7 @@ async def initialize_users():
                 "created_users": created_users,
                 "permissions_created": len(permissions_data),
                 "roles_created": len(roles_data),
-                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser, N001 = operational national admin",
+                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser",
                 "timestamp": time.time()
             }
             
@@ -1080,7 +1002,6 @@ async def reset_database():
                 "location_users_created": location_users_result.get("total_users_created", 0)
             },
             "admin_credentials": users_result.get("admin_credentials"),
-            "national_admin_credentials": users_result.get("national_admin_credentials"),
             "note": "Madagascar License System fully initialized with location-based user management",
             "timestamp": time.time()
         }

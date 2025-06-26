@@ -175,8 +175,7 @@ async def create_user(
     db: Session = Depends(get_db)
 ):
     """
-    Create new user with username generation based on user type
-    Supports location-based, provincial, and national users
+    Create user with role hierarchy and scope validation
     """
     # Check if email already exists
     existing_user = crud_user.get_by_email(db=db, email=user_data.email)
@@ -185,26 +184,6 @@ async def create_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already exists"
         )
-    
-    # Check if Madagascar ID already exists
-    existing_id_user = crud_user.get_by_madagascar_id(db=db, madagascar_id=user_data.madagascar_id_number)
-    if existing_id_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Madagascar ID number already exists"
-        )
-    
-    # Check if employee ID exists (if provided)
-    if user_data.employee_id:
-        existing_employee = db.query(User).filter(
-            User.employee_id == user_data.employee_id,
-            User.is_active == True
-        ).first()
-        if existing_employee:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Employee ID already exists"
-            )
     
     # Validate role hierarchy - creator must have higher level than target roles
     if user_data.role_ids:
@@ -229,9 +208,12 @@ async def create_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Cannot create user with role '{target_role.display_name}' - insufficient role hierarchy level"
                 )
-    
+
     # Validate user type and required parameters
     user_type = user_data.user_type if hasattr(user_data, 'user_type') else UserType.LOCATION_USER
+    
+    # CRITICAL: Validate scope restrictions based on current user's permissions and scope
+    await validate_user_creation_scope(current_user, user_type, location_id, province_code, db)
     
     try:
         if user_type == UserType.LOCATION_USER:
@@ -293,6 +275,88 @@ async def create_user(
     return UserResponse.from_orm(user)
 
 
+async def validate_user_creation_scope(
+    current_user: User, 
+    target_user_type: UserType, 
+    location_id: Optional[uuid.UUID], 
+    province_code: Optional[str],
+    db: Session
+):
+    """
+    Validate that current user can create users in the specified scope
+    """
+    from app.models.location import Location
+    
+    # Superuser can create anywhere
+    if current_user.is_superuser:
+        return
+    
+    # National users can create anywhere
+    if current_user.user_type == UserType.NATIONAL_USER:
+        return
+    
+    # Provincial users can only create within their assigned province
+    if current_user.user_type == UserType.PROVINCIAL_USER:
+        if target_user_type == UserType.NATIONAL_USER:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Provincial users cannot create National users"
+            )
+        
+        if target_user_type == UserType.PROVINCIAL_USER:
+            if province_code != current_user.scope_province:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Provincial users can only create users within their province ({current_user.scope_province})"
+                )
+        
+        if target_user_type == UserType.LOCATION_USER:
+            if location_id:
+                location = db.query(Location).filter(Location.id == location_id).first()
+                if not location:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Location not found"
+                    )
+                if location.province_code != current_user.scope_province:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Provincial users can only create users within their province ({current_user.scope_province})"
+                    )
+        return
+    
+    # Location users (Office Supervisors) can only create within their office
+    if current_user.user_type == UserType.LOCATION_USER:
+        # Only office supervisors can create other users
+        is_supervisor = any(role.name == 'office_supervisor' for role in current_user.roles)
+        if not is_supervisor:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Office Supervisors can create new users"
+            )
+        
+        # Can only create other location users
+        if target_user_type != UserType.LOCATION_USER:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Office Supervisors can only create Location Users"
+            )
+        
+        # Must be in their own location
+        if location_id != current_user.primary_location_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Office Supervisors can only create users within their own office"
+            )
+        return
+    
+    # Default: deny if no rules match
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Insufficient permissions to create users"
+    )
+
+
 @router.post("/provincial", response_model=UserResponse, summary="Create Provincial User")
 async def create_provincial_user(
     user_data: UserCreate,
@@ -311,6 +375,9 @@ async def create_provincial_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid province code. Must be one of: {', '.join(valid_provinces)}"
         )
+    
+    # CRITICAL: Validate scope restrictions
+    await validate_user_creation_scope(current_user, UserType.PROVINCIAL_USER, None, province_code, db)
     
     # Check role hierarchy - only system admins and higher can create provincial users
     current_user_max_level = 0
@@ -369,6 +436,9 @@ async def create_national_user(
     """
     Create national user (National Admin) with national username generation
     """
+    # CRITICAL: Validate scope restrictions
+    await validate_user_creation_scope(current_user, UserType.NATIONAL_USER, None, None, db)
+    
     # Check role hierarchy - only system admins can create national users
     if not current_user.is_superuser:
         current_user_max_level = 0
