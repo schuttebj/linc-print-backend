@@ -163,10 +163,64 @@ class User(BaseModel):
         return False
     
     def has_permission(self, permission_name: str) -> bool:
-        """Check if user has specific permission through any assigned role"""
+        """Check if user has specific permission through any assigned role or inherent user type permissions"""
         if self.is_superuser:
             return True
         
+        # Provincial users have inherent provincial-level permissions
+        if self.user_type == UserType.PROVINCIAL_USER:
+            provincial_permissions = [
+                # User management at provincial level
+                "users.create", "users.read", "users.update", "users.activate", "users.deactivate", 
+                "users.view_statistics", "users.manage_permissions",
+                # Role management (viewing and assigning existing roles)
+                "roles.read", "roles.view_hierarchy", "roles.view_statistics",
+                # Provincial oversight
+                "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
+                # Location management within province
+                "locations.read", "locations.update", "locations.view_statistics",
+                # Person management
+                "persons.create", "persons.read", "persons.update", "persons.delete",
+                "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.delete",
+                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
+                # Reporting
+                "reports.provincial", "reports.advanced", "reports.export",
+                # License operations
+                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
+                # Audit access
+                "audit.read", "audit.provincial"
+            ]
+            if permission_name in provincial_permissions:
+                return True
+        
+        # National users have inherent national-level permissions (subset of national_admin role)
+        if self.user_type == UserType.NATIONAL_USER:
+            national_permissions = [
+                # All provincial permissions plus national scope
+                "users.create", "users.read", "users.update", "users.activate", "users.deactivate", 
+                "users.view_statistics", "users.manage_permissions", "users.bulk_create",
+                # Role management
+                "roles.read", "roles.view_hierarchy", "roles.view_statistics",
+                # National oversight
+                "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
+                "system.manage_provinces", "system.manage_locations", "system.nationwide_statistics",
+                # Location management nationwide
+                "locations.create", "locations.read", "locations.update", "locations.delete", "locations.view_statistics",
+                # Person management
+                "persons.create", "persons.read", "persons.update", "persons.delete",
+                "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.delete",
+                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
+                # Reporting
+                "reports.national", "reports.provincial", "reports.advanced", "reports.export",
+                # License operations
+                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
+                # Audit access
+                "audit.read", "audit.provincial", "audit.national"
+            ]
+            if permission_name in national_permissions:
+                return True
+        
+        # Check role-based permissions
         for role in self.roles:
             if role.has_permission(permission_name):
                 return True

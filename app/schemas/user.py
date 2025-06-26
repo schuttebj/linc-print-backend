@@ -39,7 +39,7 @@ class RoleHierarchyEnum(int, Enum):
     """Role hierarchy enum for API"""
     CLERK = 1
     OFFICE_SUPERVISOR = 2
-    TRAFFIC_DEPT_HEAD = 3
+    NATIONAL_ADMIN = 3
     SYSTEM_ADMIN = 4
 
 

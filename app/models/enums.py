@@ -55,9 +55,9 @@ class RoleHierarchy(PythonEnum):
     Role hierarchy levels for Madagascar License System
     Higher numbers can create lower numbered roles
     """
-    SYSTEM_ADMIN = 4        # Can create all roles
-    TRAFFIC_DEPT_HEAD = 3   # Can create Office Supervisor, Clerk
-    OFFICE_SUPERVISOR = 2   # Can create Clerk only
+    SYSTEM_ADMIN = 4        # Technical system administrator (can create all roles)
+    NATIONAL_ADMIN = 3      # National administrator (can create Office Supervisor, Clerk)
+    OFFICE_SUPERVISOR = 2   # Office supervisor (can create Clerk only)
     CLERK = 1              # Cannot create other users
 
 
@@ -143,7 +143,7 @@ USER_TYPE_DISPLAY_NAMES = {
 # Role hierarchy display names mapping for frontend
 ROLE_HIERARCHY_DISPLAY_NAMES = {
     RoleHierarchy.SYSTEM_ADMIN: "SYSTEM ADMINISTRATOR",
-    RoleHierarchy.TRAFFIC_DEPT_HEAD: "TRAFFIC DEPARTMENT HEAD",
+    RoleHierarchy.NATIONAL_ADMIN: "NATIONAL ADMINISTRATOR",
     RoleHierarchy.OFFICE_SUPERVISOR: "OFFICE SUPERVISOR", 
     RoleHierarchy.CLERK: "CLERK",
 }
