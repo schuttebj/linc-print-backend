@@ -212,6 +212,16 @@ async def create_user(
     # Validate user type and required parameters
     user_type = user_data.user_type if hasattr(user_data, 'user_type') else UserType.LOCATION_USER
     
+    # Ensure user_type is properly converted to enum if it's a string
+    if isinstance(user_type, str):
+        try:
+            user_type = UserType(user_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user type: {user_type}. Valid options: {[ut.value for ut in UserType]}"
+            )
+    
     # CRITICAL: Validate scope restrictions based on current user's permissions and scope
     await validate_user_creation_scope(current_user, user_type, location_id, province_code, db)
     
@@ -249,10 +259,17 @@ async def create_user(
                 created_by=current_user.username
             )
         
+        elif user_type == UserType.SYSTEM_USER:
+            user = crud_user.create_system_user(
+                db=db,
+                obj_in=user_data,
+                created_by=current_user.username
+            )
+        
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown user type: {user_type}"
+                detail=f"Unknown user type: {user_type}. Valid types: {[ut.value for ut in UserType]}"
             )
     
     except ValueError as e:

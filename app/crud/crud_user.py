@@ -198,6 +198,51 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         
         return user
     
+    def create_system_user(
+        self,
+        db: Session,
+        *,
+        obj_in: UserCreate,
+        created_by: Optional[str] = None
+    ) -> User:
+        """Create system user with system username generation"""
+        from app.models.enums import UserType
+        
+        # Generate system username
+        username = User.generate_system_username(db)
+        
+        # Check if username already exists
+        existing_user = self.get_by_username(db=db, username=username)
+        if existing_user:
+            raise ValueError(f"Username {username} already exists")
+        
+        # Hash password
+        hashed_password = pwd_context.hash(obj_in.password)
+        
+        # Create user object
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids"})
+        user_data.update({
+            "username": username,
+            "password_hash": hashed_password,
+            "user_type": UserType.SYSTEM_USER,
+            "can_create_roles": True,  # System users can create all roles
+            "created_by": created_by
+        })
+        
+        user = User(**user_data)
+        db.add(user)
+        db.flush()
+        
+        # Assign roles
+        if obj_in.role_ids:
+            roles = db.query(Role).filter(Role.id.in_(obj_in.role_ids)).all()
+            user.roles = roles
+        
+        db.commit()
+        db.refresh(user)
+        
+        return user
+    
     def get_by_username(self, db: Session, *, username: str) -> Optional[User]:
         """Get user by username"""
         return db.query(User).filter(User.username == username).first()
