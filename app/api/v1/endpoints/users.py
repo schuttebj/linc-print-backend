@@ -577,6 +577,8 @@ async def update_user(
         "department": user.department,
         "employee_id": user.employee_id,
         "status": user.status.value if user.status else None,
+        "id_document_type": user.id_document_type.value if user.id_document_type else None,
+        "user_type": user.user_type.value if user.user_type else None,
         "roles": [role.name for role in user.roles],
         "primary_location_id": str(user.primary_location_id) if user.primary_location_id else None,
     }
@@ -592,7 +594,10 @@ async def update_user(
         if hasattr(user, field):
             old_value = getattr(user, field)
             if old_value != value:
-                changes[field] = {"old": old_value, "new": value}
+                # Serialize enum values for JSON compatibility
+                serialized_old = old_value.value if hasattr(old_value, 'value') else old_value
+                serialized_new = value.value if hasattr(value, 'value') else value
+                changes[field] = {"old": serialized_old, "new": serialized_new}
                 setattr(user, field, value)
     
     # Handle role assignments
