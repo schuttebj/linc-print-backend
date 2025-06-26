@@ -30,9 +30,10 @@ class MadagascarIDTypeEnum(str, Enum):
 
 class UserTypeEnum(str, Enum):
     """User type enum for API"""
+    SYSTEM_USER = "SYSTEM_USER"
+    NATIONAL_ADMIN = "NATIONAL_ADMIN"
+    PROVINCIAL_ADMIN = "PROVINCIAL_ADMIN"
     LOCATION_USER = "LOCATION_USER"
-    PROVINCIAL_USER = "PROVINCIAL_USER"
-    NATIONAL_USER = "NATIONAL_USER"
 
 
 class RoleHierarchyEnum(int, Enum):

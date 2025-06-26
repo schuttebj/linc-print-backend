@@ -229,11 +229,11 @@ async def create_user(
                 created_by=current_user.username
             )
         
-        elif user_type == UserType.PROVINCIAL_USER:
+        elif user_type == UserType.PROVINCIAL_ADMIN:
             if not province_code:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="province_code required for PROVINCIAL_USER"
+                    detail="province_code required for PROVINCIAL_ADMIN"
                 )
             user = crud_user.create_provincial_user(
                 db=db,
@@ -242,7 +242,7 @@ async def create_user(
                 created_by=current_user.username
             )
         
-        elif user_type == UserType.NATIONAL_USER:
+        elif user_type == UserType.NATIONAL_ADMIN:
             user = crud_user.create_national_user(
                 db=db,
                 obj_in=user_data,
@@ -384,7 +384,7 @@ async def create_provincial_user(
         )
     
     # CRITICAL: Validate scope restrictions
-    await validate_user_creation_scope(current_user, UserType.PROVINCIAL_USER, None, province_code, db)
+    await validate_user_creation_scope(current_user, UserType.PROVINCIAL_ADMIN, None, province_code, db)
     
     # Check role hierarchy - only system admins and higher can create provincial users
     current_user_max_level = 0
@@ -444,7 +444,7 @@ async def create_national_user(
     Create national user (National Admin) with national username generation
     """
     # CRITICAL: Validate scope restrictions
-    await validate_user_creation_scope(current_user, UserType.NATIONAL_USER, None, None, db)
+    await validate_user_creation_scope(current_user, UserType.NATIONAL_ADMIN, None, None, db)
     
     # Check role hierarchy - only system admins can create national users
     if not current_user.is_superuser:
@@ -1043,7 +1043,7 @@ async def get_users_by_type(
     db: Session = Depends(get_db)
 ):
     """
-    Get users filtered by user type (LOCATION_USER, PROVINCIAL_USER, NATIONAL_USER)
+    Get users filtered by user type (LOCATION_USER, PROVINCIAL_ADMIN, NATIONAL_ADMIN, SYSTEM_USER)
     """
     # Validate user type
     try:
@@ -1435,16 +1435,16 @@ async def bulk_create_users(
                     location_id=location_id,
                     created_by=current_user.username
                 )
-            elif user_type == UserType.PROVINCIAL_USER:
+            elif user_type == UserType.PROVINCIAL_ADMIN:
                 if not user_data.scope_province:
-                    raise ValueError("scope_province required for PROVINCIAL_USER")
+                    raise ValueError("scope_province required for PROVINCIAL_ADMIN")
                 user = crud_user.create_provincial_user(
                     db=db,
                     obj_in=user_data,
                     province_code=user_data.scope_province,
                     created_by=current_user.username
                 )
-            elif user_type == UserType.NATIONAL_USER:
+            elif user_type == UserType.NATIONAL_ADMIN:
                 user = crud_user.create_national_user(
                     db=db,
                     obj_in=user_data,

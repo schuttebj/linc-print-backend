@@ -53,11 +53,11 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         
         if user_type == UserType.LOCATION_USER:
             username = location.generate_next_user_code()
-        elif user_type == UserType.PROVINCIAL_USER:
+        elif user_type == UserType.PROVINCIAL_ADMIN:
             if not obj_in.scope_province:
-                raise ValueError("scope_province required for PROVINCIAL_USER")
+                raise ValueError("scope_province required for PROVINCIAL_ADMIN")
             username = User.generate_provincial_username(obj_in.scope_province, db)
-        elif user_type == UserType.NATIONAL_USER:
+        elif user_type == UserType.NATIONAL_ADMIN:
             username = User.generate_national_username(db)
         else:
             raise ValueError(f"Unknown user type: {user_type}")
@@ -133,7 +133,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
-            "user_type": UserType.PROVINCIAL_USER,
+            "user_type": UserType.PROVINCIAL_ADMIN,
             "scope_province": province_code,
             "can_create_roles": True,  # Provincial users can create office-level roles
             "created_by": created_by
@@ -179,7 +179,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
-            "user_type": UserType.NATIONAL_USER,
+            "user_type": UserType.NATIONAL_ADMIN,
             "can_create_roles": True,  # National users can create all roles
             "created_by": created_by
         })
