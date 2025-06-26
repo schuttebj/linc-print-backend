@@ -456,6 +456,20 @@ async def initialize_users():
                     role.permissions = role_permission_objects
                     roles[role_data["name"]] = role
                 else:
+                    # Update existing role with new hierarchy values
+                    existing.hierarchy_level = role_data["hierarchy_level"]
+                    existing.user_type_restriction = role_data["user_type_restriction"]
+                    existing.scope_type = role_data["scope_type"]
+                    existing.display_name = role_data["display_name"]
+                    existing.description = role_data["description"]
+                    
+                    # Update permissions
+                    role_permission_objects = []
+                    for perm_name in role_data["permissions"]:
+                        if perm_name in permissions:
+                            role_permission_objects.append(permissions[perm_name])
+                    
+                    existing.permissions = role_permission_objects
                     roles[role_data["name"]] = existing
             
             # Create admin user

@@ -188,6 +188,7 @@ class RoleResponse(BaseModel):
     name: str
     display_name: str
     description: Optional[str]
+    hierarchy_level: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -335,19 +336,76 @@ class RoleDetailResponse(BaseModel):
     display_name: str
     description: Optional[str]
     is_system_role: bool
-    allowed_modules: List[str]
+    allowed_modules: Optional[List[str]] = []
     level: int
     
     # NEW FIELDS - Enhanced role hierarchy
-    hierarchy_level: int
-    user_type_restriction: Optional[UserTypeEnum]
-    scope_type: str
+    hierarchy_level: Optional[int] = None
+    user_type_restriction: Optional[UserTypeEnum] = None
+    scope_type: Optional[str] = "location"
     
-    permissions: List[PermissionResponse]
-    parent_role: Optional[RoleResponse]
-    child_roles: List[RoleResponse]
+    permissions: List[PermissionResponse] = []
+    parent_role: Optional[RoleResponse] = None
+    child_roles: List[RoleResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Custom from_orm to handle data conversion"""
+        # Handle allowed_modules conversion from string to list
+        allowed_modules = []
+        if hasattr(obj, 'allowed_modules') and obj.allowed_modules:
+            try:
+                if isinstance(obj.allowed_modules, str):
+                    # Try to parse as JSON list, fallback to simple split
+                    import json
+                    try:
+                        allowed_modules = json.loads(obj.allowed_modules)
+                    except:
+                        # Fallback to split by comma
+                        allowed_modules = [m.strip() for m in obj.allowed_modules.split(',') if m.strip()]
+                elif isinstance(obj.allowed_modules, list):
+                    allowed_modules = obj.allowed_modules
+            except:
+                allowed_modules = []
+        
+        # Handle parent_role - ensure it's a single object or None
+        parent_role = None
+        if hasattr(obj, 'parent_role') and obj.parent_role:
+            if isinstance(obj.parent_role, list):
+                parent_role = obj.parent_role[0] if obj.parent_role else None
+            else:
+                parent_role = obj.parent_role
+        
+        # Handle child_roles - ensure it's a list
+        child_roles = []
+        if hasattr(obj, 'child_roles') and obj.child_roles:
+            if isinstance(obj.child_roles, list):
+                child_roles = obj.child_roles
+            else:
+                child_roles = [obj.child_roles]
+        
+        # Handle permissions - ensure it's a list
+        permissions = []
+        if hasattr(obj, 'permissions') and obj.permissions:
+            permissions = obj.permissions if isinstance(obj.permissions, list) else [obj.permissions]
+        
+        return cls(
+            id=obj.id,
+            name=obj.name,
+            display_name=obj.display_name,
+            description=obj.description,
+            is_system_role=obj.is_system_role,
+            allowed_modules=allowed_modules,
+            level=obj.level,
+            hierarchy_level=getattr(obj, 'hierarchy_level', None),
+            user_type_restriction=getattr(obj, 'user_type_restriction', None),
+            scope_type=getattr(obj, 'scope_type', 'location'),
+            permissions=permissions,
+            parent_role=parent_role,
+            child_roles=child_roles
+        )
 
 
 class RoleCreate(BaseModel):
