@@ -797,7 +797,7 @@ async def initialize_location_users():
     try:
         from app.core.database import get_db
         from app.models.user import User, Role, Location
-        from app.schemas.user import UserCreate, MadagascarIDTypeEnum
+        from app.schemas.user import UserCreate
         from app.crud.crud_user import user as crud_user
         from app.crud.crud_location import location as crud_location
         
@@ -838,7 +838,7 @@ async def initialize_location_users():
                     "first_name": "MARIE",
                     "last_name": "RAZAFY",
                     "madagascar_id_number_template": "1{province_num:02d}234567890",
-                    "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                    "id_document_type": "MADAGASCAR_ID",
                     "password": "Clerk123!",
                     "employee_id_template": "CLK{location}001",
                     "department": "LICENSE PROCESSING",
@@ -849,7 +849,7 @@ async def initialize_location_users():
                     "first_name": "JEAN",
                     "last_name": "RAKOTO",
                     "madagascar_id_number_template": "2{province_num:02d}987654321",
-                    "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                    "id_document_type": "MADAGASCAR_ID",
                     "password": "Supervisor123!",
                     "employee_id_template": "SUP{location}001",
                     "department": "LICENSE PROCESSING",
@@ -860,7 +860,7 @@ async def initialize_location_users():
                     "first_name": "PAUL",
                     "last_name": "ANDRY",
                     "madagascar_id_number_template": "3{province_num:02d}456789123",
-                    "id_document_type": MadagascarIDTypeEnum.PASSPORT,
+                    "id_document_type": "PASSPORT",
                     "password": "Printer123!",
                     "employee_id_template": "PRT{location}001",
                     "department": "CARD PRODUCTION",

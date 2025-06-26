@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 from app.models.base import BaseModel
 from app.models.user import User, Location, Role, Permission, UserStatus, MadagascarIDType
 from app.schemas.location import LocationCreate, ProvinceCodeEnum, OfficeTypeEnum
-from app.schemas.user import UserCreate, MadagascarIDTypeEnum
+from app.schemas.user import UserCreate
 from app.crud.crud_location import location as crud_location
 from app.crud.crud_user import user as crud_user
 
@@ -137,7 +137,7 @@ def test_user_creation_with_locations(locations):
                 "first_name": "JEAN",
                 "last_name": "RAKOTO",
                 "madagascar_id_number": "101234567890",
-                "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                "id_document_type": "MADAGASCAR_ID",
                 "password": "SecurePassword123!",
                 "confirm_password": "SecurePassword123!",
                 "phone_number": "+261 32 123 4567",
@@ -150,7 +150,7 @@ def test_user_creation_with_locations(locations):
                 "first_name": "MARIE",
                 "last_name": "RABE",
                 "madagascar_id_number": "201234567890",
-                "id_document_type": MadagascarIDTypeEnum.MADAGASCAR_ID,
+                "id_document_type": "MADAGASCAR_ID",
                 "password": "SecurePassword123!",
                 "confirm_password": "SecurePassword123!",
                 "phone_number": "+261 33 987 6543",
@@ -163,7 +163,7 @@ def test_user_creation_with_locations(locations):
                 "first_name": "PAUL", 
                 "last_name": "RANDRIA",
                 "madagascar_id_number": "301234567890",
-                "id_document_type": MadagascarIDTypeEnum.PASSPORT,
+                "id_document_type": "PASSPORT",
                 "password": "SecurePassword123!",
                 "confirm_password": "SecurePassword123!",
                 "phone_number": "+261 34 555 7777",
