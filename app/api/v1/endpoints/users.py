@@ -291,41 +291,48 @@ async def validate_user_creation_scope(
     if current_user.is_superuser:
         return
     
-    # National users can create anywhere
-    if current_user.user_type == UserType.NATIONAL_USER:
+    # System users can create anywhere (including same level)
+    if current_user.user_type == UserType.SYSTEM_USER:
         return
     
-    # Provincial users can only create within their assigned province
-    if current_user.user_type == UserType.PROVINCIAL_USER:
-        if target_user_type == UserType.NATIONAL_USER:
+    # National admins can create Provincial and Location users anywhere
+    if current_user.user_type == UserType.NATIONAL_ADMIN:
+        if target_user_type == UserType.SYSTEM_USER:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Provincial users cannot create National users"
+                detail="National admins cannot create System users"
             )
-        
-        if target_user_type == UserType.PROVINCIAL_USER:
-            if province_code != current_user.scope_province:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Provincial users can only create users within their province ({current_user.scope_province})"
-                )
-        
-        if target_user_type == UserType.LOCATION_USER:
-            if location_id:
-                location = db.query(Location).filter(Location.id == location_id).first()
-                if not location:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail="Location not found"
-                    )
-                if location.province_code != current_user.scope_province:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Provincial users can only create users within their province ({current_user.scope_province})"
-                    )
+        if target_user_type == UserType.NATIONAL_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="National admins cannot create other National admins"
+            )
+        # Can create Provincial and Location users anywhere
         return
     
-    # Location users (Office Supervisors) can only create within their office
+    # Provincial admins can only create Location users within their assigned province
+    if current_user.user_type == UserType.PROVINCIAL_ADMIN:
+        if target_user_type != UserType.LOCATION_USER:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Provincial admins can only create Location users"
+            )
+        
+        if location_id:
+            location = db.query(Location).filter(Location.id == location_id).first()
+            if not location:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Location not found"
+                )
+            if location.province_code != current_user.scope_province:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Provincial admins can only create users within their province ({current_user.scope_province})"
+                )
+        return
+    
+    # Location users (Office Supervisors) can only create Clerks within their office
     if current_user.user_type == UserType.LOCATION_USER:
         # Only office supervisors can create other users
         is_supervisor = any(role.name == 'office_supervisor' for role in current_user.roles)

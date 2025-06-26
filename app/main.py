@@ -471,7 +471,7 @@ async def initialize_users():
                 phone_number="+261340000000",
                 employee_id="ADM001",
                 department="IT Administration",
-                user_type=UserType.NATIONAL_USER,  # Keep as NATIONAL_USER for username format
+                user_type=UserType.SYSTEM_USER,  # Changed to SYSTEM_USER
                 can_create_roles=True,
                 country_code="MG",
                 province="Antananarivo",

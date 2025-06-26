@@ -167,8 +167,40 @@ class User(BaseModel):
         if self.is_superuser:
             return True
         
-        # Provincial users have inherent provincial-level permissions
-        if self.user_type == UserType.PROVINCIAL_USER:
+        # System users have all permissions (like superuser but through user type)
+        if self.user_type == UserType.SYSTEM_USER:
+            return True
+        
+        # National admins have comprehensive system-wide permissions
+        if self.user_type == UserType.NATIONAL_ADMIN:
+            national_permissions = [
+                # User management at national level
+                "users.create", "users.read", "users.update", "users.activate", "users.deactivate", 
+                "users.view_statistics", "users.manage_permissions", "users.bulk_create",
+                # Role management (viewing and assigning existing roles)
+                "roles.read", "roles.view_hierarchy", "roles.view_statistics",
+                # National oversight
+                "national.manage_all", "national.view_statistics", "national.manage_provinces",
+                # Provincial management
+                "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
+                # Location management system-wide
+                "locations.create", "locations.read", "locations.update", "locations.delete", "locations.view_statistics",
+                # Person management
+                "persons.create", "persons.read", "persons.update", "persons.delete",
+                "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.delete",
+                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
+                # Reporting
+                "reports.national", "reports.provincial", "reports.advanced", "reports.export",
+                # License operations
+                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
+                # Audit access
+                "audit.read", "audit.national"
+            ]
+            if permission_name in national_permissions:
+                return True
+        
+        # Provincial admins have provincial-level permissions
+        if self.user_type == UserType.PROVINCIAL_ADMIN:
             provincial_permissions = [
                 # User management at provincial level
                 "users.create", "users.read", "users.update", "users.activate", "users.deactivate", 
@@ -192,38 +224,13 @@ class User(BaseModel):
             ]
             if permission_name in provincial_permissions:
                 return True
-        
-        # National users have inherent national-level permissions (subset of national_admin role)
-        if self.user_type == UserType.NATIONAL_USER:
-            national_permissions = [
-                # All provincial permissions plus national scope
-                "users.create", "users.read", "users.update", "users.activate", "users.deactivate", 
-                "users.view_statistics", "users.manage_permissions", "users.bulk_create",
-                # Role management
-                "roles.read", "roles.view_hierarchy", "roles.view_statistics",
-                # National oversight
-                "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
-                "system.manage_provinces", "system.manage_locations", "system.nationwide_statistics",
-                # Location management nationwide
-                "locations.create", "locations.read", "locations.update", "locations.delete", "locations.view_statistics",
-                # Person management
-                "persons.create", "persons.read", "persons.update", "persons.delete",
-                "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.delete",
-                "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
-                # Reporting
-                "reports.national", "reports.provincial", "reports.advanced", "reports.export",
-                # License operations
-                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
-                # Audit access
-                "audit.read", "audit.provincial", "audit.national"
-            ]
-            if permission_name in national_permissions:
-                return True
-        
-        # Check role-based permissions
+
+        # Check role-based permissions for location users
         for role in self.roles:
-            if role.has_permission(permission_name):
-                return True
+            for permission in role.permissions:
+                if permission.name == permission_name:
+                    return True
+
         return False
     
     def has_role(self, role_name: str) -> bool:
@@ -253,10 +260,26 @@ class User(BaseModel):
         return any(location.id == location_id for location in self.assigned_locations)
     
     @classmethod
-    def generate_username_from_location(cls, location: 'Location') -> str:
-        """Generate username based on location code"""
-        return location.generate_next_user_code()
-    
+    def generate_system_username(cls, db_session) -> str:
+        """Generate username for system user (e.g., S001, S002)"""
+        from sqlalchemy.orm.exc import NoResultFound
+        
+        try:
+            counter = db_session.query(SystemUserCounter).first()
+            if not counter:
+                counter = SystemUserCounter(next_user_number=1)
+                db_session.add(counter)
+                db_session.commit()
+        except NoResultFound:
+            # Create new counter
+            counter = SystemUserCounter(next_user_number=1)
+            db_session.add(counter)
+            db_session.commit()
+        
+        username = counter.generate_next_user_code()
+        counter.increment_counter(db_session)
+        return username
+
     @classmethod
     def generate_provincial_username(cls, province_code: str, db_session) -> str:
         """Generate username for provincial user (e.g., T007, A002)"""
@@ -275,48 +298,49 @@ class User(BaseModel):
         username = counter.generate_next_user_code()
         counter.increment_counter(db_session)
         return username
-    
+
     @classmethod
     def generate_national_username(cls, db_session) -> str:
         """Generate username for national user (e.g., N001, N002)"""
         from sqlalchemy.orm.exc import NoResultFound
         
         try:
-            counter = db_session.query(NationalUserCounter).filter(
-                NationalUserCounter.counter_type == 'national'
-            ).one()
+            counter = db_session.query(NationalUserCounter).first()
+            if not counter:
+                counter = NationalUserCounter(next_user_number=1)
+                db_session.add(counter)
+                db_session.commit()
         except NoResultFound:
             # Create new counter
-            counter = NationalUserCounter(counter_type='national', next_user_number=1)
+            counter = NationalUserCounter(next_user_number=1)
             db_session.add(counter)
             db_session.commit()
         
         username = counter.generate_next_user_code()
         counter.increment_counter(db_session)
         return username
-    
+
     @classmethod
-    def generate_username_by_type(cls, user_type: UserType, db_session, location_id: uuid.UUID = None, province_code: str = None) -> str:
+    def generate_username_by_type(cls, user_type: UserType, db_session, location_id=None, province_code=None) -> str:
         """Generate username based on user type"""
-        if user_type == UserType.LOCATION_USER:
+        if user_type == UserType.SYSTEM_USER:
+            return cls.generate_system_username(db_session)
+        elif user_type == UserType.NATIONAL_ADMIN:
+            return cls.generate_national_username(db_session)
+        elif user_type == UserType.PROVINCIAL_ADMIN:
+            if not province_code:
+                raise ValueError("province_code required for PROVINCIAL_ADMIN")
+            return cls.generate_provincial_username(province_code, db_session)
+        elif user_type == UserType.LOCATION_USER:
             if not location_id:
                 raise ValueError("location_id required for LOCATION_USER")
             location = db_session.query(Location).filter(Location.id == location_id).first()
             if not location:
-                raise ValueError(f"Location with id {location_id} not found")
-            return cls.generate_username_from_location(location)
-        
-        elif user_type == UserType.PROVINCIAL_USER:
-            if not province_code:
-                raise ValueError("province_code required for PROVINCIAL_USER")
-            return cls.generate_provincial_username(province_code, db_session)
-        
-        elif user_type == UserType.NATIONAL_USER:
-            return cls.generate_national_username(db_session)
-        
+                raise ValueError("Location not found")
+            return location.generate_next_user_code()
         else:
             raise ValueError(f"Unknown user type: {user_type}")
-    
+
     @classmethod
     def validate_username_format(cls, username: str) -> bool:
         """
@@ -343,14 +367,17 @@ class User(BaseModel):
     @classmethod
     def get_user_type_from_username(cls, username: str) -> UserType:
         """Determine user type from username format"""
-        if re.match(r'^[TDFMAU]\d{6}$', username):
+        if username.startswith('S'):
+            return UserType.SYSTEM_USER
+        elif username.startswith('N'):
+            return UserType.NATIONAL_ADMIN
+        elif len(username) == 4 and username[0].isalpha():
+            return UserType.PROVINCIAL_ADMIN
+        elif len(username) == 6 and username[0].isalpha():
             return UserType.LOCATION_USER
-        elif re.match(r'^[TDFMAU]\d{3}$', username):
-            return UserType.PROVINCIAL_USER
-        elif re.match(r'^N\d{3}$', username):
-            return UserType.NATIONAL_USER
         else:
-            raise ValueError(f"Invalid username format: {username}")
+            # Default fallback
+            return UserType.LOCATION_USER
     
     @classmethod
     def can_create_user_role(cls, creator_role_level: int, target_role_level: int) -> bool:
@@ -564,50 +591,51 @@ class UserPermissionOverride(BaseModel):
         return False
 
 
-class ProvinceUserCounter(BaseModel):
-    """
-    Counter table for provincial user code generation
-    Tracks next user number for each province (T007, A002, etc.)
-    """
-    __tablename__ = "province_user_counters"
+class SystemUserCounter(BaseModel):
+    """Counter for system user username generation"""
+    __tablename__ = "system_user_counters"
     
-    province_code = Column(String(1), primary_key=True, comment="Province code (T, A, D, F, M, U)")
-    next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (001-999)")
-    
-    def __repr__(self):
-        return f"<ProvinceUserCounter(province_code='{self.province_code}', next_user_number={self.next_user_number})>"
+    next_user_number = Column(Integer, nullable=False, default=1, comment="Next available user number")
     
     def generate_next_user_code(self) -> str:
-        """Generate the next provincial user code"""
-        user_code = f"{self.province_code}{self.next_user_number:03d}"
-        return user_code
+        """Generate next system user code (S001, S002, etc.)"""
+        return f"S{self.next_user_number:03d}"
     
-    def increment_counter(self, db_session) -> None:
-        """Increment the user counter"""
+    def increment_counter(self, db_session):
+        """Increment the counter and save"""
+        self.next_user_number += 1
+        db_session.commit()
+
+
+class ProvinceUserCounter(BaseModel):
+    """Counter for provincial user username generation by province"""
+    __tablename__ = "province_user_counters"
+    
+    province_code = Column(String(1), nullable=False, unique=True, comment="Province code (T, A, D, F, M, U)")
+    next_user_number = Column(Integer, nullable=False, default=1, comment="Next available user number for this province")
+    
+    def generate_next_user_code(self) -> str:
+        """Generate next provincial user code (T007, A002, etc.)"""
+        return f"{self.province_code}{self.next_user_number:03d}"
+    
+    def increment_counter(self, db_session):
+        """Increment the counter and save"""
         self.next_user_number += 1
         db_session.commit()
 
 
 class NationalUserCounter(BaseModel):
-    """
-    Counter table for national user code generation
-    Tracks next user number for national users (N001, N002, etc.)
-    """
+    """Counter for national user username generation"""
     __tablename__ = "national_user_counters"
     
-    counter_type = Column(String(20), primary_key=True, default='national', comment="Counter type identifier")
-    next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (001-999)")
-    
-    def __repr__(self):
-        return f"<NationalUserCounter(counter_type='{self.counter_type}', next_user_number={self.next_user_number})>"
+    next_user_number = Column(Integer, nullable=False, default=1, comment="Next available user number")
     
     def generate_next_user_code(self) -> str:
-        """Generate the next national user code"""
-        user_code = f"N{self.next_user_number:03d}"
-        return user_code
+        """Generate next national user code (N001, N002, etc.)"""
+        return f"N{self.next_user_number:03d}"
     
-    def increment_counter(self, db_session) -> None:
-        """Increment the user counter"""
+    def increment_counter(self, db_session):
+        """Increment the counter and save"""
         self.next_user_number += 1
         db_session.commit()
 

@@ -45,9 +45,10 @@ class UserType(PythonEnum):
     User types for Madagascar License System
     Determines username format and access scope
     """
-    LOCATION_USER = "LOCATION_USER"      # T010001 - Clerks, Supervisors, Printers
-    PROVINCIAL_USER = "PROVINCIAL_USER"  # T007 - Traffic Department Head
-    NATIONAL_USER = "NATIONAL_USER"      # N001 - National Admin
+    SYSTEM_USER = "SYSTEM_USER"          # S001 - System Admin (You + Head of Traffic Dept)
+    NATIONAL_ADMIN = "NATIONAL_ADMIN"    # N001 - National Admin
+    PROVINCIAL_ADMIN = "PROVINCIAL_ADMIN" # T007 - Provincial Admin  
+    LOCATION_USER = "LOCATION_USER"      # T010001 - Office roles (Supervisor, Clerk, Printer)
 
 
 class RoleHierarchy(PythonEnum):
@@ -135,9 +136,10 @@ PROVINCE_DISPLAY_NAMES = {
 
 # User type display names mapping for frontend
 USER_TYPE_DISPLAY_NAMES = {
+    UserType.SYSTEM_USER: "SYSTEM USER",
+    UserType.NATIONAL_ADMIN: "NATIONAL ADMIN",
+    UserType.PROVINCIAL_ADMIN: "PROVINCIAL ADMIN",
     UserType.LOCATION_USER: "LOCATION USER",
-    UserType.PROVINCIAL_USER: "PROVINCIAL ADMIN",
-    UserType.NATIONAL_USER: "NATIONAL ADMIN",
 }
 
 # Role hierarchy display names mapping for frontend
