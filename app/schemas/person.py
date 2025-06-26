@@ -184,7 +184,7 @@ class PersonBase(BaseModel):
     person_nature: str = Field(..., description="Person nature: 01=Male, 02=Female")
     birth_date: Optional[date] = Field(None, description="Date of birth")
     nationality_code: str = Field(default="MG", max_length=3, description="Country code (MG=Madagascar)")
-    preferred_language: str = Field(default="mg", max_length=10, description="mg=Malagasy, fr=French, en=English")
+    preferred_language: str = Field(default="MG", max_length=10, description="MG=Malagasy, FR=French, EN=English")
     email_address: Optional[EmailStr] = Field(None, description="Email address")
     work_phone: Optional[str] = Field(None, max_length=20, description="Work phone number")
     cell_phone_country_code: str = Field(default="+261", max_length=5, description="Cell phone country code")
@@ -215,10 +215,10 @@ class PersonBase(BaseModel):
 
     @validator('preferred_language')
     def validate_language(cls, v):
-        """Validate and normalize language code (keep lowercase)"""
-        v = v.lower() if v else 'mg'
-        if v not in ['mg', 'fr', 'en']:
-            raise ValueError('Preferred language must be mg, fr, or en')
+        """Validate and normalize language code (keep uppercase)"""
+        v = v.upper() if v else 'MG'
+        if v not in ['MG', 'FR', 'EN']:
+            raise ValueError('Preferred language must be MG, FR, or EN')
         return v
 
     @validator('cell_phone')

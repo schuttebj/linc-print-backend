@@ -22,10 +22,10 @@ def capitalize_text_fields(target, value, oldvalue, initiator):
     return value
 
 
-def lowercase_language_field(target, value, oldvalue, initiator):
-    """Event listener to keep language fields lowercase"""
+def uppercase_language_field(target, value, oldvalue, initiator):
+    """Event listener to keep language fields uppercase"""
     if value and isinstance(value, str):
-        return value.lower()
+        return value.upper()
     return value
 
 
@@ -55,7 +55,7 @@ class Person(BaseModel):
     
     # Nationality and language
     nationality_code = Column(String(3), nullable=False, default="MG", comment="Country code (MG=Madagascar)")
-    preferred_language = Column(String(10), nullable=False, default="mg", comment="mg=Malagasy, fr=French, en=English")
+    preferred_language = Column(String(10), nullable=False, default="MG", comment="MG=Malagasy, FR=French, EN=English")
     
     # Contact information (simplified)
     email_address = Column(String(100), nullable=True, comment="Email address")
@@ -96,7 +96,7 @@ event.listen(Person.middle_name, 'set', capitalize_text_fields)
 event.listen(Person.person_nature, 'set', capitalize_text_fields)
 event.listen(Person.nationality_code, 'set', capitalize_text_fields)
 event.listen(Person.email_address, 'set', capitalize_text_fields)
-event.listen(Person.preferred_language, 'set', lowercase_language_field)
+event.listen(Person.preferred_language, 'set', uppercase_language_field)
 
 
 class PersonAlias(BaseModel):

@@ -40,7 +40,7 @@ def capitalize_person_data(person: Person) -> Person:
     if person.nationality_code:
         person.nationality_code = person.nationality_code.upper()
     if person.preferred_language:
-        person.preferred_language = person.preferred_language.lower()  # Language codes stay lowercase
+        person.preferred_language = person.preferred_language.upper()  # Language codes stay uppercase
     if person.email_address:
         person.email_address = person.email_address.upper()
     
