@@ -575,7 +575,7 @@ async def update_user(
         "madagascar_id_number": user.madagascar_id_number,
         "phone_number": user.phone_number,
         "department": user.department,
-        "job_title": user.job_title,
+        "employee_id": user.employee_id,
         "status": user.status.value if user.status else None,
         "roles": [role.name for role in user.roles],
         "primary_location_id": str(user.primary_location_id) if user.primary_location_id else None,

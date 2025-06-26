@@ -13,6 +13,7 @@ from app.crud.base import CRUDBase
 from app.models.user import User, Location, Role, Permission
 from app.schemas.user import UserCreate, UserUpdate, UserQueryParams
 from app.crud.crud_location import location as crud_location
+from app.models.enums import UserStatus
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -76,6 +77,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "username": username,
             "password_hash": hashed_password,
             "user_type": user_type,
+            "status": UserStatus.ACTIVE,  # Activate users by default
+            "is_verified": True,  # Mark as verified
             "created_by": created_by
         })
         
@@ -136,6 +139,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "user_type": UserType.PROVINCIAL_ADMIN,
             "scope_province": province_code,
             "can_create_roles": True,  # Provincial users can create office-level roles
+            "status": UserStatus.ACTIVE,  # Activate users by default
+            "is_verified": True,  # Mark as verified
             "created_by": created_by
         })
         
@@ -181,6 +186,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "password_hash": hashed_password,
             "user_type": UserType.NATIONAL_ADMIN,
             "can_create_roles": True,  # National users can create all roles
+            "status": UserStatus.ACTIVE,  # Activate users by default
+            "is_verified": True,  # Mark as verified
             "created_by": created_by
         })
         
@@ -226,6 +233,8 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             "password_hash": hashed_password,
             "user_type": UserType.SYSTEM_USER,
             "can_create_roles": True,  # System users can create all roles
+            "status": UserStatus.ACTIVE,  # Activate users by default
+            "is_verified": True,  # Mark as verified
             "created_by": created_by
         })
         
@@ -487,8 +496,17 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         for role in user.roles:
             role_permissions.update(role.permissions)
         
-        # Get individual permissions
-        individual_permissions = set(user.individual_permissions)
+        # Get individual permission overrides
+        from app.models.user import UserPermissionOverride
+        overrides = db.query(UserPermissionOverride).filter(
+            UserPermissionOverride.user_id == user_id,
+            UserPermissionOverride.granted == True
+        ).all()
+        
+        individual_permissions = set()
+        for override in overrides:
+            if override.permission and not override.is_expired:
+                individual_permissions.add(override.permission)
         
         # Combine and return
         all_permissions = role_permissions.union(individual_permissions)

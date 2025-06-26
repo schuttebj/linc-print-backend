@@ -146,6 +146,7 @@ class User(BaseModel):
     audit_logs = relationship("UserAuditLog", back_populates="user")
     primary_location = relationship("Location", foreign_keys=[primary_location_id])
     assigned_locations = relationship("Location", secondary=user_locations, back_populates="assigned_users")
+    permission_overrides = relationship("UserPermissionOverride", foreign_keys="UserPermissionOverride.user_id")
     
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', madagascar_id='{self.madagascar_id_number}', status='{self.status}')>"
