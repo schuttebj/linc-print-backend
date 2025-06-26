@@ -805,12 +805,11 @@ async def initialize_location_users():
         
         try:
             # Get existing roles
-            admin_role = db.query(Role).filter(Role.name == "system_admin").first()
             clerk_role = db.query(Role).filter(Role.name == "clerk").first()
             supervisor_role = db.query(Role).filter(Role.name == "office_supervisor").first()
             printer_role = db.query(Role).filter(Role.name == "printer").first()
             
-            if not all([admin_role, clerk_role, supervisor_role, printer_role]):
+            if not all([clerk_role, supervisor_role, printer_role]):
                 return JSONResponse(
                     status_code=400,
                     content={
