@@ -238,6 +238,7 @@ async def initialize_users():
         from app.core.database import get_db
         from app.models.user import User, Role, Permission
         from app.models.user import UserStatus, MadagascarIDType
+        from app.models.enums import UserType
         from app.core.security import get_password_hash
         
         db = next(get_db())
