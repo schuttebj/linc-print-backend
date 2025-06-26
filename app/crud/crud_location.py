@@ -24,9 +24,18 @@ class CRUDLocation(CRUDBase[Location, LocationCreate, LocationUpdate]):
         created_by: Optional[str] = None
     ) -> Location:
         """Create location with auto-generated codes"""
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"CRUD received province_code: {obj_in.province_code} (type: {type(obj_in.province_code)})")
+        logger.info(f"CRUD received office_type: {obj_in.office_type} (type: {type(obj_in.office_type)})")
+        
         # Generate location codes
         code = f"{obj_in.province_code}{obj_in.office_number}"
         full_code = f"MG-{code}"
+        
+        logger.info(f"Generated code: {code}")
+        logger.info(f"Generated full_code: {full_code}")
         
         # Get province name mapping
         province_names = {

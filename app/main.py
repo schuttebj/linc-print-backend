@@ -751,7 +751,18 @@ async def initialize_locations():
                     processed_data["province_code"] = loc_data["province_code"].value
                     processed_data["office_type"] = loc_data["office_type"].value
                     
+                    # Debug logging
+                    logger.info(f"Original province_code: {loc_data['province_code']}")
+                    logger.info(f"Converted province_code: {processed_data['province_code']}")
+                    logger.info(f"Original office_type: {loc_data['office_type']}")
+                    logger.info(f"Converted office_type: {processed_data['office_type']}")
+                    
                     location_create = LocationCreate(**processed_data)
+                    
+                    # Debug the LocationCreate object
+                    logger.info(f"LocationCreate province_code: {location_create.province_code}")
+                    logger.info(f"LocationCreate office_type: {location_create.office_type}")
+                    
                     # Use None for system initialization instead of string
                     location = crud_location.create_with_codes(
                         db=db,
