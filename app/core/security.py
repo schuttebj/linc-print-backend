@@ -261,13 +261,12 @@ def calculate_password_strength(password: str) -> str:
         return "strong"
 
 
-def create_user_token_claims(user, location_id: Optional[uuid.UUID] = None) -> dict:
+def create_user_token_claims(user) -> dict:
     """
     Create additional JWT claims for Madagascar license system users
     
     Args:
         user: User model instance
-        location_id: Current location ID if applicable
     
     Returns:
         Dictionary of additional claims
@@ -291,12 +290,12 @@ def create_user_token_claims(user, location_id: Optional[uuid.UUID] = None) -> d
     
     claims["permissions"] = list(permissions)
     
-    # Add location context if provided
-    if location_id:
-        claims["current_location"] = str(location_id)
-    
-    # Add primary location if available
+    # Add primary location (user's assigned location)
     if user.primary_location_id:
         claims["primary_location"] = str(user.primary_location_id)
+    
+    # Add location code if available
+    if hasattr(user, 'assigned_location_code') and user.assigned_location_code:
+        claims["location_code"] = user.assigned_location_code
     
     return claims 

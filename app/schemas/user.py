@@ -152,10 +152,6 @@ class UserUpdate(BaseModel):
     
     # Role and location assignments
     role_ids: Optional[List[uuid.UUID]] = None
-    
-    # Permission management fields (for edit mode)
-    permission_names: Optional[List[str]] = Field(None, description="Final list of permission names for the user")
-    permission_overrides: Optional[Dict[str, bool]] = Field(None, description="Permission overrides (differences from role defaults)")
 
 
 class UserPasswordChange(BaseModel):
@@ -262,6 +258,55 @@ class UserResponse(BaseModel):
     assigned_locations: List[LocationResponse]
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Custom from_orm to populate permission overrides"""
+        # Get the basic user data
+        user_data = {
+            'id': obj.id,
+            'username': obj.username,
+            'email': obj.email,
+            'first_name': obj.first_name,
+            'last_name': obj.last_name,
+            'display_name': obj.display_name,
+            'full_name': obj.full_name,
+            'madagascar_id_number': obj.madagascar_id_number,
+            'id_document_type': obj.id_document_type,
+            'user_type': obj.user_type,
+            'scope_province': obj.scope_province,
+            'can_create_roles': obj.can_create_roles,
+            'phone_number': obj.phone_number,
+            'employee_id': obj.employee_id,
+            'department': obj.department,
+            'country_code': obj.country_code,
+            'province': obj.province,
+            'region': obj.region,
+            'office_location': obj.office_location,
+            'status': obj.status,
+            'is_superuser': obj.is_superuser,
+            'is_verified': obj.is_verified,
+            'language': obj.language,
+            'timezone': obj.timezone,
+            'currency': obj.currency,
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at,
+            'last_login_at': obj.last_login_at,
+            'roles': obj.roles,
+            'primary_location': obj.primary_location,
+            'assigned_locations': obj.assigned_locations,
+        }
+        
+        # Get permission overrides
+        permission_overrides = {}
+        if hasattr(obj, 'permission_overrides') and obj.permission_overrides:
+            for override in obj.permission_overrides:
+                if override.permission and not override.is_expired:
+                    permission_overrides[override.permission.name] = override.granted
+        
+        user_data['permission_overrides'] = permission_overrides if permission_overrides else None
+        
+        return cls(**user_data)
 
 
 class UserListResponse(BaseModel):
@@ -293,13 +338,9 @@ class LoginRequest(BaseModel):
     """User login request"""
     username: str = Field(..., description="Username or email")
     password: str = Field(..., description="Password")
-    location_id: Optional[uuid.UUID] = Field(None, description="Login location")
     
-    # TODO: Location System Enhancement
-    # Currently location_id is optional. Future implementations could include:
-    # - Automatic device detection (MAC address registration)
-    # - IP-based location detection
-    # - Hybrid approach with fallback options
+    # NOTE: Location removed - using one account per employee per location model
+    # Each user is assigned to a specific location and cannot access multiple locations
 
 
 class LoginResponse(BaseModel):

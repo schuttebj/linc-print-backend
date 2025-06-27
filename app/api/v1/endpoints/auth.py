@@ -165,9 +165,8 @@ async def login(
     user.last_login_ip = request.client.host if request.client else None
     
     # Create JWT tokens
-    # TODO: Implement location validation and automatic detection
-    # Currently location_id is optional and not validated
-    additional_claims = create_user_token_claims(user, login_data.location_id)
+    # User's location is determined by their assigned primary_location_id
+    additional_claims = create_user_token_claims(user)
     access_token = create_access_token(user.id, additional_claims=additional_claims)
     refresh_token = create_refresh_token(user.id)
     
@@ -190,7 +189,7 @@ async def login(
     # Log successful login
     log_user_action(
         db, user, "login_success", request,
-        details={"location_id": str(login_data.location_id) if login_data.location_id else None}
+        details={"primary_location_id": str(user.primary_location_id) if user.primary_location_id else None}
     )
     
     return LoginResponse(
