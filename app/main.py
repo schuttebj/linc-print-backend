@@ -880,40 +880,43 @@ async def initialize_locations():
 
 @app.post("/admin/init-location-users", tags=["Admin"])
 async def initialize_location_users():
-    """Initialize users with location-based usernames for testing"""
+    """Initialize users for all operational locations"""
     try:
         from app.core.database import get_db
-        from app.models.user import User, Role, Location
-        from app.schemas.user import UserCreate
-        from app.crud.crud_user import user as crud_user
-        from app.crud.crud_location import location as crud_location
+        from app.crud import crud_user
+        from app.schemas import UserCreate
+        from app.models.user import Role
+        from app.models.location import Location
         
         db = next(get_db())
         
         try:
-            # Get existing roles
-            clerk_role = db.query(Role).filter(Role.name == "clerk").first()
+            # Get roles
+            admin_role = db.query(Role).filter(Role.name == "system_admin").first()
+            nat_admin_role = db.query(Role).filter(Role.name == "national_admin").first()
             supervisor_role = db.query(Role).filter(Role.name == "office_supervisor").first()
+            clerk_role = db.query(Role).filter(Role.name == "clerk").first()  
             printer_role = db.query(Role).filter(Role.name == "printer").first()
             
-            if not all([clerk_role, supervisor_role, printer_role]):
+            if not all([admin_role, nat_admin_role, supervisor_role, clerk_role, printer_role]):
                 return JSONResponse(
                     status_code=400,
                     content={
                         "status": "error",
-                        "message": "Roles not found. Please run /admin/init-users first.",
+                        "message": "Required roles not found. Please initialize roles first.",
                         "timestamp": time.time()
                     }
                 )
             
-            # Get existing locations
-            locations = crud_location.get_operational_locations(db=db)
+            # Get operational locations  
+            locations = db.query(Location).filter(Location.status == "OPERATIONAL").all()
+            
             if not locations:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "status": "error",
-                        "message": "No locations found. Please run /admin/init-locations first.",
+                        "message": "No operational locations found. Please initialize locations first.",
                         "timestamp": time.time()
                     }
                 )
@@ -1033,6 +1036,217 @@ async def initialize_location_users():
         )
 
 
+@app.post("/admin/init-fee-structures", tags=["Admin"])
+async def initialize_fee_structures():
+    """Initialize default fee structures for applications module"""
+    try:
+        from app.core.database import get_db
+        from app.models.application import FeeStructure
+        from app.models.enums import LicenseCategory, ApplicationType
+        
+        db = next(get_db())
+        
+        try:
+            # Check if fee structures already exist
+            existing_count = db.query(FeeStructure).count()
+            if existing_count > 0:
+                return {
+                    "status": "success",
+                    "message": f"Fee structures already exist ({existing_count} records)",
+                    "skipped": True,
+                    "timestamp": time.time()
+                }
+            
+            # Madagascar Driver's License Fee Structure
+            fee_structures = [
+                # Theory Test Fees
+                {
+                    "license_category": LicenseCategory.A_PRIME,  # A′ (Moped)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 10000.0,  # 10,000 Ariary
+                    "description": "Theory test fee for A′ (Moped) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.A,  # A (Full Motorcycle)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 10000.0,  # 10,000 Ariary
+                    "description": "Theory test fee for A (Full Motorcycle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.B,  # B (Light Vehicle)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 10000.0,  # 10,000 Ariary
+                    "description": "Theory test fee for B (Light Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.C,  # C (Medium Vehicle)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 15000.0,  # 15,000 Ariary
+                    "description": "Theory test fee for C (Medium Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.D,  # D (Heavy Vehicle)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 15000.0,  # 15,000 Ariary
+                    "description": "Theory test fee for D (Heavy Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.E,  # E (Heavy Vehicle + Trailer)
+                    "application_type": ApplicationType.THEORY_TEST,
+                    "base_fee": 15000.0,  # 15,000 Ariary
+                    "description": "Theory test fee for E (Heavy Vehicle + Trailer) category",
+                    "is_active": True
+                },
+                
+                # Practical Test Fees (same as theory)
+                {
+                    "license_category": LicenseCategory.A_PRIME,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 10000.0,
+                    "description": "Practical test fee for A′ (Moped) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.A,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 10000.0,
+                    "description": "Practical test fee for A (Full Motorcycle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.B,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 10000.0,
+                    "description": "Practical test fee for B (Light Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.C,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 15000.0,
+                    "description": "Practical test fee for C (Medium Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.D,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 15000.0,
+                    "description": "Practical test fee for D (Heavy Vehicle) category",
+                    "is_active": True
+                },
+                {
+                    "license_category": LicenseCategory.E,
+                    "application_type": ApplicationType.PRACTICAL_TEST,
+                    "base_fee": 15000.0,
+                    "description": "Practical test fee for E (Heavy Vehicle + Trailer) category",
+                    "is_active": True
+                },
+                
+                # Card Production Fee (single fee for all categories)
+                {
+                    "license_category": None,  # Applies to all categories
+                    "application_type": ApplicationType.FULL_LICENSE,
+                    "base_fee": 38000.0,  # 38,000 Ariary
+                    "description": "Card production fee for CIM-produced license cards",
+                    "is_active": True
+                },
+                
+                # Temporary License Fees (urgency-based pricing)
+                {
+                    "license_category": None,  # Applies to all categories
+                    "application_type": ApplicationType.TEMPORARY_LICENSE,
+                    "base_fee": 30000.0,  # 30,000 Ariary (standard)
+                    "urgency_multiplier": 1.0,
+                    "description": "Standard temporary license fee (90-day A4 permit)",
+                    "is_active": True
+                },
+                {
+                    "license_category": None,
+                    "application_type": ApplicationType.TEMPORARY_LICENSE,
+                    "base_fee": 100000.0,  # 100,000 Ariary (urgent)
+                    "urgency_multiplier": 3.33,
+                    "description": "Urgent temporary license fee (same-day processing)",
+                    "is_active": True
+                },
+                {
+                    "license_category": None,
+                    "application_type": ApplicationType.TEMPORARY_LICENSE,
+                    "base_fee": 400000.0,  # 400,000 Ariary (emergency)
+                    "urgency_multiplier": 13.33,
+                    "description": "Emergency temporary license fee (immediate processing)",
+                    "is_active": True
+                },
+                
+                # International Permit Fee
+                {
+                    "license_category": None,  # Based on existing license
+                    "application_type": ApplicationType.INTERNATIONAL_PERMIT,
+                    "base_fee": 50000.0,  # 50,000 Ariary
+                    "description": "International driving permit fee",
+                    "is_active": True
+                },
+                
+                # License Renewal Fee
+                {
+                    "license_category": None,  # Applies to all categories
+                    "application_type": ApplicationType.RENEWAL,
+                    "base_fee": 20000.0,  # 20,000 Ariary
+                    "description": "License renewal fee (5-year validity)",
+                    "is_active": True
+                }
+            ]
+            
+            created_fees = []
+            for fee_data in fee_structures:
+                fee = FeeStructure(**fee_data)
+                db.add(fee)
+                db.flush()
+                created_fees.append({
+                    "category": fee_data["license_category"].value if fee_data["license_category"] else "ALL",
+                    "type": fee_data["application_type"].value,
+                    "fee": fee_data["base_fee"],
+                    "description": fee_data["description"]
+                })
+            
+            db.commit()
+            
+            return {
+                "status": "success",
+                "message": "Fee structures initialized successfully",
+                "created_fee_structures": created_fees,
+                "total_created": len(created_fees),
+                "summary": {
+                    "theory_test_fees": "A′/A/B: 10,000 Ar, C/D/E: 15,000 Ar",
+                    "practical_test_fees": "Same as theory test fees",
+                    "card_production": "38,000 Ar (single fee)",
+                    "temporary_licenses": "30,000-400,000 Ar (urgency-based)",
+                    "international_permit": "50,000 Ar",
+                    "renewals": "20,000 Ar"
+                },
+                "note": "Madagascar driver's license fee structure based on Applications_Doc.md",
+                "timestamp": time.time()
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to initialize fee structures: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to initialize fee structures: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
 @app.post("/admin/reset-database", tags=["Admin"])
 async def reset_database():
     """Complete database reset - Drop, recreate, and initialize everything"""
@@ -1072,6 +1286,13 @@ async def reset_database():
         if location_users_result.get("status") != "success":
             return location_users_result
         
+        # Step 6: Initialize fee structures for applications module
+        fee_structures_result = await initialize_fee_structures()
+        if isinstance(fee_structures_result, JSONResponse):
+            return fee_structures_result
+        if fee_structures_result.get("status") != "success":
+            return fee_structures_result
+        
         return {
             "status": "success",
             "message": "Complete database reset successful",
@@ -1080,16 +1301,23 @@ async def reset_database():
                 "Tables recreated", 
                 "Base users and roles initialized",
                 "Madagascar locations initialized",
-                "Location-based users created"
+                "Location-based users created",
+                "Application fee structures initialized"
             ],
             "summary": {
                 "permissions_created": users_result.get("permissions_created", 0),
                 "roles_created": users_result.get("roles_created", 0),
                 "locations_created": len(locations_result.get("created_locations", [])),
-                "location_users_created": location_users_result.get("total_users_created", 0)
+                "location_users_created": location_users_result.get("total_users_created", 0),
+                "fee_structures_created": fee_structures_result.get("total_created", 0)
             },
             "admin_credentials": users_result.get("admin_credentials"),
-            "note": "Madagascar License System fully initialized with location-based user management",
+            "applications_module": {
+                "status": "ready",
+                "fee_structure": fee_structures_result.get("summary", {}),
+                "note": "Applications module fully initialized and ready for testing"
+            },
+            "note": "Madagascar License System fully initialized with applications module support",
             "timestamp": time.time()
         }
         
