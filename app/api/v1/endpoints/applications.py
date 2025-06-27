@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
-from app.models.application import Application, ApplicationStatus, ApplicationType, LicenseCategory
+from app.models.application import Application
+from app.models.enums import ApplicationStatus, ApplicationType, LicenseCategory
 from app.schemas.application import (
     Application as ApplicationSchema,
     ApplicationCreate,
