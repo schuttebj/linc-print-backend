@@ -588,7 +588,7 @@ async def update_user(
     changes = {}
     
     for field, value in update_data.items():
-        if field in ["role_ids", "assigned_location_ids"]:
+        if field in ["role_ids", "assigned_location_ids", "permission_names", "permission_overrides"]:
             continue  # Handle these separately
         
         if hasattr(user, field):
@@ -614,6 +614,20 @@ async def update_user(
         from app.models.user import Location
         locations = db.query(Location).filter(Location.id.in_(user_data.assigned_location_ids)).all()
         user.assigned_locations = locations
+    
+    # Handle permission overrides (for edit mode)
+    if user_data.permission_overrides is not None:
+        # Apply permission overrides using CRUD method
+        crud_user._apply_permission_overrides(
+            db=db,
+            user_id=user.id,
+            permission_overrides=user_data.permission_overrides,
+            granted_by=str(current_user.id)
+        )
+        changes["permission_overrides"] = {
+            "old": "Previous overrides",
+            "new": f"{len(user_data.permission_overrides)} permission overrides applied"
+        }
     
     # Update audit fields
     user.updated_by = current_user.id
