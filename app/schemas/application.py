@@ -107,7 +107,7 @@ class ApplicationSearch(BaseModel):
     
     # Sorting
     sort_by: Optional[str] = Field(default="application_date", description="Field to sort by")
-    sort_order: Optional[str] = Field(default="desc", regex="^(asc|desc)$", description="Sort order")
+    sort_order: Optional[str] = Field(default="desc", pattern="^(asc|desc)$", description="Sort order")
 
 
 class ApplicationInDBBase(ApplicationBase):
