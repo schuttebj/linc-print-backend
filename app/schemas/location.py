@@ -12,6 +12,21 @@ from datetime import datetime
 from app.models.enums import ProvinceCode, OfficeType
 
 
+class DaySchedule(BaseModel):
+    """Schema for individual day operational schedule"""
+    day: str = Field(..., description="Day of the week")
+    is_open: bool = Field(..., description="Whether location is open on this day")
+    open_time: Optional[str] = Field(None, pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$", description="Opening time (HH:MM)")
+    close_time: Optional[str] = Field(None, pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$", description="Closing time (HH:MM)")
+    
+    @validator('day')
+    def validate_day(cls, v):
+        valid_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        if v not in valid_days:
+            raise ValueError(f'Day must be one of: {", ".join(valid_days)}')
+        return v
+
+
 class OfficeTypeEnum(str, Enum):
     """Office type enum for API"""
     MAIN = "MAIN"
@@ -57,7 +72,8 @@ class LocationBase(BaseModel):
     max_staff_capacity: int = Field(default=10, ge=1, le=50, description="Maximum staff capacity")
     
     # Notes
-    operating_hours: Optional[str] = Field(None, description="Operating hours (JSON string)")
+    operating_hours: Optional[str] = Field(None, description="Legacy operating hours (JSON string)")
+    operational_schedule: Optional[List[DaySchedule]] = Field(None, description="Structured operational schedule")
     special_notes: Optional[str] = Field(None, description="Special notes or instructions")
 
     @validator('name')
@@ -82,6 +98,19 @@ class LocationBase(BaseModel):
         """Validate and capitalize manager name"""
         if v:
             return v.strip().upper()
+        return v
+    
+    @validator('operational_schedule', pre=True)
+    def serialize_operational_schedule(cls, v):
+        """Serialize operational schedule to JSON string for database storage"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            try:
+                import json
+                return json.dumps([day.dict() if hasattr(day, 'dict') else day for day in v])
+            except (TypeError, AttributeError):
+                return None
         return v
 
 
@@ -117,6 +146,7 @@ class LocationUpdate(BaseModel):
     
     # Notes
     operating_hours: Optional[str] = None
+    operational_schedule: Optional[List[DaySchedule]] = None
     special_notes: Optional[str] = None
 
     @validator('name')
@@ -141,6 +171,19 @@ class LocationUpdate(BaseModel):
     def validate_manager_name(cls, v):
         if v:
             return v.strip().upper()
+        return v
+    
+    @validator('operational_schedule', pre=True)
+    def serialize_operational_schedule(cls, v):
+        """Serialize operational schedule to JSON string for database storage"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            try:
+                import json
+                return json.dumps([day.dict() if hasattr(day, 'dict') else day for day in v])
+            except (TypeError, AttributeError):
+                return None
         return v
 
 
@@ -183,6 +226,7 @@ class LocationResponse(BaseModel):
     
     # Notes
     operating_hours: Optional[str]
+    operational_schedule: Optional[List[DaySchedule]]
     special_notes: Optional[str]
     
     # Computed properties
@@ -190,6 +234,20 @@ class LocationResponse(BaseModel):
     user_code_prefix: str
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @validator('operational_schedule', pre=True)
+    def parse_operational_schedule(cls, v):
+        """Parse operational schedule from JSON string to structured format"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                import json
+                parsed = json.loads(v)
+                return [DaySchedule(**day) for day in parsed] if parsed else None
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return None
+        return v
 
 
 class LocationSummary(BaseModel):

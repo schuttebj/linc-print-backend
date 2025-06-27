@@ -694,7 +694,8 @@ class Location(BaseModel):
     next_user_number = Column(Integer, default=1, nullable=False, comment="Next user number to assign (1-9999)")
     
     # Operating hours and notes
-    operating_hours = Column(Text, nullable=True, comment="JSON string with operating hours")
+    operating_hours = Column(Text, nullable=True, comment="Legacy operating hours (JSON string)")
+    operational_schedule = Column(Text, nullable=True, comment="Structured operational schedule (JSON array of day schedules)")
     special_notes = Column(Text, nullable=True, comment="Special instructions or notes")
     
     # Relationships
