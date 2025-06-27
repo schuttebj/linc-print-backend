@@ -638,7 +638,7 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.ANTANANARIVO,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "ANTANANARIVO",
+                    "locality": "ANDRAVOAHANGY, ANTANANARIVO",  # Combined locality, town format
                     "street_address": "LOT II M 85 ANDRAVOAHANGY",
                     "postal_code": "101",
                     "phone_number": "+261 20 22 123 45",
@@ -646,7 +646,15 @@ async def initialize_locations():
                     "manager_name": "RAKOTO JEAN MARIE",
                     "max_daily_capacity": 100,
                     "max_staff_capacity": 15,
-                    "operating_hours": '{"monday": "08:00-17:00", "tuesday": "08:00-17:00", "wednesday": "08:00-17:00", "thursday": "08:00-17:00", "friday": "08:00-17:00", "saturday": "08:00-12:00"}',
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": True, "open_time": "08:00", "close_time": "12:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ],
                     "special_notes": "Main headquarters office with full services"
                 },
                 {
@@ -654,14 +662,23 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.ANTANANARIVO,
                     "office_number": "02",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "ANTANANARIVO",
+                    "locality": "BEHORIRIKA, ANTANANARIVO",  # Combined locality, town format
                     "street_address": "AVENUE DE L'INDEPENDENCE",
                     "postal_code": "101",
                     "phone_number": "+261 20 22 678 90",
                     "email": "antananarivo.branch@gov.mg",
                     "manager_name": "RABE MARIE CLAIRE",
                     "max_daily_capacity": 75,
-                    "max_staff_capacity": 12
+                    "max_staff_capacity": 12,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 
                 # Fianarantsoa Province (F)
@@ -670,13 +687,22 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.FIANARANTSOA,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "FIANARANTSOA",
+                    "locality": "TSIANOLONDROA, FIANARANTSOA",  # Combined locality, town format
                     "street_address": "RUE PRINCIPALE",
                     "phone_number": "+261 75 123 456",
                     "email": "fianarantsoa.main@gov.mg",
                     "manager_name": "ANDRY PAUL HENRI",
                     "max_daily_capacity": 60,
-                    "max_staff_capacity": 10
+                    "max_staff_capacity": 10,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 
                 # Toamasina Province (A)
@@ -685,13 +711,22 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.TOAMASINA,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "TOAMASINA",
+                    "locality": "ANALAKININNY, TOAMASINA",  # Combined locality, town format
                     "street_address": "BOULEVARD JOFFRE",
                     "phone_number": "+261 53 123 789",
                     "email": "toamasina.port@gov.mg",
                     "manager_name": "RAZAFY LANTO",
                     "max_daily_capacity": 80,
-                    "max_staff_capacity": 12
+                    "max_staff_capacity": 12,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "07:30", "close_time": "17:30"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "07:30", "close_time": "17:30"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "07:30", "close_time": "17:30"},
+                        {"day": "Thursday", "is_open": True, "open_time": "07:30", "close_time": "17:30"},
+                        {"day": "Friday", "is_open": True, "open_time": "07:30", "close_time": "17:30"},
+                        {"day": "Saturday", "is_open": True, "open_time": "08:00", "close_time": "12:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 
                 # Mahajanga Province (M)
@@ -700,13 +735,22 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.MAHAJANGA,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "MAHAJANGA",
+                    "locality": "AMBOROVY, MAHAJANGA",  # Combined locality, town format
                     "street_address": "AVENUE DE LA REPUBLIQUE",
                     "phone_number": "+261 62 987 654",
                     "email": "mahajanga.coastal@gov.mg",
                     "manager_name": "RANDRIA SOLO",
                     "max_daily_capacity": 50,
-                    "max_staff_capacity": 8
+                    "max_staff_capacity": 8,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 
                 # Antsiranana Province (D)
@@ -715,13 +759,22 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.ANTSIRANANA,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "ANTSIRANANA",
+                    "locality": "TANAMBAO, ANTSIRANANA",  # Combined locality, town format
                     "street_address": "RUE COLBERT",
                     "phone_number": "+261 82 456 123",
                     "email": "antsiranana.north@gov.mg",
                     "manager_name": "RASOLOFO HERY",
                     "max_daily_capacity": 45,
-                    "max_staff_capacity": 7
+                    "max_staff_capacity": 7,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 
                 # Toliara Province (U)
@@ -730,23 +783,41 @@ async def initialize_locations():
                     "province_code": ProvinceCodeEnum.TOLIARA,
                     "office_number": "01",
                     "office_type": OfficeTypeEnum.MAIN,
-                    "locality": "TOLIARA",
+                    "locality": "BETANIA, TOLIARA",  # Combined locality, town format
                     "street_address": "AVENUE DE LA LIBERATION",
                     "phone_number": "+261 94 321 987",
                     "email": "toliara.south@gov.mg",
                     "manager_name": "RABARY MIORA",
                     "max_daily_capacity": 40,
-                    "max_staff_capacity": 6
+                    "max_staff_capacity": 6,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "08:00", "close_time": "17:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "08:00", "close_time": "17:00"}
+                    ]
                 },
                 {
                     "name": "TOLIARA MOBILE UNIT",
                     "province_code": ProvinceCodeEnum.TOLIARA,
                     "office_number": "02",
                     "office_type": OfficeTypeEnum.MOBILE,
-                    "locality": "TOLIARA",
+                    "locality": "ANKIEMBE, TOLIARA",  # Combined locality, town format
                     "manager_name": "RAHARISON DAVID",
                     "max_daily_capacity": 25,
                     "max_staff_capacity": 4,
+                    "operational_schedule": [
+                        {"day": "Monday", "is_open": True, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Tuesday", "is_open": True, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Wednesday", "is_open": True, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Thursday", "is_open": True, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Friday", "is_open": True, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Saturday", "is_open": False, "open_time": "09:00", "close_time": "16:00"},
+                        {"day": "Sunday", "is_open": False, "open_time": "09:00", "close_time": "16:00"}
+                    ],
                     "special_notes": "Mobile unit serving remote areas"
                 }
             ]
