@@ -291,7 +291,7 @@ class ApplicationBiometricData(BaseModel):
     verified_at = Column(DateTime, nullable=True, comment="Verification timestamp")
     
     # Additional metadata
-    metadata = Column(JSON, nullable=True, comment="Additional capture metadata")
+    capture_metadata = Column(JSON, nullable=True, comment="Additional capture metadata")
     notes = Column(Text, nullable=True, comment="Notes about the biometric capture")
     
     # Relationships
