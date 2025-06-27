@@ -885,8 +885,7 @@ async def initialize_location_users():
         from app.core.database import get_db
         from app.crud import crud_user
         from app.schemas import UserCreate
-        from app.models.user import Role
-        from app.models.location import Location
+        from app.models.user import Role, Location
         
         db = next(get_db())
         
