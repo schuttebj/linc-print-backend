@@ -152,6 +152,10 @@ class UserUpdate(BaseModel):
     
     # Role and location assignments
     role_ids: Optional[List[uuid.UUID]] = None
+    
+    # Permission management fields
+    permission_names: Optional[List[str]] = Field(None, description="Final list of permission names for the user")
+    permission_overrides: Optional[Dict[str, bool]] = Field(None, description="Permission overrides (differences from role defaults)")
 
 
 class UserPasswordChange(BaseModel):
