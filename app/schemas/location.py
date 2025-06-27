@@ -100,18 +100,7 @@ class LocationBase(BaseModel):
             return v.strip().upper()
         return v
     
-    @validator('operational_schedule', pre=True)
-    def serialize_operational_schedule(cls, v):
-        """Serialize operational schedule to JSON string for database storage"""
-        if v is None:
-            return None
-        if isinstance(v, list):
-            try:
-                import json
-                return json.dumps([day.dict() if hasattr(day, 'dict') else day for day in v])
-            except (TypeError, AttributeError):
-                return None
-        return v
+    # operational_schedule serialization handled in CRUD layer for database storage
 
 
 class LocationCreate(LocationBase):
