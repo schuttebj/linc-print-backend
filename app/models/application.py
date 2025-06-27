@@ -214,7 +214,7 @@ class Application(BaseModel):
     
     # Associated applications (self-referential)
     parent_application = relationship("Application", remote_side="Application.id", foreign_keys=[parent_application_id])
-    child_applications = relationship("Application", foreign_keys=[parent_application_id], remote_side="Application.parent_application_id")
+    child_applications = relationship("Application", foreign_keys=[parent_application_id], remote_side="Application.parent_application_id", overlaps="parent_application")
     
     # Related models
     biometric_data = relationship("ApplicationBiometricData", back_populates="application")
