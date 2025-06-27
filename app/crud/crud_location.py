@@ -3,10 +3,11 @@ Location CRUD Operations for Madagascar License System
 Handles location creation, updates, queries, and user code generation
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from uuid import UUID
+import json
 
 from app.crud.base import CRUDBase
 from app.models.user import Location, User
@@ -15,6 +16,52 @@ from app.schemas.location import LocationCreate, LocationUpdate
 
 class CRUDLocation(CRUDBase[Location, LocationCreate, LocationUpdate]):
     """CRUD operations for Location"""
+
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: Location,
+        obj_in: Union[LocationUpdate, Dict[str, Any]],
+        updated_by: Optional[str] = None
+    ) -> Location:
+        """
+        Update a location record with JSON serialization for operational_schedule
+        """
+        from fastapi.encoders import jsonable_encoder
+        
+        obj_data = jsonable_encoder(db_obj)
+        if isinstance(obj_in, dict):
+            update_data = obj_in
+        else:
+            update_data = obj_in.dict(exclude_unset=True)
+        
+        # Special handling for operational_schedule - serialize to JSON string
+        if 'operational_schedule' in update_data:
+            schedule_data = update_data['operational_schedule']
+            if schedule_data is not None:
+                if isinstance(schedule_data, list):
+                    # Convert list to JSON string for database storage
+                    update_data['operational_schedule'] = json.dumps(schedule_data)
+                elif isinstance(schedule_data, str):
+                    # Already a JSON string, keep as is
+                    pass
+            else:
+                # None/null value, keep as is
+                pass
+        
+        # Update fields
+        for field in obj_data:
+            if field in update_data:
+                setattr(db_obj, field, update_data[field])
+        
+        if updated_by and hasattr(db_obj, 'updated_by'):
+            setattr(db_obj, 'updated_by', updated_by)
+            
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
 
     def create_with_codes(
         self, 
@@ -51,6 +98,12 @@ class CRUDLocation(CRUDBase[Location, LocationCreate, LocationUpdate]):
         
         # Create location object
         location_data = obj_in.dict()
+        
+        # Special handling for operational_schedule - serialize to JSON string
+        if 'operational_schedule' in location_data and location_data['operational_schedule'] is not None:
+            if isinstance(location_data['operational_schedule'], list):
+                location_data['operational_schedule'] = json.dumps(location_data['operational_schedule'])
+        
         location_data.update({
             "code": code,
             "full_code": full_code,
