@@ -586,7 +586,7 @@ async def initialize_users():
                 "modules_initialized": ["users", "roles", "permissions", "persons"],
                 "admin_credentials": {
                     "username": "admin",
-                    "password": "MadagascarAdmin2024!",
+                    "password": "Admin123",
                     "email": "admin@madagascar-license.gov.mg",
                     "role": "system_admin",
                     "note": "Technical system administrator with full superuser privileges"
@@ -890,19 +890,17 @@ async def initialize_location_users():
         db = next(get_db())
         
         try:
-            # Get roles
-            admin_role = db.query(Role).filter(Role.name == "system_admin").first()
-            nat_admin_role = db.query(Role).filter(Role.name == "national_admin").first()
+            # Get location-specific roles (these are the only roles needed for location users)
             supervisor_role = db.query(Role).filter(Role.name == "office_supervisor").first()
             clerk_role = db.query(Role).filter(Role.name == "clerk").first()  
             printer_role = db.query(Role).filter(Role.name == "printer").first()
             
-            if not all([admin_role, nat_admin_role, supervisor_role, clerk_role, printer_role]):
+            if not all([supervisor_role, clerk_role, printer_role]):
                 return JSONResponse(
                     status_code=400,
                     content={
                         "status": "error",
-                        "message": "Required roles not found. Please initialize roles first.",
+                        "message": "Required location roles not found. Please initialize roles first.",
                         "timestamp": time.time()
                     }
                 )
