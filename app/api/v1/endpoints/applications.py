@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime, timedelta
 
-from app.api.deps import get_current_active_user, get_db
+from app.core.database import get_db
+from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.application import Application, ApplicationStatus, ApplicationType, LicenseCategory
 from app.schemas.application import (
@@ -36,7 +37,7 @@ router = APIRouter()
 @router.get("/", response_model=List[ApplicationSchema])
 def get_applications(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     status: Optional[ApplicationStatus] = None,
@@ -87,7 +88,7 @@ def create_application(
     *,
     db: Session = Depends(get_db),
     application_in: ApplicationCreate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> ApplicationSchema:
     """
     Create new license application
@@ -137,7 +138,7 @@ def create_application(
 def get_application(
     application_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> ApplicationWithDetails:
     """
     Get application by ID with full details
@@ -193,7 +194,7 @@ def update_application(
     db: Session = Depends(get_db),
     application_id: uuid.UUID,
     application_in: ApplicationUpdate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> ApplicationSchema:
     """
     Update application
@@ -242,7 +243,7 @@ def update_application_status(
     new_status: ApplicationStatus,
     reason: Optional[str] = None,
     notes: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> ApplicationSchema:
     """
     Update application status with history tracking
@@ -292,7 +293,7 @@ def update_application_status(
 def get_application_fees(
     application_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> List[ApplicationFee]:
     """
     Get fees for an application
@@ -331,7 +332,7 @@ def process_fee_payment(
     fee_id: uuid.UUID,
     payment_method: str,
     payment_reference: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> ApplicationFee:
     """
     Process fee payment
@@ -372,7 +373,7 @@ def process_fee_payment(
 @router.get("/search", response_model=List[ApplicationSchema])
 def search_applications(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     application_number: Optional[str] = None,
     person_id: Optional[uuid.UUID] = None,
     application_type: Optional[ApplicationType] = None,
@@ -426,7 +427,7 @@ def search_applications(
 def get_associated_applications(
     application_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> List[ApplicationSchema]:
     """
     Get applications associated with a parent application (e.g., temporary licenses)
@@ -463,7 +464,7 @@ def get_associated_applications(
 @router.get("/statistics", response_model=ApplicationStatistics)
 def get_application_statistics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     location_id: Optional[uuid.UUID] = None
 ) -> ApplicationStatistics:
     """
@@ -496,7 +497,7 @@ def get_application_statistics(
 @router.delete("/expired-drafts")
 def cleanup_expired_drafts(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Delete expired draft applications (30+ days old)
