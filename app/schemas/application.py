@@ -158,7 +158,7 @@ class ApplicationInDBBase(ApplicationBase):
     updated_by: Optional[uuid.UUID] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class Application(ApplicationInDBBase):
@@ -204,7 +204,7 @@ class ApplicationFeeInDB(ApplicationFeeBase):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ApplicationFee(ApplicationFeeInDB):
@@ -219,3 +219,231 @@ class ApplicationStatistics(BaseModel):
     status_breakdown: Dict[str, int]
     type_breakdown: Dict[str, int]
     recent_applications_30_days: int
+
+
+# Biometric Data schemas
+class ApplicationBiometricDataBase(BaseModel):
+    """Base schema for Application Biometric Data"""
+    application_id: uuid.UUID
+    data_type: BiometricDataType
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    file_format: Optional[str] = None
+    capture_method: Optional[str] = None
+    capture_device_id: Optional[str] = None
+    image_resolution: Optional[str] = None
+    quality_score: Optional[Decimal] = None
+    capture_metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+class ApplicationBiometricDataCreate(ApplicationBiometricDataBase):
+    """Schema for creating biometric data"""
+    pass
+
+
+class ApplicationBiometricDataUpdate(BaseModel):
+    """Schema for updating biometric data"""
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    file_format: Optional[str] = None
+    quality_score: Optional[Decimal] = None
+    is_verified: Optional[bool] = None
+    verified_by: Optional[uuid.UUID] = None
+    capture_metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+class ApplicationBiometricDataInDB(ApplicationBiometricDataBase):
+    """Schema for biometric data in database"""
+    id: uuid.UUID
+    is_verified: bool = False
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationBiometricData(ApplicationBiometricDataInDB):
+    """Schema for returning biometric data"""
+    pass
+
+
+# Test Attempt schemas
+class ApplicationTestAttemptBase(BaseModel):
+    """Base schema for Application Test Attempt"""
+    application_id: uuid.UUID
+    test_type: TestAttemptType
+    attempt_number: int = 1
+    scheduled_date: Optional[datetime] = None
+    test_location_id: Optional[uuid.UUID] = None
+    fee_amount: Decimal = Field(..., ge=0)
+
+
+class ApplicationTestAttemptCreate(ApplicationTestAttemptBase):
+    """Schema for creating test attempt"""
+    pass
+
+
+class ApplicationTestAttemptUpdate(BaseModel):
+    """Schema for updating test attempt"""
+    scheduled_date: Optional[datetime] = None
+    actual_date: Optional[datetime] = None
+    examiner_id: Optional[uuid.UUID] = None
+    test_result: Optional[TestResult] = None
+    score: Optional[Decimal] = None
+    fee_paid: Optional[bool] = None
+    payment_reference: Optional[str] = None
+    test_duration_minutes: Optional[int] = None
+    questions_total: Optional[int] = None
+    questions_correct: Optional[int] = None
+    result_notes: Optional[str] = None
+
+
+class ApplicationTestAttemptInDB(ApplicationTestAttemptBase):
+    """Schema for test attempt in database"""
+    id: uuid.UUID
+    actual_date: Optional[datetime] = None
+    examiner_id: Optional[uuid.UUID] = None
+    test_result: TestResult = TestResult.PENDING
+    score: Optional[Decimal] = None
+    fee_paid: bool = False
+    payment_reference: Optional[str] = None
+    test_duration_minutes: Optional[int] = None
+    questions_total: Optional[int] = None
+    questions_correct: Optional[int] = None
+    pass_threshold: Optional[Decimal] = None
+    result_notes: Optional[str] = None
+    failure_reasons: Optional[Dict[str, Any]] = None
+    learners_permit_issued: bool = False
+    learners_permit_number: Optional[str] = None
+    learners_permit_expiry: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationTestAttempt(ApplicationTestAttemptInDB):
+    """Schema for returning test attempt data"""
+    pass
+
+
+# Application Fee Update schema (missing from original)
+class ApplicationFeeUpdate(BaseModel):
+    """Schema for updating application fee"""
+    amount: Optional[Decimal] = Field(None, ge=0)
+    payment_status: Optional[PaymentStatus] = None
+    payment_method: Optional[str] = None
+    payment_reference: Optional[str] = None
+    discount_amount: Optional[Decimal] = Field(None, ge=0)
+    discount_reason: Optional[str] = None
+    payment_notes: Optional[str] = None
+
+
+# Application Document schemas
+class ApplicationDocumentBase(BaseModel):
+    """Base schema for Application Document"""
+    application_id: uuid.UUID
+    document_type: str
+    document_name: str
+    file_path: str
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+
+
+class ApplicationDocumentCreate(ApplicationDocumentBase):
+    """Schema for creating application document"""
+    pass
+
+
+class ApplicationDocumentUpdate(BaseModel):
+    """Schema for updating application document"""
+    document_name: Optional[str] = None
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    is_verified: Optional[bool] = None
+    verified_by: Optional[uuid.UUID] = None
+    verification_notes: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    issuing_authority: Optional[str] = None
+    document_number: Optional[str] = None
+
+
+class ApplicationDocumentInDB(ApplicationDocumentBase):
+    """Schema for application document in database"""
+    id: uuid.UUID
+    uploaded_by: uuid.UUID
+    upload_date: datetime
+    is_verified: bool = False
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
+    verification_notes: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    issuing_authority: Optional[str] = None
+    document_number: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationDocument(ApplicationDocumentInDB):
+    """Schema for returning application document data"""
+    pass
+
+
+# Fee Structure schemas
+class FeeStructureBase(BaseModel):
+    """Base schema for Fee Structure"""
+    fee_type: str
+    display_name: str
+    description: Optional[str] = None
+    amount: Decimal = Field(..., ge=0)
+    currency: str = Field(default="MGA")
+    applies_to_categories: Optional[List[str]] = None
+    applies_to_application_types: Optional[List[str]] = None
+    is_mandatory: bool = True
+    is_active: bool = True
+
+
+class FeeStructureCreate(FeeStructureBase):
+    """Schema for creating fee structure"""
+    pass
+
+
+class FeeStructureUpdate(BaseModel):
+    """Schema for updating fee structure"""
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[Decimal] = Field(None, ge=0)
+    applies_to_categories: Optional[List[str]] = None
+    applies_to_application_types: Optional[List[str]] = None
+    is_mandatory: Optional[bool] = None
+    is_active: Optional[bool] = None
+    effective_until: Optional[datetime] = None
+
+
+class FeeStructureInDB(FeeStructureBase):
+    """Schema for fee structure in database"""
+    id: uuid.UUID
+    effective_from: datetime
+    effective_until: Optional[datetime] = None
+    created_by: uuid.UUID
+    last_updated_by: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FeeStructure(FeeStructureInDB):
+    """Schema for returning fee structure data"""
+    pass
