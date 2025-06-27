@@ -124,6 +124,56 @@ class CountryCode(PythonEnum):
     OTHER = "OTHER"         # Other countries
 
 
+# Application-specific enums
+class LicenseCategory(PythonEnum):
+    """Madagascar driver's license categories"""
+    A_PRIME = "A'"          # A′ - Light Motorcycle/Moped (16+ years)
+    A = "A"                 # A - Full Motorcycle (18+ years)
+    B = "B"                 # B - Light Vehicle/Car (18+ years)
+    C = "C"                 # C - Heavy Goods Vehicle (21+ years, requires B)
+    D = "D"                 # D - Passenger Transport (21+ years, requires B)
+    E = "E"                 # E - Large Trailers (21+ years, requires B/C/D)
+
+
+class ApplicationType(PythonEnum):
+    """Types of license applications in Madagascar"""
+    NEW_LICENSE = "NEW_LICENSE"                 # First-time license application
+    LEARNERS_PERMIT = "LEARNERS_PERMIT"         # Learner's permit after theory test
+    RENEWAL = "RENEWAL"                         # License renewal (5-year cycle)
+    DUPLICATE = "DUPLICATE"                     # Replacement for lost/damaged (same as renewal)
+    UPGRADE = "UPGRADE"                         # Adding new categories to existing license
+    TEMPORARY_LICENSE = "TEMPORARY_LICENSE"     # Emergency permit (90-day validity)
+    INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"  # IDP for travel abroad
+
+
+class ApplicationStatus(PythonEnum):
+    """Complete application workflow status (16 stages)"""
+    DRAFT = "DRAFT"                           # Application saved but not submitted
+    SUBMITTED = "SUBMITTED"                   # Application submitted for review
+    DOCUMENTS_PENDING = "DOCUMENTS_PENDING"   # Missing required documents
+    THEORY_TEST_REQUIRED = "THEORY_TEST_REQUIRED"  # Ready for theory exam
+    THEORY_PASSED = "THEORY_PASSED"          # Theory test completed successfully
+    THEORY_FAILED = "THEORY_FAILED"          # Theory test failed
+    PRACTICAL_TEST_REQUIRED = "PRACTICAL_TEST_REQUIRED"  # Ready for practical exam
+    PRACTICAL_PASSED = "PRACTICAL_PASSED"    # Practical test completed successfully
+    PRACTICAL_FAILED = "PRACTICAL_FAILED"    # Practical test failed
+    APPROVED = "APPROVED"                     # Application approved, ready for printing
+    SENT_TO_PRINTER = "SENT_TO_PRINTER"      # Printing job created
+    CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM
+    READY_FOR_COLLECTION = "READY_FOR_COLLECTION"  # Card available for pickup
+    COMPLETED = "COMPLETED"                   # Card collected, process complete
+    REJECTED = "REJECTED"                     # Application rejected
+    CANCELLED = "CANCELLED"                   # Application cancelled
+
+
+class PaymentStatus(PythonEnum):
+    """Payment status for application fees"""
+    PENDING = "PENDING"             # Payment not yet made
+    PAID = "PAID"                   # Payment completed
+    REFUNDED = "REFUNDED"           # Payment refunded
+    FAILED = "FAILED"               # Payment failed
+
+
 # Province display names mapping for frontend
 PROVINCE_DISPLAY_NAMES = {
     ProvinceCode.ANTANANARIVO: "ANTANANARIVO",

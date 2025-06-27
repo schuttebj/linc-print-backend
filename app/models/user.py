@@ -192,8 +192,22 @@ class User(BaseModel):
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
                 # Reporting
                 "reports.national", "reports.provincial", "reports.advanced", "reports.export",
-                # License operations
-                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
+                # Applications module - full permissions
+                "applications.create", "applications.read", "applications.update", "applications.delete", "applications.approve",
+                "applications.submit", "applications.cancel", "applications.view_statistics", "applications.bulk_process",
+                "applications.assign", "applications.change_status", "applications.view_drafts", "applications.manage_associated",
+                # Application documents and biometrics
+                "application_documents.create", "application_documents.read", "application_documents.update", "application_documents.delete",
+                "application_documents.verify", "application_biometrics.create", "application_biometrics.read", 
+                "application_biometrics.update", "application_biometrics.verify",
+                # Test management
+                "application_tests.create", "application_tests.read", "application_tests.update", "application_tests.schedule",
+                "application_tests.conduct", "application_tests.grade", "application_tests.approve_results",
+                # Fee management - national level
+                "fees.create", "fees.read", "fees.update", "fees.delete", "fees.configure", "fees.view_structure",
+                "fee_payments.process", "fee_payments.refund", "fee_payments.view_history", "fees.discount",
+                # Printing and collection
+                "printing.queue", "printing.process", "printing.reprint", "printing.view_status", "printing.manage_collection",
                 # Audit access
                 "audit.read", "audit.national"
             ]
@@ -218,8 +232,21 @@ class User(BaseModel):
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.delete",
                 # Reporting
                 "reports.provincial", "reports.advanced", "reports.export",
-                # License operations
-                "license_applications.create", "license_applications.read", "license_applications.update", "license_applications.approve",
+                # Applications module - provincial level
+                "applications.create", "applications.read", "applications.update", "applications.approve",
+                "applications.submit", "applications.cancel", "applications.view_statistics", "applications.assign",
+                "applications.change_status", "applications.view_drafts", "applications.manage_associated",
+                # Application documents and biometrics
+                "application_documents.create", "application_documents.read", "application_documents.update",
+                "application_documents.verify", "application_biometrics.create", "application_biometrics.read", 
+                "application_biometrics.update", "application_biometrics.verify",
+                # Test management
+                "application_tests.create", "application_tests.read", "application_tests.update", "application_tests.schedule",
+                "application_tests.conduct", "application_tests.grade", "application_tests.approve_results",
+                # Fee management - view only at provincial level
+                "fees.read", "fees.view_structure", "fee_payments.process", "fee_payments.view_history",
+                # Printing and collection
+                "printing.queue", "printing.process", "printing.reprint", "printing.view_status", "printing.manage_collection",
                 # Audit access
                 "audit.read", "audit.provincial"
             ]
