@@ -9,8 +9,8 @@ from datetime import datetime, date
 from decimal import Decimal
 import uuid
 
-from app.models.application import (
-    ApplicationType, ApplicationStatus, LicenseCategory, 
+from app.models.enums import (
+    LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
     TestAttemptType, TestResult, PaymentStatus
 )

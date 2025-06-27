@@ -12,8 +12,12 @@ import uuid
 from app.crud.base import CRUDBase
 from app.models.application import (
     Application, ApplicationBiometricData, ApplicationTestAttempt, 
-    ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure,
-    ApplicationType, ApplicationStatus, LicenseCategory, TestAttemptType, TestResult, PaymentStatus
+    ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure
+)
+from app.models.enums import (
+    LicenseCategory, ApplicationType, ApplicationStatus,
+    TestAttemptType, TestResult, PaymentStatus, BiometricDataType,
+    MedicalCertificateStatus, ParentalConsentStatus
 )
 from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationSearch,

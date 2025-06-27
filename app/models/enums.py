@@ -174,6 +174,46 @@ class PaymentStatus(PythonEnum):
     FAILED = "FAILED"               # Payment failed
 
 
+class BiometricDataType(PythonEnum):
+    """Types of biometric data captured"""
+    PHOTO = "PHOTO"                 # ISO-compliant passport photo
+    SIGNATURE = "SIGNATURE"         # Digital signature
+    FINGERPRINT = "FINGERPRINT"     # Fingerprint scan
+    IRIS = "IRIS"                   # Iris scan (future use)
+
+
+class MedicalCertificateStatus(PythonEnum):
+    """Medical certificate verification status"""
+    NOT_REQUIRED = "NOT_REQUIRED"   # Not required for this application
+    PENDING_UPLOAD = "PENDING_UPLOAD"  # Required but not yet uploaded
+    UPLOADED = "UPLOADED"           # File uploaded, awaiting verification
+    VERIFIED = "VERIFIED"           # Verified by authorized personnel
+    REJECTED = "REJECTED"           # Rejected - resubmission required
+    CONFIRMED_WITHOUT_UPLOAD = "CONFIRMED_WITHOUT_UPLOAD"  # Confirmed via checkbox
+
+
+class ParentalConsentStatus(PythonEnum):
+    """Parental consent status for minors (16-17 years applying for A′)"""
+    NOT_REQUIRED = "NOT_REQUIRED"   # Not required (18+ years)
+    REQUIRED = "REQUIRED"           # Required but not provided
+    PROVIDED = "PROVIDED"           # Parental consent provided
+    VERIFIED = "VERIFIED"           # Consent verified by authorities
+
+
+class TestAttemptType(PythonEnum):
+    """Types of license tests"""
+    THEORY = "THEORY"               # Theory examination
+    PRACTICAL = "PRACTICAL"         # Practical driving test
+
+
+class TestResult(PythonEnum):
+    """Test result outcomes"""
+    PENDING = "PENDING"             # Test not yet taken
+    PASSED = "PASSED"               # Test passed
+    FAILED = "FAILED"               # Test failed
+    NO_SHOW = "NO_SHOW"             # Applicant did not appear
+
+
 # Province display names mapping for frontend
 PROVINCE_DISPLAY_NAMES = {
     ProvinceCode.ANTANANARIVO: "ANTANANARIVO",

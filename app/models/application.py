@@ -18,101 +18,16 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from enum import Enum as PythonEnum
 import uuid
 from decimal import Decimal
 from datetime import datetime, date
 
 from app.models.base import BaseModel
-
-
-class LicenseCategory(PythonEnum):
-    """Madagascar driver's license categories"""
-    A_PRIME = "A'"          # A′ - Light Motorcycle/Moped (16+ years)
-    A = "A"                 # A - Full Motorcycle (18+ years)
-    B = "B"                 # B - Light Vehicle/Car (18+ years)
-    C = "C"                 # C - Heavy Goods Vehicle (21+ years, requires B)
-    D = "D"                 # D - Passenger Transport (21+ years, requires B)
-    E = "E"                 # E - Large Trailers (21+ years, requires B/C/D)
-
-
-class ApplicationType(PythonEnum):
-    """Types of license applications in Madagascar"""
-    NEW_LICENSE = "NEW_LICENSE"                 # First-time license application
-    LEARNERS_PERMIT = "LEARNERS_PERMIT"         # Learner's permit after theory test
-    RENEWAL = "RENEWAL"                         # License renewal (5-year cycle)
-    DUPLICATE = "DUPLICATE"                     # Replacement for lost/damaged (same as renewal)
-    UPGRADE = "UPGRADE"                         # Adding new categories to existing license
-    TEMPORARY_LICENSE = "TEMPORARY_LICENSE"     # Emergency permit (90-day validity)
-    INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"  # IDP for travel abroad
-
-
-class ApplicationStatus(PythonEnum):
-    """Complete application workflow status (16 stages)"""
-    DRAFT = "DRAFT"                           # Application saved but not submitted
-    SUBMITTED = "SUBMITTED"                   # Application submitted for review
-    DOCUMENTS_PENDING = "DOCUMENTS_PENDING"   # Missing required documents
-    THEORY_TEST_REQUIRED = "THEORY_TEST_REQUIRED"  # Ready for theory exam
-    THEORY_PASSED = "THEORY_PASSED"          # Theory test completed successfully
-    THEORY_FAILED = "THEORY_FAILED"          # Theory test failed
-    PRACTICAL_TEST_REQUIRED = "PRACTICAL_TEST_REQUIRED"  # Ready for practical exam
-    PRACTICAL_PASSED = "PRACTICAL_PASSED"    # Practical test completed successfully
-    PRACTICAL_FAILED = "PRACTICAL_FAILED"    # Practical test failed
-    APPROVED = "APPROVED"                     # Application approved, ready for printing
-    SENT_TO_PRINTER = "SENT_TO_PRINTER"      # Printing job created
-    CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM
-    READY_FOR_COLLECTION = "READY_FOR_COLLECTION"  # Card available for pickup
-    COMPLETED = "COMPLETED"                   # Card collected, process complete
-    REJECTED = "REJECTED"                     # Application rejected
-    CANCELLED = "CANCELLED"                   # Application cancelled
-
-
-class BiometricDataType(PythonEnum):
-    """Types of biometric data captured"""
-    PHOTO = "PHOTO"                 # ISO-compliant passport photo
-    SIGNATURE = "SIGNATURE"         # Digital signature
-    FINGERPRINT = "FINGERPRINT"     # Fingerprint scan
-    IRIS = "IRIS"                   # Iris scan (future use)
-
-
-class MedicalCertificateStatus(PythonEnum):
-    """Medical certificate verification status"""
-    NOT_REQUIRED = "NOT_REQUIRED"   # Not required for this application
-    PENDING_UPLOAD = "PENDING_UPLOAD"  # Required but not yet uploaded
-    UPLOADED = "UPLOADED"           # File uploaded, awaiting verification
-    VERIFIED = "VERIFIED"           # Verified by authorized personnel
-    REJECTED = "REJECTED"           # Rejected - resubmission required
-    CONFIRMED_WITHOUT_UPLOAD = "CONFIRMED_WITHOUT_UPLOAD"  # Confirmed via checkbox
-
-
-class ParentalConsentStatus(PythonEnum):
-    """Parental consent status for minors (16-17 years applying for A′)"""
-    NOT_REQUIRED = "NOT_REQUIRED"   # Not required (18+ years)
-    REQUIRED = "REQUIRED"           # Required but not provided
-    PROVIDED = "PROVIDED"           # Parental consent provided
-    VERIFIED = "VERIFIED"           # Consent verified by authorities
-
-
-class TestAttemptType(PythonEnum):
-    """Types of license tests"""
-    THEORY = "THEORY"               # Theory examination
-    PRACTICAL = "PRACTICAL"         # Practical driving test
-
-
-class TestResult(PythonEnum):
-    """Test result outcomes"""
-    PENDING = "PENDING"             # Test not yet taken
-    PASSED = "PASSED"               # Test passed
-    FAILED = "FAILED"               # Test failed
-    NO_SHOW = "NO_SHOW"             # Applicant did not appear
-
-
-class PaymentStatus(PythonEnum):
-    """Payment status for application fees"""
-    PENDING = "PENDING"             # Payment not yet made
-    PAID = "PAID"                   # Payment completed
-    REFUNDED = "REFUNDED"           # Payment refunded
-    FAILED = "FAILED"               # Payment failed
+from app.models.enums import (
+    LicenseCategory, ApplicationType, ApplicationStatus,
+    BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
+    TestAttemptType, TestResult, PaymentStatus
+)
 
 
 class Application(BaseModel):
