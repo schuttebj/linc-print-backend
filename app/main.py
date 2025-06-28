@@ -906,7 +906,7 @@ async def initialize_location_users():
                 )
             
             # Get operational locations  
-            locations = db.query(Location).filter(Location.status == "OPERATIONAL").all()
+            locations = db.query(Location).filter(Location.is_operational == True).all()
             
             if not locations:
                 return JSONResponse(
