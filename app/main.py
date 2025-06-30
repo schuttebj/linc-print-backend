@@ -883,7 +883,7 @@ async def initialize_location_users():
     """Initialize users for all operational locations"""
     try:
         from app.core.database import get_db
-        from app.crud import crud_user
+        from app.crud import user as crud_user
         from app.schemas import UserCreate
         from app.models.user import Role, Location
         
