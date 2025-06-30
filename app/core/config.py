@@ -47,15 +47,24 @@ class Settings(BaseSettings):
     
     @property
     def allowed_origins_list(self) -> List[str]:
-        """Convert ALLOWED_ORIGINS string to list"""
+        """Convert ALLOWED_ORIGINS string to list and add Vercel preview domains"""
         if self.ALLOWED_ORIGINS == "*":
             return ["*"]
         try:
             import json
-            return json.loads(self.ALLOWED_ORIGINS)
+            origins = json.loads(self.ALLOWED_ORIGINS)
         except:
             origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
-            return [origin for origin in origins if origin]
+            origins = [origin for origin in origins if origin]
+        
+        # Add common Vercel preview patterns
+        preview_patterns = [
+            "https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app",
+            "https://linc-print-frontend-schuttebjs-projects.vercel.app"
+        ]
+        origins.extend(preview_patterns)
+        
+        return origins
     
     @property
     def allowed_hosts_list(self) -> List[str]:

@@ -196,6 +196,7 @@ def update_application_status(
 
 
 @router.post("/", response_model=ApplicationSchema)
+@router.post("", response_model=ApplicationSchema)  # Handle both with and without trailing slash
 def create_application(
     *,
     db: Session = Depends(get_db),
@@ -244,6 +245,59 @@ def create_application(
         )
     
     return application
+
+
+@router.get("/search", response_model=List[ApplicationSchema])
+def search_applications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    application_number: Optional[str] = None,
+    person_id: Optional[uuid.UUID] = None,
+    application_type: Optional[ApplicationType] = None,
+    status: Optional[ApplicationStatus] = None,
+    location_id: Optional[uuid.UUID] = None,
+    license_categories: Optional[List[str]] = Query(None),
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    is_urgent: Optional[bool] = None,
+    is_temporary_license: Optional[bool] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+) -> List[ApplicationSchema]:
+    """
+    Advanced application search
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to search applications"
+        )
+    
+    # Build search parameters
+    search_params = ApplicationSearch(
+        application_number=application_number,
+        person_id=person_id,
+        application_type=application_type,
+        status=status,
+        location_id=location_id,
+        license_categories=license_categories,
+        date_from=date_from,
+        date_to=date_to,
+        is_urgent=is_urgent,
+        is_temporary_license=is_temporary_license
+    )
+    
+    # Apply location filtering for location users
+    if current_user.user_type.value == "LOCATION_USER":
+        search_params.location_id = current_user.primary_location_id
+    
+    applications = crud_application.search_applications(
+        db=db, search_params=search_params, skip=skip, limit=limit
+    )
+    
+    return applications
 
 
 @router.get("/{application_id}", response_model=ApplicationWithDetails)
@@ -480,59 +534,6 @@ def process_fee_payment(
     )
     
     return fee
-
-
-@router.get("/search", response_model=List[ApplicationSchema])
-def search_applications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    application_number: Optional[str] = None,
-    person_id: Optional[uuid.UUID] = None,
-    application_type: Optional[ApplicationType] = None,
-    status: Optional[ApplicationStatus] = None,
-    location_id: Optional[uuid.UUID] = None,
-    license_categories: Optional[List[str]] = Query(None),
-    date_from: Optional[datetime] = None,
-    date_to: Optional[datetime] = None,
-    is_urgent: Optional[bool] = None,
-    is_temporary_license: Optional[bool] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500)
-) -> List[ApplicationSchema]:
-    """
-    Advanced application search
-    
-    Requires: applications.read permission
-    """
-    if not current_user.has_permission("applications.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to search applications"
-        )
-    
-    # Build search parameters
-    search_params = ApplicationSearch(
-        application_number=application_number,
-        person_id=person_id,
-        application_type=application_type,
-        status=status,
-        location_id=location_id,
-        license_categories=license_categories,
-        date_from=date_from,
-        date_to=date_to,
-        is_urgent=is_urgent,
-        is_temporary_license=is_temporary_license
-    )
-    
-    # Apply location filtering for location users
-    if current_user.user_type.value == "LOCATION_USER":
-        search_params.location_id = current_user.primary_location_id
-    
-    applications = crud_application.search_applications(
-        db=db, search_params=search_params, skip=skip, limit=limit
-    )
-    
-    return applications
 
 
 @router.get("/{application_id}/associated", response_model=List[ApplicationSchema])
