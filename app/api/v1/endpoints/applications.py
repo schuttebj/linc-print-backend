@@ -225,10 +225,20 @@ def create_application(
     
     # Validate location access
     if not current_user.can_access_location(application_in.location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create applications for this location"
-        )
+        # For provincial admins, do additional province check
+        if current_user.user_type.value == "PROVINCIAL_ADMIN":
+            from app.crud.crud_location import crud_location
+            location = crud_location.get(db=db, id=application_in.location_id)
+            if not location or location.province_code != current_user.scope_province:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Not authorized to create applications for locations outside {current_user.scope_province} province"
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to create applications for this location"
+            )
     
     # Validate age requirements and set flags
     validated_application = _validate_and_enhance_application(db, application_in, person)

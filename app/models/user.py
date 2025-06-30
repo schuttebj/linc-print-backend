@@ -280,6 +280,16 @@ class User(BaseModel):
         if self.is_superuser:
             return True
         
+        # System users and National admins can access any location
+        if self.user_type in [UserType.SYSTEM_USER, UserType.NATIONAL_ADMIN]:
+            return True
+        
+        # Provincial admins can access locations in their province
+        # This check will be handled in the API layer to avoid circular imports
+        if self.user_type == UserType.PROVINCIAL_ADMIN and self.scope_province:
+            # Return True here - detailed province check will be done in the API layer
+            return True
+        
         # Check primary location
         if self.primary_location_id == location_id:
             return True
