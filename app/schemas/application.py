@@ -40,8 +40,16 @@ class ApplicationBase(BaseModel):
     
     # Special flags
     is_urgent: bool = False
+    urgency_reason: Optional[str] = None
     has_special_requirements: bool = False
     special_requirements_notes: Optional[str] = None
+    
+    # Hold system
+    is_on_hold: bool = False
+    
+    # Replacement application specific
+    replacement_reason: Optional[str] = None
+    police_report_number: Optional[str] = None
     
     # Temporary license specific
     is_temporary_license: bool = False
@@ -81,8 +89,12 @@ class ApplicationUpdate(BaseModel):
     applicant_notes: Optional[str] = None
     processing_notes: Optional[str] = None
     is_urgent: Optional[bool] = None
+    urgency_reason: Optional[str] = None
     has_special_requirements: Optional[bool] = None
     special_requirements_notes: Optional[str] = None
+    is_on_hold: Optional[bool] = None
+    replacement_reason: Optional[str] = None
+    police_report_number: Optional[str] = None
     temporary_license_reason: Optional[str] = None
     
     # Biometric capture status

@@ -103,8 +103,16 @@ class Application(BaseModel):
     
     # Special flags
     is_urgent = Column(Boolean, nullable=False, default=False, comment="Urgent processing flag")
+    urgency_reason = Column(Text, nullable=True, comment="Reason for urgent processing")
     has_special_requirements = Column(Boolean, nullable=False, default=False, comment="Has special requirements")
     special_requirements_notes = Column(Text, nullable=True, comment="Special requirements details")
+    
+    # Hold system for prerequisite applications
+    is_on_hold = Column(Boolean, nullable=False, default=False, comment="Application is on hold pending prerequisites")
+    
+    # Replacement application specific fields
+    replacement_reason = Column(String(20), nullable=True, comment="Reason for replacement (LOST, STOLEN, DAMAGED)")
+    police_report_number = Column(String(50), nullable=True, comment="Police report number for lost/stolen licenses")
     
     # Temporary license specific fields
     is_temporary_license = Column(Boolean, nullable=False, default=False, comment="Is this a temporary license application")
