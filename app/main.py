@@ -1055,158 +1055,149 @@ async def initialize_fee_structures():
                 }
             
             # Madagascar Driver's License Fee Structure
+            # Using FeeStructure model with proper field names
             fee_structures = [
-                # Theory Test Fees
+                # Theory Test Fees for A′/A/B categories (10,000 Ar)
                 {
-                    "license_category": LicenseCategory.A_PRIME,  # A′ (Moped)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 10000.0,  # 10,000 Ariary
-                    "description": "Theory test fee for A′ (Moped) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.A,  # A (Full Motorcycle)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 10000.0,  # 10,000 Ariary
-                    "description": "Theory test fee for A (Full Motorcycle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.B,  # B (Light Vehicle)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 10000.0,  # 10,000 Ariary
-                    "description": "Theory test fee for B (Light Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.C,  # C (Medium Vehicle)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 15000.0,  # 15,000 Ariary
-                    "description": "Theory test fee for C (Medium Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.D,  # D (Heavy Vehicle)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 15000.0,  # 15,000 Ariary
-                    "description": "Theory test fee for D (Heavy Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.E,  # E (Heavy Vehicle + Trailer)
-                    "application_type": ApplicationType.THEORY_TEST,
-                    "base_fee": 15000.0,  # 15,000 Ariary
-                    "description": "Theory test fee for E (Heavy Vehicle + Trailer) category",
+                    "fee_type": "theory_test_light",
+                    "display_name": "Theory Test - Light Categories",
+                    "description": "Theory test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
+                    "amount": 10000.0,
+                    "applies_to_categories": ["A'", "A", "B"],
+                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # Practical Test Fees (same as theory)
+                # Theory Test Fees for C/D/E categories (15,000 Ar)
                 {
-                    "license_category": LicenseCategory.A_PRIME,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 10000.0,
-                    "description": "Practical test fee for A′ (Moped) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.A,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 10000.0,
-                    "description": "Practical test fee for A (Full Motorcycle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.B,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 10000.0,
-                    "description": "Practical test fee for B (Light Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.C,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 15000.0,
-                    "description": "Practical test fee for C (Medium Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.D,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 15000.0,
-                    "description": "Practical test fee for D (Heavy Vehicle) category",
-                    "is_active": True
-                },
-                {
-                    "license_category": LicenseCategory.E,
-                    "application_type": ApplicationType.PRACTICAL_TEST,
-                    "base_fee": 15000.0,
-                    "description": "Practical test fee for E (Heavy Vehicle + Trailer) category",
+                    "fee_type": "theory_test_heavy",
+                    "display_name": "Theory Test - Heavy Categories", 
+                    "description": "Theory test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
+                    "amount": 15000.0,
+                    "applies_to_categories": ["C", "D", "E"],
+                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # Card Production Fee (single fee for all categories)
+                # Practical Test Fees for A′/A/B categories (10,000 Ar)
                 {
-                    "license_category": None,  # Applies to all categories
-                    "application_type": ApplicationType.FULL_LICENSE,
-                    "base_fee": 38000.0,  # 38,000 Ariary
-                    "description": "Card production fee for CIM-produced license cards",
+                    "fee_type": "practical_test_light",
+                    "display_name": "Practical Test - Light Categories",
+                    "description": "Practical test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
+                    "amount": 10000.0,
+                    "applies_to_categories": ["A'", "A", "B"],
+                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "is_mandatory": True,
+                    "is_active": True
+                },
+                
+                # Practical Test Fees for C/D/E categories (15,000 Ar)
+                {
+                    "fee_type": "practical_test_heavy",
+                    "display_name": "Practical Test - Heavy Categories",
+                    "description": "Practical test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
+                    "amount": 15000.0,
+                    "applies_to_categories": ["C", "D", "E"],
+                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "is_mandatory": True,
+                    "is_active": True
+                },
+                
+                # Card Production Fee (38,000 Ar - applies to all)
+                {
+                    "fee_type": "card_production",
+                    "display_name": "License Card Production",
+                    "description": "Card production fee for CIM-produced license cards (all categories)",
+                    "amount": 38000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE", "RENEWAL", "DUPLICATE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 
                 # Temporary License Fees (urgency-based pricing)
                 {
-                    "license_category": None,  # Applies to all categories
-                    "application_type": ApplicationType.TEMPORARY_LICENSE,
-                    "base_fee": 30000.0,  # 30,000 Ariary (standard)
-                    "urgency_multiplier": 1.0,
+                    "fee_type": "temporary_license_standard",
+                    "display_name": "Temporary License - Standard",
                     "description": "Standard temporary license fee (90-day A4 permit)",
+                    "amount": 30000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 {
-                    "license_category": None,
-                    "application_type": ApplicationType.TEMPORARY_LICENSE,
-                    "base_fee": 100000.0,  # 100,000 Ariary (urgent)
-                    "urgency_multiplier": 3.33,
+                    "fee_type": "temporary_license_urgent",
+                    "display_name": "Temporary License - Urgent",
                     "description": "Urgent temporary license fee (same-day processing)",
+                    "amount": 100000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 {
-                    "license_category": None,
-                    "application_type": ApplicationType.TEMPORARY_LICENSE,
-                    "base_fee": 400000.0,  # 400,000 Ariary (emergency)
-                    "urgency_multiplier": 13.33,
+                    "fee_type": "temporary_license_emergency",
+                    "display_name": "Temporary License - Emergency",
                     "description": "Emergency temporary license fee (immediate processing)",
+                    "amount": 400000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # International Permit Fee
+                # International Permit Fee (50,000 Ar)
                 {
-                    "license_category": None,  # Based on existing license
-                    "application_type": ApplicationType.INTERNATIONAL_PERMIT,
-                    "base_fee": 50000.0,  # 50,000 Ariary
-                    "description": "International driving permit fee",
+                    "fee_type": "international_permit",
+                    "display_name": "International Driving Permit",
+                    "description": "International driving permit fee (based on existing license)",
+                    "amount": 50000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["INTERNATIONAL_PERMIT"],
+                    "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # License Renewal Fee
+                # License Renewal Fee (20,000 Ar)
                 {
-                    "license_category": None,  # Applies to all categories
-                    "application_type": ApplicationType.RENEWAL,
-                    "base_fee": 20000.0,  # 20,000 Ariary
-                    "description": "License renewal fee (5-year validity)",
+                    "fee_type": "license_renewal",
+                    "display_name": "License Renewal",
+                    "description": "License renewal fee (5-year validity for all categories)",
+                    "amount": 20000.0,
+                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_application_types": ["RENEWAL"],
+                    "is_mandatory": True,
                     "is_active": True
                 }
             ]
             
+            # Get system user for created_by field
+            from app.models.user import User
+            system_user = db.query(User).filter(User.username == "S001").first()
+            if not system_user:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": "error",
+                        "message": "System user not found. Please initialize users first.",
+                        "timestamp": time.time()
+                    }
+                )
+            
             created_fees = []
             for fee_data in fee_structures:
+                # Add created_by field
+                fee_data["created_by"] = system_user.id
                 fee = FeeStructure(**fee_data)
                 db.add(fee)
                 db.flush()
                 created_fees.append({
-                    "category": fee_data["license_category"].value if fee_data["license_category"] else "ALL",
-                    "type": fee_data["application_type"].value,
-                    "fee": fee_data["base_fee"],
+                    "fee_type": fee_data["fee_type"],
+                    "display_name": fee_data["display_name"],
+                    "amount": fee_data["amount"],
                     "description": fee_data["description"]
                 })
             
