@@ -106,8 +106,8 @@ def get_applications_by_person(
     if current_user.user_type.value == "LOCATION_USER":
         location_filter = current_user.primary_location_id
     
-    applications = crud_application.get_by_person(
-        db=db, person_id=person_id, location_id=location_filter
+    applications = crud_application.get_applications_by_person(
+        db=db, person_id=person_id
     )
     
     return applications
