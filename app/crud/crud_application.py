@@ -95,8 +95,7 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
             ApplicationType.NEW_LICENSE: "NL",
             ApplicationType.LEARNERS_PERMIT: "LP", 
             ApplicationType.RENEWAL: "RN",
-            ApplicationType.DUPLICATE: "DP",
-            ApplicationType.UPGRADE: "UP",
+            ApplicationType.REPLACEMENT: "RP",
             ApplicationType.TEMPORARY_LICENSE: "TL",
             ApplicationType.INTERNATIONAL_PERMIT: "IP"
         }
@@ -157,10 +156,11 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         if search_params.assigned_to_user_id:
             query = query.filter(Application.assigned_to_user_id == search_params.assigned_to_user_id)
         
-        if search_params.license_categories:
-            # Search within JSON array
-            for category in search_params.license_categories:
-                query = query.filter(Application.license_categories.op('?')(category))
+        if search_params.license_category:
+            query = query.filter(Application.license_category == search_params.license_category)
+        
+        if search_params.replacement_reason:
+            query = query.filter(Application.replacement_reason == search_params.replacement_reason)
         
         if search_params.date_from:
             query = query.filter(Application.application_date >= search_params.date_from)
@@ -170,6 +170,9 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         
         if search_params.is_urgent is not None:
             query = query.filter(Application.is_urgent == search_params.is_urgent)
+        
+        if search_params.is_on_hold is not None:
+            query = query.filter(Application.is_on_hold == search_params.is_on_hold)
         
         if search_params.is_temporary_license is not None:
             query = query.filter(Application.is_temporary_license == search_params.is_temporary_license)

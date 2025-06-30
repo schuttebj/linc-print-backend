@@ -12,7 +12,7 @@ import uuid
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
-    TestAttemptType, TestResult, PaymentStatus
+    TestAttemptType, TestResult, PaymentStatus, ReplacementReason
 )
 
 
@@ -21,7 +21,7 @@ class ApplicationBase(BaseModel):
     """Base schema for Application"""
     application_type: ApplicationType
     person_id: uuid.UUID
-    license_categories: List[str] = Field(..., description="Array of license categories (e.g., ['A', 'B'])")
+    license_category: LicenseCategory = Field(..., description="Single license category for this application")
     location_id: uuid.UUID
     assigned_to_user_id: Optional[uuid.UUID] = None
     priority: int = Field(default=1, ge=1, le=3, description="Processing priority (1=normal, 2=urgent, 3=emergency)")
@@ -40,29 +40,23 @@ class ApplicationBase(BaseModel):
     
     # Special flags
     is_urgent: bool = False
-    urgency_reason: Optional[str] = None
+    is_on_hold: bool = False
     has_special_requirements: bool = False
     special_requirements_notes: Optional[str] = None
     
-    # Hold system
-    is_on_hold: bool = False
-    
-    # Replacement application specific
-    replacement_reason: Optional[str] = None
-    police_report_number: Optional[str] = None
+    # Replacement specific
+    replacement_reason: Optional[ReplacementReason] = None
     
     # Temporary license specific
     is_temporary_license: bool = False
     temporary_license_validity_days: Optional[int] = Field(default=90, ge=1, le=365)
     temporary_license_reason: Optional[str] = None
 
-    @validator('license_categories')
-    def validate_license_categories(cls, v):
-        """Validate license categories"""
-        valid_categories = [cat.value for cat in LicenseCategory]
-        for category in v:
-            if category not in valid_categories:
-                raise ValueError(f"Invalid license category: {category}")
+    @validator('replacement_reason')
+    def validate_replacement_reason(cls, v, values):
+        """Validate replacement reason is provided for REPLACEMENT applications"""
+        if values.get('application_type') == ApplicationType.REPLACEMENT and not v:
+            raise ValueError("Replacement reason required for REPLACEMENT applications")
         return v
 
     @validator('existing_license_number')
@@ -89,12 +83,10 @@ class ApplicationUpdate(BaseModel):
     applicant_notes: Optional[str] = None
     processing_notes: Optional[str] = None
     is_urgent: Optional[bool] = None
-    urgency_reason: Optional[str] = None
+    is_on_hold: Optional[bool] = None
     has_special_requirements: Optional[bool] = None
     special_requirements_notes: Optional[str] = None
-    is_on_hold: Optional[bool] = None
-    replacement_reason: Optional[str] = None
-    police_report_number: Optional[str] = None
+    replacement_reason: Optional[ReplacementReason] = None
     temporary_license_reason: Optional[str] = None
     
     # Biometric capture status
@@ -111,10 +103,12 @@ class ApplicationSearch(BaseModel):
     status: Optional[ApplicationStatus] = None
     location_id: Optional[uuid.UUID] = None
     assigned_to_user_id: Optional[uuid.UUID] = None
-    license_categories: Optional[List[str]] = None
+    license_category: Optional[LicenseCategory] = None
+    replacement_reason: Optional[ReplacementReason] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     is_urgent: Optional[bool] = None
+    is_on_hold: Optional[bool] = None
     is_temporary_license: Optional[bool] = None
     
     # Sorting

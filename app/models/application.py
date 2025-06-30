@@ -3,9 +3,9 @@ Application Management Models for Madagascar License System
 Implements the complete driver's license application workflow based on ATT/CIM process
 
 Features:
-- 7 Application types: New, Learner's Permit, Renewal, Duplicate, Upgrade, Temporary, IDP
+- 6 Application types: New, Learner's Permit, Renewal, Replacement, Temporary, IDP
 - 6 License categories: A (Full Motorcycle), A′ (Light Motorcycle), B (Light Vehicle), C (Heavy Goods), D (Passenger Transport), E (Large Trailers)
-- 16 Application statuses: From DRAFT to COMPLETED
+- 17 Application statuses: From DRAFT to COMPLETED
 - Biometric data capture: Photo, signature, fingerprint
 - Progressive requirements: C/D/E require existing B license
 - Fee management: Theory test, card production, temporary licenses
@@ -26,7 +26,7 @@ from app.models.base import BaseModel
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
-    TestAttemptType, TestResult, PaymentStatus
+    TestAttemptType, TestResult, PaymentStatus, ReplacementReason
 )
 
 
@@ -36,8 +36,8 @@ class Application(BaseModel):
     
     Supports all application types with complete workflow integration:
     - Person integration via foreign key
-    - Multiple license categories per application
-    - Complete status workflow (16 stages)
+    - Single license category per application
+    - Complete status workflow (17 stages)
     - Biometric data association
     - Fee management and payment tracking
     - Associated applications (temporary licenses)
@@ -52,8 +52,8 @@ class Application(BaseModel):
     # Person integration - links to existing Person module
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="Applicant person ID")
     
-    # License categories - JSON array to support multiple categories per application
-    license_categories = Column(JSON, nullable=False, comment="Array of license categories (e.g., ['A', 'B'])")
+    # License category - Single category per application (changed from JSON array)
+    license_category = Column(SQLEnum(LicenseCategory), nullable=False, comment="Single license category for this application")
     
     # Application status and workflow
     status = Column(SQLEnum(ApplicationStatus), nullable=False, default=ApplicationStatus.DRAFT, index=True, comment="Current application status")
@@ -103,16 +103,12 @@ class Application(BaseModel):
     
     # Special flags
     is_urgent = Column(Boolean, nullable=False, default=False, comment="Urgent processing flag")
-    urgency_reason = Column(Text, nullable=True, comment="Reason for urgent processing")
+    is_on_hold = Column(Boolean, nullable=False, default=False, comment="Application held (not sent to printer)")
     has_special_requirements = Column(Boolean, nullable=False, default=False, comment="Has special requirements")
     special_requirements_notes = Column(Text, nullable=True, comment="Special requirements details")
     
-    # Hold system for prerequisite applications
-    is_on_hold = Column(Boolean, nullable=False, default=False, comment="Application is on hold pending prerequisites")
-    
-    # Replacement application specific fields
-    replacement_reason = Column(String(20), nullable=True, comment="Reason for replacement (LOST, STOLEN, DAMAGED)")
-    police_report_number = Column(String(50), nullable=True, comment="Police report number for lost/stolen licenses")
+    # Replacement specific fields
+    replacement_reason = Column(SQLEnum(ReplacementReason), nullable=True, comment="Reason for replacement (only for REPLACEMENT applications)")
     
     # Temporary license specific fields
     is_temporary_license = Column(Boolean, nullable=False, default=False, comment="Is this a temporary license application")
@@ -158,34 +154,32 @@ class Application(BaseModel):
 
     @property
     def license_categories_list(self) -> list:
-        """Get license categories as a list"""
-        if not self.license_categories:
-            return []
-        return self.license_categories if isinstance(self.license_categories, list) else [self.license_categories]
+        """Get license categories as a list (backward compatibility)"""
+        return [self.license_category.value] if self.license_category else []
 
     @property
     def requires_theory_test(self) -> bool:
         """Check if application requires theory test"""
-        return self.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT, ApplicationType.UPGRADE]
+        return self.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]
 
     @property
     def requires_practical_test(self) -> bool:
         """Check if application requires practical test"""
-        return self.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.UPGRADE]
+        return self.application_type in [ApplicationType.NEW_LICENSE]
 
     def has_license_category(self, category: LicenseCategory) -> bool:
         """Check if application includes specific license category"""
-        return category.value in self.license_categories_list
+        return self.license_category == category
 
     def requires_medical_certificate_for_categories(self) -> bool:
-        """Check if any selected categories require medical certificate"""
+        """Check if selected category requires medical certificate"""
         categories_requiring_medical = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
-        return any(cat.value in self.license_categories_list for cat in categories_requiring_medical)
+        return self.license_category in categories_requiring_medical
 
     def get_theory_test_fee_amount(self) -> int:
-        """Calculate theory test fee based on categories (10,000 or 15,000 Ar)"""
-        heavy_categories = [LicenseCategory.C.value, LicenseCategory.D.value, LicenseCategory.E.value]
-        if any(cat in self.license_categories_list for cat in heavy_categories):
+        """Calculate theory test fee based on category (10,000 or 15,000 Ar)"""
+        heavy_categories = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
+        if self.license_category in heavy_categories:
             return 15000  # Ar for C/D/E categories
         return 10000  # Ar for A/A′/B categories
 
@@ -439,8 +433,7 @@ APPLICATION_TYPE_DISPLAY_NAMES = {
     ApplicationType.NEW_LICENSE: "New License Application",
     ApplicationType.LEARNERS_PERMIT: "Learner's Permit Application",
     ApplicationType.RENEWAL: "License Renewal",
-    ApplicationType.DUPLICATE: "Duplicate/Replacement License",
-    ApplicationType.UPGRADE: "License Category Upgrade", 
+    ApplicationType.REPLACEMENT: "Replacement License",
     ApplicationType.TEMPORARY_LICENSE: "Temporary License",
     ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit",
 }
@@ -449,6 +442,7 @@ APPLICATION_TYPE_DISPLAY_NAMES = {
 APPLICATION_STATUS_DISPLAY_NAMES = {
     ApplicationStatus.DRAFT: "Draft",
     ApplicationStatus.SUBMITTED: "Submitted",
+    ApplicationStatus.ON_HOLD: "On Hold",
     ApplicationStatus.DOCUMENTS_PENDING: "Documents Pending",
     ApplicationStatus.THEORY_TEST_REQUIRED: "Theory Test Required",
     ApplicationStatus.THEORY_PASSED: "Theory Test Passed",
@@ -487,4 +481,14 @@ CATEGORIES_REQUIRING_MEDICAL = [
     LicenseCategory.C,
     LicenseCategory.D,
     LicenseCategory.E,
-] 
+]
+
+# Replacement reason display names for frontend
+REPLACEMENT_REASON_DISPLAY_NAMES = {
+    ReplacementReason.LOST: "Lost License",
+    ReplacementReason.STOLEN: "Stolen License (Police Report Required)",
+    ReplacementReason.DAMAGED: "Damaged License",
+    ReplacementReason.NAME_CHANGE: "Name Change",
+    ReplacementReason.ADDRESS_CHANGE: "Address Change",
+    ReplacementReason.OTHER: "Other Reason",
+} 

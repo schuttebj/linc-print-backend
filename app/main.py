@@ -1064,7 +1064,7 @@ async def initialize_fee_structures():
                     "description": "Theory test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
                     "amount": 10000.0,
                     "applies_to_categories": ["A'", "A", "B"],
-                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
                     "is_mandatory": True,
                     "is_active": True
                 },
@@ -1076,7 +1076,7 @@ async def initialize_fee_structures():
                     "description": "Theory test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
                     "amount": 15000.0,
                     "applies_to_categories": ["C", "D", "E"],
-                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
                     "is_mandatory": True,
                     "is_active": True
                 },
@@ -1088,7 +1088,7 @@ async def initialize_fee_structures():
                     "description": "Practical test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
                     "amount": 10000.0,
                     "applies_to_categories": ["A'", "A", "B"],
-                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "applies_to_application_types": ["NEW_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
                 },
@@ -1100,7 +1100,7 @@ async def initialize_fee_structures():
                     "description": "Practical test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
                     "amount": 15000.0,
                     "applies_to_categories": ["C", "D", "E"],
-                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE"],
+                    "applies_to_application_types": ["NEW_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
                 },
@@ -1112,7 +1112,7 @@ async def initialize_fee_structures():
                     "description": "Card production fee for CIM-produced license cards (all categories)",
                     "amount": 38000.0,
                     "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
-                    "applies_to_application_types": ["NEW_LICENSE", "UPGRADE", "RENEWAL", "DUPLICATE"],
+                    "applies_to_application_types": ["NEW_LICENSE", "RENEWAL", "REPLACEMENT"],
                     "is_mandatory": True,
                     "is_active": True
                 },

@@ -140,16 +140,16 @@ class ApplicationType(PythonEnum):
     NEW_LICENSE = "NEW_LICENSE"                 # First-time license application
     LEARNERS_PERMIT = "LEARNERS_PERMIT"         # Learner's permit after theory test
     RENEWAL = "RENEWAL"                         # License renewal (5-year cycle)
-    DUPLICATE = "DUPLICATE"                     # Replacement for lost/damaged (same as renewal)
-    UPGRADE = "UPGRADE"                         # Adding new categories to existing license
+    REPLACEMENT = "REPLACEMENT"                 # Replacement for lost/stolen/damaged license
     TEMPORARY_LICENSE = "TEMPORARY_LICENSE"     # Emergency permit (90-day validity)
     INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"  # IDP for travel abroad
 
 
 class ApplicationStatus(PythonEnum):
-    """Complete application workflow status (16 stages)"""
+    """Complete application workflow status (17 stages)"""
     DRAFT = "DRAFT"                           # Application saved but not submitted
     SUBMITTED = "SUBMITTED"                   # Application submitted for review
+    ON_HOLD = "ON_HOLD"                       # Application held (not sent to printer)
     DOCUMENTS_PENDING = "DOCUMENTS_PENDING"   # Missing required documents
     THEORY_TEST_REQUIRED = "THEORY_TEST_REQUIRED"  # Ready for theory exam
     THEORY_PASSED = "THEORY_PASSED"          # Theory test completed successfully
@@ -212,6 +212,16 @@ class TestResult(PythonEnum):
     PASSED = "PASSED"               # Test passed
     FAILED = "FAILED"               # Test failed
     NO_SHOW = "NO_SHOW"             # Applicant did not appear
+
+
+class ReplacementReason(PythonEnum):
+    """Reasons for license replacement"""
+    LOST = "LOST"                   # License lost
+    STOLEN = "STOLEN"               # License stolen (requires police report)
+    DAMAGED = "DAMAGED"             # License damaged
+    NAME_CHANGE = "NAME_CHANGE"     # Name change
+    ADDRESS_CHANGE = "ADDRESS_CHANGE"  # Address change
+    OTHER = "OTHER"                 # Other reason
 
 
 # Province display names mapping for frontend
