@@ -4,11 +4,15 @@ Provides standardized dropdown data from backend enums
 """
 
 from typing import List, Dict, Any
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.models.application import FeeStructure
 from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
-    UserStatus, OfficeType, UserType,
+    UserStatus, OfficeType, UserType, LicenseCategory, ApplicationType,
+    ApplicationStatus,
     PROVINCE_DISPLAY_NAMES, LANGUAGE_DISPLAY_NAMES, NATIONALITY_DISPLAY_NAMES,
     PHONE_COUNTRY_DISPLAY_NAMES, COUNTRY_DISPLAY_NAMES, DOCUMENT_TYPE_INFO,
     PERSON_NATURE_DISPLAY_NAMES, OFFICE_TYPE_DISPLAY_NAMES,
@@ -151,13 +155,79 @@ async def get_office_types() -> List[Dict[str, str]]:
     ]
 
 
+@router.get("/license-categories", response_model=List[Dict[str, str]])
+async def get_license_categories() -> List[Dict[str, str]]:
+    """Get all available license categories"""
+    return [
+        {
+            "value": category.value,
+            "label": f"{category.value} - {category.value}" 
+        }
+        for category in LicenseCategory
+    ]
+
+
+@router.get("/application-types", response_model=List[Dict[str, str]])
+async def get_application_types() -> List[Dict[str, str]]:
+    """Get all available application types"""
+    return [
+        {
+            "value": app_type.value,
+            "label": app_type.value.replace('_', ' ').title()
+        }
+        for app_type in ApplicationType
+    ]
+
+
+@router.get("/application-statuses", response_model=List[Dict[str, str]])
+async def get_application_statuses() -> List[Dict[str, str]]:
+    """Get all available application statuses"""
+    return [
+        {
+            "value": status.value,
+            "label": status.value.replace('_', ' ').title()
+        }
+        for status in ApplicationStatus
+    ]
+
+
+@router.get("/fee-structures", response_model=List[Dict[str, Any]])
+async def get_fee_structures(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    """Get all active fee structures for applications"""
+    fee_structures = db.query(FeeStructure).filter(
+        FeeStructure.is_active == True
+    ).all()
+    
+    return [
+        {
+            "fee_type": fee.fee_type,
+            "display_name": fee.display_name,
+            "description": fee.description,
+            "amount": float(fee.amount),
+            "currency": fee.currency,
+            "applies_to_categories": fee.applies_to_categories,
+            "applies_to_application_types": fee.applies_to_application_types,
+            "is_mandatory": fee.is_mandatory,
+            "effective_from": fee.effective_from.isoformat() if fee.effective_from else None,
+            "effective_until": fee.effective_until.isoformat() if fee.effective_until else None
+        }
+        for fee in fee_structures
+    ]
+
+
 # Equipment status endpoints removed - no longer needed for location management
 # Location operational status is handled by the is_operational boolean field
 
 
 @router.get("/all", response_model=Dict[str, Any])
-async def get_all_lookups() -> Dict[str, Any]:
+async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get all lookup data in a single request for efficiency"""
+    
+    # Get fee structures from database
+    fee_structures = db.query(FeeStructure).filter(
+        FeeStructure.is_active == True
+    ).all()
+    
     return {
         "document_types": [
             {
@@ -236,5 +306,41 @@ async def get_all_lookups() -> Dict[str, Any]:
                 "label": OFFICE_TYPE_DISPLAY_NAMES[office_type]
             }
             for office_type in OfficeType
+        ],
+        "license_categories": [
+            {
+                "value": category.value,
+                "label": f"{category.value} - {category.value}" 
+            }
+            for category in LicenseCategory
+        ],
+        "application_types": [
+            {
+                "value": app_type.value,
+                "label": app_type.value.replace('_', ' ').title()
+            }
+            for app_type in ApplicationType
+        ],
+        "application_statuses": [
+            {
+                "value": status.value,
+                "label": status.value.replace('_', ' ').title()
+            }
+            for status in ApplicationStatus
+        ],
+        "fee_structures": [
+            {
+                "fee_type": fee.fee_type,
+                "display_name": fee.display_name,
+                "description": fee.description,
+                "amount": float(fee.amount),
+                "currency": fee.currency,
+                "applies_to_categories": fee.applies_to_categories,
+                "applies_to_application_types": fee.applies_to_application_types,
+                "is_mandatory": fee.is_mandatory,
+                "effective_from": fee.effective_from.isoformat() if fee.effective_from else None,
+                "effective_until": fee.effective_until.isoformat() if fee.effective_until else None
+            }
+            for fee in fee_structures
         ]
     } 

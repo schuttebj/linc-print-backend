@@ -84,6 +84,117 @@ def get_applications(
     return applications
 
 
+@router.get("/search/person/{person_id}", response_model=List[ApplicationSchema])
+def get_applications_by_person(
+    person_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[ApplicationSchema]:
+    """
+    Get all applications for a specific person (for quick continuation)
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read applications"
+        )
+    
+    # Apply location filtering for location users
+    location_filter = None
+    if current_user.user_type.value == "LOCATION_USER":
+        location_filter = current_user.primary_location_id
+    
+    applications = crud_application.get_by_person(
+        db=db, person_id=person_id, location_id=location_filter
+    )
+    
+    return applications
+
+
+@router.get("/in-progress", response_model=List[ApplicationSchema])
+def get_in_progress_applications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    date: Optional[str] = Query("today", description="Date filter (today, week, month)"),
+    stage: Optional[str] = Query(None, description="Workflow stage filter")
+) -> List[ApplicationSchema]:
+    """
+    Get applications that are ready for next stage processing
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read applications"
+        )
+    
+    # Apply location filtering for location users
+    location_filter = None
+    if current_user.user_type.value == "LOCATION_USER":
+        location_filter = current_user.primary_location_id
+    
+    # Get applications ready for next stage
+    applications = crud_application.get_in_progress_applications(
+        db=db, 
+        location_id=location_filter,
+        date_filter=date,
+        stage_filter=stage
+    )
+    
+    return applications
+
+
+@router.post("/{application_id}/status", response_model=ApplicationSchema)
+def update_application_status(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    new_status: ApplicationStatus,
+    reason: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+) -> ApplicationSchema:
+    """
+    Update application status with audit trail
+    
+    Requires: applications.update permission
+    """
+    if not current_user.has_permission("applications.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to update application status"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this application"
+        )
+    
+    # Update status with audit trail
+    updated_application = crud_application.update_status(
+        db=db,
+        application_id=application_id,
+        new_status=new_status,
+        reason=reason,
+        notes=notes,
+        updated_by=current_user.id
+    )
+    
+    return updated_application
+
+
 @router.post("/", response_model=ApplicationSchema)
 def create_application(
     *,
@@ -516,6 +627,96 @@ def cleanup_expired_drafts(
     return {
         "message": f"Deleted {deleted_count} expired draft applications",
         "deleted_count": deleted_count
+    }
+
+
+@router.post("/{application_id}/documents")
+async def upload_application_document(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    file: UploadFile = File(...),
+    document_type: str,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload document for application (medical certificate, parental consent, etc.)
+    
+    Requires: applications.update permission
+    """
+    if not current_user.has_permission("applications.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to upload documents"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to upload documents for this application"
+        )
+    
+    # For now, return placeholder response - implement file upload logic later
+    return {
+        "status": "success",
+        "message": "Document upload endpoint ready",
+        "file_name": file.filename,
+        "document_type": document_type,
+        "notes": notes
+    }
+
+
+@router.post("/{application_id}/biometric-data")
+async def upload_biometric_data(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    file: UploadFile = File(...),
+    data_type: str,
+    capture_method: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload biometric data for application (photo, signature, fingerprint)
+    
+    Requires: applications.update permission
+    """
+    if not current_user.has_permission("applications.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to upload biometric data"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to upload biometric data for this application"
+        )
+    
+    # For now, return placeholder response - implement biometric upload logic later
+    return {
+        "status": "success",
+        "message": "Biometric data upload endpoint ready",
+        "file_name": file.filename,
+        "data_type": data_type,
+        "capture_method": capture_method
     }
 
 
