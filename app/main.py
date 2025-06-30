@@ -1176,13 +1176,30 @@ async def initialize_fee_structures():
             
             # Get system user for created_by field
             from app.models.user import User
-            system_user = db.query(User).filter(User.username == "S001").first()
+            from app.models.enums import UserType
+            
+            # Debug: Check what users exist
+            all_users = db.query(User).all()
+            logger.info(f"Fee structures init: Found {len(all_users)} users in database")
+            for user in all_users[:5]:  # Log first 5 users
+                logger.info(f"  User: {user.username}, type: {user.user_type}, id: {user.id}")
+            
+            # Try to find system user in order of preference
+            system_user = (
+                db.query(User).filter(User.username == "S001").first() or
+                db.query(User).filter(User.user_type == UserType.SYSTEM_USER).first() or
+                db.query(User).filter(User.user_type == UserType.NATIONAL_ADMIN).first() or
+                db.query(User).order_by(User.created_at).first()
+            )
+            
+            logger.info(f"Selected system user: {system_user.username if system_user else 'None'}")
+            
             if not system_user:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "status": "error",
-                        "message": "System user not found. Please initialize users first.",
+                        "message": "No users found in database. Please initialize users first.",
                         "timestamp": time.time()
                     }
                 )
