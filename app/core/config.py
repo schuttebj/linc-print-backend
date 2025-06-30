@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     
-    # CORS Configuration - Specific origins required for credentials mode
-    ALLOWED_ORIGINS: str = "https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,https://linc-print-frontend.vercel.app,http://localhost:3000,http://localhost:5173"
+    # CORS Configuration - Allow all origins temporarily to fix CORS issues
+    ALLOWED_ORIGINS: str = "*"
     ALLOWED_HOSTS: str = "*"
     
     @property
