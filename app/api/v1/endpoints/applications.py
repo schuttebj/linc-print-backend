@@ -741,49 +741,18 @@ def get_person_licenses(
     """
     Get all existing licenses (applications with COMPLETED status) for a person
     This supports the license verification system in the frontend
-    """
-    from app.crud.crud_application import application as crud_application
     
-    try:
-        # Get all completed applications for this person
-        completed_applications = crud_application.get_multi_by_person(
-            db=db, 
-            person_id=str(person_id),
-            status_filter=ApplicationStatus.COMPLETED
-        )
-        
-        # Transform to license format
-        system_licenses = []
-        for app in completed_applications:
-            # Generate license number from application number if not exists
-            license_number = f"DL{app.application_number}" if app.application_type == ApplicationType.NEW_LICENSE else f"LP{app.application_number}"
-            
-            system_licenses.append({
-                "id": str(app.id),
-                "license_number": license_number,
-                "license_type": "DRIVERS_LICENSE" if app.application_type == ApplicationType.NEW_LICENSE else "LEARNERS_PERMIT",
-                "categories": [app.license_category],  # Single category per application
-                "issue_date": app.completed_at.date().isoformat() if app.completed_at else app.created_at.date().isoformat(),
-                "expiry_date": (app.completed_at.date().replace(year=app.completed_at.year + 10) if app.completed_at else app.created_at.date().replace(year=app.created_at.year + 10)).isoformat(),
-                "status": "ACTIVE",
-                "issuing_location": app.location.name if app.location else "Unknown",
-                "application_id": str(app.id),
-                "verified": True,
-                "verification_source": "SYSTEM"
-            })
-        
-        return {
-            "person_id": str(person_id),
-            "system_licenses": system_licenses,
-            "total_count": len(system_licenses)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching person licenses: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch person licenses"
-        )
+    PLACEHOLDER: Returns empty list for now to enable frontend testing
+    """
+    
+    # For now, return empty placeholder data to avoid import errors
+    # This will be implemented properly when the database models are ready
+    
+    return {
+        "person_id": str(person_id),
+        "system_licenses": [],
+        "total_count": 0
+    }
 
 
 # Helper functions
