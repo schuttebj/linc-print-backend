@@ -16,6 +16,100 @@ from app.models.enums import (
 )
 
 
+# Medical Information Schemas for comprehensive health assessment
+class VisionTestData(BaseModel):
+    """Vision test data for driving fitness assessment"""
+    visual_acuity_right_eye: str = Field(..., description="e.g., '20/20', '6/6'")
+    visual_acuity_left_eye: str = Field(..., description="e.g., '20/20', '6/6'")
+    visual_acuity_binocular: str = Field(..., description="e.g., '20/20', '6/6'")
+    corrective_lenses_required: bool = False
+    corrective_lenses_type: Optional[str] = Field(None, description="GLASSES, CONTACT_LENSES, BOTH")
+    
+    color_vision_normal: bool = True
+    color_vision_deficiency_type: Optional[str] = Field(None, description="RED_GREEN, BLUE_YELLOW, COMPLETE, NONE")
+    
+    visual_field_normal: bool = True
+    visual_field_horizontal_degrees: Optional[int] = None
+    visual_field_vertical_degrees: Optional[int] = None
+    visual_field_defects: Optional[str] = None
+    
+    night_vision_adequate: bool = True
+    contrast_sensitivity_adequate: bool = True
+    glare_sensitivity_issues: bool = False
+    
+    vision_meets_standards: bool = True
+    vision_restrictions: List[str] = Field(default_factory=list)
+
+
+class MedicalConditions(BaseModel):
+    """Medical conditions assessment for driving fitness"""
+    epilepsy: bool = False
+    epilepsy_controlled: bool = False
+    epilepsy_medication: Optional[str] = None
+    seizures_last_occurrence: Optional[str] = None
+    
+    mental_illness: bool = False
+    mental_illness_type: Optional[str] = None
+    mental_illness_controlled: bool = False
+    mental_illness_medication: Optional[str] = None
+    
+    heart_condition: bool = False
+    heart_condition_type: Optional[str] = None
+    blood_pressure_controlled: bool = True
+    
+    diabetes: bool = False
+    diabetes_type: Optional[str] = Field(None, description="TYPE_1, TYPE_2, GESTATIONAL")
+    diabetes_controlled: bool = False
+    diabetes_medication: Optional[str] = None
+    
+    alcohol_dependency: bool = False
+    drug_dependency: bool = False
+    substance_treatment_program: bool = False
+    
+    fainting_episodes: bool = False
+    dizziness_episodes: bool = False
+    muscle_coordination_issues: bool = False
+    
+    medications_affecting_driving: bool = False
+    current_medications: List[str] = Field(default_factory=list)
+    
+    medically_fit_to_drive: bool = True
+    conditions_requiring_monitoring: List[str] = Field(default_factory=list)
+
+
+class PhysicalAssessment(BaseModel):
+    """Physical assessment for driving fitness"""
+    hearing_adequate: bool = True
+    hearing_aid_required: bool = False
+    
+    limb_disabilities: bool = False
+    limb_disability_details: Optional[str] = None
+    adaptive_equipment_required: bool = False
+    adaptive_equipment_type: List[str] = Field(default_factory=list)
+    
+    mobility_impairment: bool = False
+    mobility_aid_required: bool = False
+    mobility_aid_type: Optional[str] = None
+    
+    reaction_time_adequate: bool = True
+    
+    physically_fit_to_drive: bool = True
+    physical_restrictions: List[str] = Field(default_factory=list)
+
+
+class MedicalInformation(BaseModel):
+    """Comprehensive medical assessment for license application"""
+    vision_test: VisionTestData
+    medical_conditions: MedicalConditions
+    physical_assessment: PhysicalAssessment
+    
+    medical_clearance: bool = Field(..., description="Overall medical clearance for driving")
+    medical_restrictions: List[str] = Field(default_factory=list, description="Any restrictions to be placed on license")
+    medical_notes: Optional[str] = None
+    examined_by: Optional[str] = Field(None, description="Name of medical examiner")
+    examination_date: Optional[date] = None
+
+
 # Base schemas
 class ApplicationBase(BaseModel):
     """Base schema for Application"""
@@ -69,7 +163,8 @@ class ApplicationBase(BaseModel):
 
 class ApplicationCreate(ApplicationBase):
     """Schema for creating new applications"""
-    pass
+    # Medical information for comprehensive health assessment
+    medical_information: Optional[MedicalInformation] = None
 
 
 class ApplicationUpdate(BaseModel):

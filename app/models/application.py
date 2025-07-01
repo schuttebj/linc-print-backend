@@ -96,6 +96,9 @@ class Application(BaseModel):
     # Document checklist - JSON object tracking required documents
     required_documents = Column(JSON, nullable=True, comment="JSON object of required documents and their status")
     
+    # Medical information - comprehensive health assessment data
+    medical_information = Column(JSON, nullable=True, comment="Comprehensive medical assessment data including vision tests, medical conditions, and physical assessments")
+    
     # Biometric data capture status
     photo_captured = Column(Boolean, nullable=False, default=False, comment="ISO-compliant photo captured")
     signature_captured = Column(Boolean, nullable=False, default=False, comment="Digital signature captured")
