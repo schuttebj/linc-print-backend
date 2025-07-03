@@ -870,6 +870,119 @@ def get_person_licenses(
     }
 
 
+@router.post("/process-image")
+async def process_biometric_image(
+    *,
+    file: UploadFile = File(...),
+    data_type: str = Query(..., description="Type of biometric data: PHOTO, SIGNATURE, or FINGERPRINT"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Process biometric image without requiring an existing application
+    
+    This endpoint allows processing of images (cropping, resizing, ISO compliance)
+    before the application is submitted. The processed image is returned as base64
+    data that can be stored in the frontend until final submission.
+    """
+    logger.info(f"Processing biometric image: {data_type} for user {current_user.id}")
+    
+    # Validate data type
+    if data_type.upper() not in ["PHOTO", "SIGNATURE", "FINGERPRINT"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid data_type. Must be PHOTO, SIGNATURE, or FINGERPRINT"
+        )
+    
+    # Validate file
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=400,
+            detail="File must be an image"
+        )
+    
+    try:
+        if data_type.upper() == "PHOTO":
+            # Process license photo with ISO standards
+            import tempfile
+            import base64
+            from pathlib import Path
+            
+            # Create temporary directory for processing
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                
+                # Process the image
+                result = ImageProcessingService.process_license_photo(
+                    image_file=file,
+                    storage_path=temp_path,
+                    filename_prefix="temp_license_photo"
+                )
+                
+                # Read the processed image and convert to base64
+                processed_file_path = Path(result["file_path"])
+                with open(processed_file_path, "rb") as f:
+                    image_data = f.read()
+                    image_base64 = base64.b64encode(image_data).decode('utf-8')
+                
+                return {
+                    "status": "success",
+                    "message": "Photo processed successfully",
+                    "data_type": "PHOTO",
+                    "processed_image": {
+                        "data": image_base64,
+                        "format": "JPEG",
+                        "dimensions": result["dimensions"],
+                        "file_size": result["file_size"]
+                    },
+                    "processing_info": {
+                        "iso_compliant": True,
+                        "cropped_automatically": True,
+                        "enhanced": True,
+                        "compression_ratio": result["processing_info"]["compression_ratio"]
+                    },
+                    "original_filename": result["original_filename"]
+                }
+        
+        elif data_type.upper() in ["SIGNATURE", "FINGERPRINT"]:
+            # For signature and fingerprint, return as-is with basic validation
+            import base64
+            
+            # Read and encode the file
+            file_content = await file.read()
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Determine format from content type
+            format_map = {
+                'image/jpeg': 'JPEG',
+                'image/jpg': 'JPEG',
+                'image/png': 'PNG',
+                'image/gif': 'GIF',
+                'image/bmp': 'BMP'
+            }
+            file_format = format_map.get(file.content_type, 'JPEG')
+            
+            return {
+                "status": "success",
+                "message": f"{data_type.title()} processed successfully",
+                "data_type": data_type.upper(),
+                "processed_image": {
+                    "data": file_base64,
+                    "format": file_format,
+                    "file_size": len(file_content)
+                },
+                "original_filename": file.filename
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image processing failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Image processing failed: {str(e)}"
+        )
+
+
 # Helper functions
 def _validate_and_enhance_application(
     db: Session, 
