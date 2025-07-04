@@ -137,12 +137,15 @@ class LicenseCategory(PythonEnum):
 
 class ApplicationType(PythonEnum):
     """Types of license applications in Madagascar"""
-    NEW_LICENSE = "NEW_LICENSE"                 # First-time license application
-    LEARNERS_PERMIT = "LEARNERS_PERMIT"         # Learner's permit after theory test
-    RENEWAL = "RENEWAL"                         # License renewal (5-year cycle)
-    REPLACEMENT = "REPLACEMENT"                 # Replacement for lost/stolen/damaged license
-    TEMPORARY_LICENSE = "TEMPORARY_LICENSE"     # Emergency permit (90-day validity)
-    INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"  # IDP for travel abroad
+    NEW_LICENSE = "NEW_LICENSE"                         # First-time license application
+    LEARNERS_PERMIT = "LEARNERS_PERMIT"                 # Learner's permit after theory test
+    RENEWAL = "RENEWAL"                                 # License renewal (5-year cycle)
+    REPLACEMENT = "REPLACEMENT"                         # Replacement for lost/stolen/damaged license
+    TEMPORARY_LICENSE = "TEMPORARY_LICENSE"             # Emergency permit (90-day validity)
+    INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"       # IDP for travel abroad
+    CONVERSION = "CONVERSION"                           # Driving licence conversion
+    PROFESSIONAL_LICENSE = "PROFESSIONAL_LICENSE"       # Professional driving licence application
+    FOREIGN_CONVERSION = "FOREIGN_CONVERSION"           # Convert foreign driving licence
 
 
 class ApplicationStatus(PythonEnum):
