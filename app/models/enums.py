@@ -133,6 +133,11 @@ class LicenseCategory(PythonEnum):
     C = "C"                 # C - Heavy Goods Vehicle (21+ years, requires B)
     D = "D"                 # D - Passenger Transport (21+ years, requires B)
     E = "E"                 # E - Large Trailers (21+ years, requires B/C/D)
+    
+    # Learner's Permit Categories
+    LEARNERS_1 = "1"        # Motor cycles, motor tricycles and motor quadricycles with engine of any capacity
+    LEARNERS_2 = "2"        # Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles  
+    LEARNERS_3 = "3"        # Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles
 
 
 class ApplicationType(PythonEnum):
@@ -225,6 +230,13 @@ class ReplacementReason(PythonEnum):
     NAME_CHANGE = "NAME_CHANGE"     # Name change
     ADDRESS_CHANGE = "ADDRESS_CHANGE"  # Address change
     OTHER = "OTHER"                 # Other reason
+
+
+class ProfessionalPermitCategory(PythonEnum):
+    """Professional Driving Permit Categories"""
+    P = "P"                         # Passengers (21 years minimum)
+    D = "D"                         # Dangerous goods (25 years minimum) - automatically includes G
+    G = "G"                         # Goods (18 years minimum)
 
 
 # Province display names mapping for frontend

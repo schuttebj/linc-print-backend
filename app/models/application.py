@@ -26,7 +26,8 @@ from app.models.base import BaseModel
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
-    TestAttemptType, TestResult, PaymentStatus, ReplacementReason
+    TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
+    ProfessionalPermitCategory
 )
 
 
@@ -112,6 +113,11 @@ class Application(BaseModel):
     
     # Replacement specific fields
     replacement_reason = Column(SQLEnum(ReplacementReason), nullable=True, comment="Reason for replacement (only for REPLACEMENT applications)")
+    
+    # Professional permit specific fields
+    professional_permit_categories = Column(JSON, nullable=True, comment="Selected professional permit categories (P, D, G) - JSON array")
+    professional_permit_previous_refusal = Column(Boolean, nullable=False, default=False, comment="Previous professional permit application refused")
+    professional_permit_refusal_details = Column(Text, nullable=True, comment="Details of previous professional permit refusal")
     
     # Temporary license specific fields
     is_temporary_license = Column(Boolean, nullable=False, default=False, comment="Is this a temporary license application")

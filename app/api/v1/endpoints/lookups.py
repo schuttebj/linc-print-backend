@@ -12,7 +12,7 @@ from app.models.enums import (
     MadagascarIDType, PersonNature, AddressType, LanguageCode,
     NationalityCode, PhoneCountryCode, CountryCode, ProvinceCode,
     UserStatus, OfficeType, UserType, LicenseCategory, ApplicationType,
-    ApplicationStatus,
+    ApplicationStatus, ProfessionalPermitCategory,
     PROVINCE_DISPLAY_NAMES, LANGUAGE_DISPLAY_NAMES, NATIONALITY_DISPLAY_NAMES,
     PHONE_COUNTRY_DISPLAY_NAMES, COUNTRY_DISPLAY_NAMES, DOCUMENT_TYPE_INFO,
     PERSON_NATURE_DISPLAY_NAMES, OFFICE_TYPE_DISPLAY_NAMES,
@@ -155,22 +155,52 @@ async def get_office_types() -> List[Dict[str, str]]:
     ]
 
 
-@router.get("/license-categories", response_model=List[Dict[str, str]])
-async def get_license_categories() -> List[Dict[str, str]]:
-    """Get all available license categories"""
+@router.get("/license-categories", response_model=List[Dict[str, Any]])
+async def get_license_categories() -> List[Dict[str, Any]]:
+    """Get all available license categories with descriptions"""
+    # Custom mapping for detailed descriptions
+    category_descriptions = {
+        LicenseCategory.A_PRIME: "Light Motorcycle/Moped (16+ years)",
+        LicenseCategory.A: "Full Motorcycle (18+ years)",
+        LicenseCategory.B: "Light Vehicle/Car (18+ years)",
+        LicenseCategory.C: "Heavy Goods Vehicle (21+ years, requires B)",
+        LicenseCategory.D: "Passenger Transport (21+ years, requires B)",
+        LicenseCategory.E: "Large Trailers (21+ years, requires B/C/D)",
+        LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
+        LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
+        LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
+    }
+    
     return [
         {
             "value": category.value,
-            "label": f"{category.value} - {category.value}" 
+            "label": f"Code {category.value}" if category.value in ["1", "2", "3"] else category.value,
+            "description": category_descriptions.get(category, category.value),
+            "minimum_age": _get_minimum_age_for_category(category)
         }
         for category in LicenseCategory
     ]
+
+def _get_minimum_age_for_category(category: LicenseCategory) -> int:
+    """Get minimum age requirement for license category"""
+    age_requirements = {
+        LicenseCategory.A_PRIME: 16,
+        LicenseCategory.A: 18,
+        LicenseCategory.B: 18,
+        LicenseCategory.C: 21,
+        LicenseCategory.D: 21,
+        LicenseCategory.E: 21,
+        LicenseCategory.LEARNERS_1: 16,
+        LicenseCategory.LEARNERS_2: 16,
+        LicenseCategory.LEARNERS_3: 16,
+    }
+    return age_requirements.get(category, 18)
 
 
 @router.get("/application-types", response_model=List[Dict[str, str]])
 async def get_application_types() -> List[Dict[str, str]]:
     """Get all available application types with user-friendly labels"""
-    # Custom mapping for user-friendly labels
+    # Custom mapping for user-friendly labels matching frontend requirements
     type_labels = {
         ApplicationType.LEARNERS_PERMIT: "Learner's Licence Application",
         ApplicationType.NEW_LICENSE: "Driving Licence Application", 
@@ -180,15 +210,46 @@ async def get_application_types() -> List[Dict[str, str]]:
         ApplicationType.TEMPORARY_LICENSE: "Temporary Driving Licence Application",
         ApplicationType.FOREIGN_CONVERSION: "Convert Foreign Driving Licence",
         ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit Application",
-        ApplicationType.REPLACEMENT: "Replace Driving Licence Card"
+        # Note: LEARNERS_PERMIT_DUPLICATE is handled in frontend logic only
     }
+    
+    # Filter out REPLACEMENT as it's been removed from frontend
+    filtered_types = [app_type for app_type in ApplicationType if app_type != ApplicationType.REPLACEMENT]
     
     return [
         {
             "value": app_type.value,
             "label": type_labels.get(app_type, app_type.value.replace('_', ' ').title())
         }
-        for app_type in ApplicationType
+        for app_type in filtered_types
+    ]
+
+
+@router.get("/professional-permit-categories", response_model=List[Dict[str, Any]])
+async def get_professional_permit_categories() -> List[Dict[str, Any]]:
+    """Get all available professional permit categories with age requirements"""
+    # Custom mapping for detailed descriptions
+    category_descriptions = {
+        ProfessionalPermitCategory.P: "Passengers (21 years minimum)",
+        ProfessionalPermitCategory.D: "Dangerous goods (25 years minimum) - automatically includes G",
+        ProfessionalPermitCategory.G: "Goods (18 years minimum)"
+    }
+    
+    age_requirements = {
+        ProfessionalPermitCategory.G: 18,
+        ProfessionalPermitCategory.P: 21,
+        ProfessionalPermitCategory.D: 25,
+    }
+    
+    return [
+        {
+            "value": category.value,
+            "label": category.value,
+            "description": category_descriptions.get(category, category.value),
+            "minimum_age": age_requirements.get(category, 18),
+            "auto_includes": ["G"] if category == ProfessionalPermitCategory.D else []
+        }
+        for category in ProfessionalPermitCategory
     ]
 
 
@@ -323,16 +384,59 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "license_categories": [
             {
                 "value": category.value,
-                "label": f"{category.value} - {category.value}" 
+                "label": f"Code {category.value}" if category.value in ["1", "2", "3"] else category.value,
+                "description": {
+                    LicenseCategory.A_PRIME: "Light Motorcycle/Moped (16+ years)",
+                    LicenseCategory.A: "Full Motorcycle (18+ years)",
+                    LicenseCategory.B: "Light Vehicle/Car (18+ years)",
+                    LicenseCategory.C: "Heavy Goods Vehicle (21+ years, requires B)",
+                    LicenseCategory.D: "Passenger Transport (21+ years, requires B)",
+                    LicenseCategory.E: "Large Trailers (21+ years, requires B/C/D)",
+                    LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
+                    LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
+                    LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
+                }.get(category, category.value),
+                "minimum_age": {
+                    LicenseCategory.A_PRIME: 16, LicenseCategory.A: 18, LicenseCategory.B: 18,
+                    LicenseCategory.C: 21, LicenseCategory.D: 21, LicenseCategory.E: 21,
+                    LicenseCategory.LEARNERS_1: 16, LicenseCategory.LEARNERS_2: 16, LicenseCategory.LEARNERS_3: 16,
+                }.get(category, 18)
             }
             for category in LicenseCategory
         ],
         "application_types": [
             {
                 "value": app_type.value,
-                "label": app_type.value.replace('_', ' ').title()
+                "label": {
+                    ApplicationType.LEARNERS_PERMIT: "Learner's Licence Application",
+                    ApplicationType.NEW_LICENSE: "Driving Licence Application", 
+                    ApplicationType.CONVERSION: "Driving Licence Conversion",
+                    ApplicationType.RENEWAL: "Renew Driving Licence Card",
+                    ApplicationType.PROFESSIONAL_LICENSE: "Professional Driving Licence Application",
+                    ApplicationType.TEMPORARY_LICENSE: "Temporary Driving Licence Application",
+                    ApplicationType.FOREIGN_CONVERSION: "Convert Foreign Driving Licence",
+                    ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit Application",
+                }.get(app_type, app_type.value.replace('_', ' ').title())
             }
-            for app_type in ApplicationType
+            for app_type in ApplicationType if app_type != ApplicationType.REPLACEMENT
+        ],
+        "professional_permit_categories": [
+            {
+                "value": category.value,
+                "label": category.value,
+                "description": {
+                    ProfessionalPermitCategory.P: "Passengers (21 years minimum)",
+                    ProfessionalPermitCategory.D: "Dangerous goods (25 years minimum) - automatically includes G",
+                    ProfessionalPermitCategory.G: "Goods (18 years minimum)"
+                }.get(category, category.value),
+                "minimum_age": {
+                    ProfessionalPermitCategory.G: 18,
+                    ProfessionalPermitCategory.P: 21,
+                    ProfessionalPermitCategory.D: 25,
+                }.get(category, 18),
+                "auto_includes": ["G"] if category == ProfessionalPermitCategory.D else []
+            }
+            for category in ProfessionalPermitCategory
         ],
         "application_statuses": [
             {

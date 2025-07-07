@@ -12,7 +12,8 @@ import uuid
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
-    TestAttemptType, TestResult, PaymentStatus, ReplacementReason
+    TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
+    ProfessionalPermitCategory
 )
 
 
@@ -141,6 +142,11 @@ class ApplicationBase(BaseModel):
     # Replacement specific
     replacement_reason: Optional[ReplacementReason] = None
     
+    # Professional permit specific
+    professional_permit_categories: Optional[List[ProfessionalPermitCategory]] = Field(default_factory=list, description="Selected professional permit categories")
+    professional_permit_previous_refusal: bool = False
+    professional_permit_refusal_details: Optional[str] = None
+    
     # Temporary license specific
     is_temporary_license: bool = False
     temporary_license_validity_days: Optional[int] = Field(default=90, ge=1, le=365)
@@ -182,6 +188,12 @@ class ApplicationUpdate(BaseModel):
     has_special_requirements: Optional[bool] = None
     special_requirements_notes: Optional[str] = None
     replacement_reason: Optional[ReplacementReason] = None
+    
+    # Professional permit specific
+    professional_permit_categories: Optional[List[ProfessionalPermitCategory]] = None
+    professional_permit_previous_refusal: Optional[bool] = None
+    professional_permit_refusal_details: Optional[str] = None
+    
     temporary_license_reason: Optional[str] = None
     
     # Biometric capture status

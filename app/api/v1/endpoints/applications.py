@@ -995,29 +995,48 @@ def _validate_and_enhance_application(
     from dateutil.relativedelta import relativedelta
     age = relativedelta(datetime.now().date(), person.birth_date).years
     
-    # Check age requirements for selected categories
-    for category in application_in.license_categories:
-        category_enum = LicenseCategory(category)
-        min_age = _get_minimum_age_for_category(category_enum)
-        
-        if age < min_age:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Applicant is {age} years old, minimum age for category {category} is {min_age}"
-            )
+    # Check age requirements for selected category
+    min_age = _get_minimum_age_for_category(application_in.license_category)
+    
+    if age < min_age:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Applicant is {age} years old, minimum age for category {application_in.license_category.value} is {min_age}"
+        )
     
     # Set parental consent requirement for A′ category applicants aged 16-17
-    if LicenseCategory.A_PRIME.value in application_in.license_categories and 16 <= age < 18:
+    if application_in.license_category == LicenseCategory.A_PRIME and 16 <= age < 18:
         application_in.parental_consent_required = True
     
     # Set medical certificate requirement for C/D/E categories or age 60+
-    heavy_categories = [LicenseCategory.C.value, LicenseCategory.D.value, LicenseCategory.E.value]
-    if any(cat in application_in.license_categories for cat in heavy_categories) or age >= 60:
+    heavy_categories = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
+    if application_in.license_category in heavy_categories or age >= 60:
         application_in.medical_certificate_required = True
     
     # Set existing license requirement for C/D/E categories  
-    if any(cat in application_in.license_categories for cat in heavy_categories):
+    if application_in.license_category in heavy_categories:
         application_in.requires_existing_license = True
+    
+    # Professional permit validation
+    if application_in.application_type == ApplicationType.PROFESSIONAL_LICENSE:
+        # Validate professional permit categories
+        if not application_in.professional_permit_categories:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Professional permit categories are required for professional license applications"
+            )
+        
+        # Validate age requirements for professional permit categories
+        for category in application_in.professional_permit_categories:
+            category_min_age = _get_minimum_age_for_professional_permit_category(category)
+            if age < category_min_age:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Applicant is {age} years old, minimum age for professional permit category {category.value} is {category_min_age}"
+                )
+        
+        # Set medical certificate requirement for all professional permits
+        application_in.medical_certificate_required = True
     
     return application_in
 
@@ -1031,6 +1050,20 @@ def _get_minimum_age_for_category(category: LicenseCategory) -> int:
         LicenseCategory.C: 21,
         LicenseCategory.D: 21,
         LicenseCategory.E: 21,
+        LicenseCategory.LEARNERS_1: 16,
+        LicenseCategory.LEARNERS_2: 16,
+        LicenseCategory.LEARNERS_3: 16,
+    }
+    return age_requirements.get(category, 18)
+
+
+def _get_minimum_age_for_professional_permit_category(category) -> int:
+    """Get minimum age requirement for professional permit category"""
+    from app.models.enums import ProfessionalPermitCategory
+    age_requirements = {
+        ProfessionalPermitCategory.G: 18,  # Goods (18 years minimum)
+        ProfessionalPermitCategory.P: 21,  # Passengers (21 years minimum)
+        ProfessionalPermitCategory.D: 25,  # Dangerous goods (25 years minimum)
     }
     return age_requirements.get(category, 18)
 
