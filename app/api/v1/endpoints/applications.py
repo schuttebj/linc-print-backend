@@ -4,7 +4,7 @@ Comprehensive REST API for driver's license applications with complete workflow 
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import uuid
 import logging
@@ -219,7 +219,7 @@ def create_application(
         )
     
     # Validate person exists
-    from app.crud.crud_person import crud_person
+    from app.crud.crud_person import person as crud_person
     person = crud_person.get(db=db, id=application_in.person_id)
     if not person:
         raise HTTPException(
@@ -874,7 +874,7 @@ def get_person_licenses(
 async def process_biometric_image(
     *,
     file: UploadFile = File(...),
-    data_type: str = Query(..., description="Type of biometric data: PHOTO, SIGNATURE, or FINGERPRINT"),
+    data_type: str = Form(..., description="Type of biometric data: PHOTO, SIGNATURE, or FINGERPRINT"),
     current_user: User = Depends(get_current_user)
 ):
     """
