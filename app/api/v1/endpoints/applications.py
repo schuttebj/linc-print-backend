@@ -151,52 +151,7 @@ def get_in_progress_applications(
     return applications
 
 
-@router.post("/{application_id}/status", response_model=ApplicationSchema)
-def update_application_status(
-    *,
-    db: Session = Depends(get_db),
-    application_id: uuid.UUID,
-    new_status: ApplicationStatus,
-    reason: Optional[str] = None,
-    notes: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-) -> ApplicationSchema:
-    """
-    Update application status with audit trail
-    
-    Requires: applications.update permission
-    """
-    if not current_user.has_permission("applications.update"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to update application status"
-        )
-    
-    application = crud_application.get(db=db, id=application_id)
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
-        )
-    
-    # Check location access
-    if not current_user.can_access_location(application.location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this application"
-        )
-    
-    # Update status with audit trail
-    updated_application = crud_application.update_status(
-        db=db,
-        application_id=application_id,
-        new_status=new_status,
-        reason=reason,
-        notes=notes,
-        updated_by=current_user.id
-    )
-    
-    return updated_application
+
 
 
 @router.post("/", response_model=ApplicationSchema)
