@@ -148,7 +148,8 @@ class ApplicationType(PythonEnum):
     REPLACEMENT = "REPLACEMENT"                         # Replacement for lost/stolen/damaged license
     TEMPORARY_LICENSE = "TEMPORARY_LICENSE"             # Emergency permit (90-day validity)
     INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"       # IDP for travel abroad
-    CONVERSION = "CONVERSION"                           # Driving licence conversion
+    DRIVERS_LICENSE_CAPTURE = "DRIVERS_LICENSE_CAPTURE" # Capture existing driver's licenses
+    LEARNERS_PERMIT_CAPTURE = "LEARNERS_PERMIT_CAPTURE" # Capture existing learner's permits
     PROFESSIONAL_LICENSE = "PROFESSIONAL_LICENSE"       # Professional driving licence application
     FOREIGN_CONVERSION = "FOREIGN_CONVERSION"           # Convert foreign driving licence
 

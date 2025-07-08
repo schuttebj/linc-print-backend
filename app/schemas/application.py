@@ -111,6 +111,32 @@ class MedicalInformation(BaseModel):
     examination_date: Optional[date] = None
 
 
+# License Capture Schemas for DRIVERS_LICENSE_CAPTURE and LEARNERS_PERMIT_CAPTURE
+class CapturedLicense(BaseModel):
+    """Individual captured license data"""
+    id: str = Field(..., description="Temporary ID for form management")
+    license_number: str = Field(..., description="License number")
+    license_category: LicenseCategory = Field(..., description="Single license category")
+    issue_date: str = Field(..., description="License issue date")
+    expiry_date: str = Field(..., description="License expiry date")
+    issuing_location: str = Field(..., description="Location where license was issued")
+    verified: bool = Field(False, description="Whether license has been verified by clerk")
+    verification_notes: Optional[str] = Field(None, description="Clerk verification notes")
+
+
+class LicenseCaptureData(BaseModel):
+    """License capture data for capture applications"""
+    captured_licenses: List[CapturedLicense] = Field(default_factory=list, description="List of captured licenses")
+    application_type: ApplicationType = Field(..., description="Must be DRIVERS_LICENSE_CAPTURE or LEARNERS_PERMIT_CAPTURE")
+    
+    @validator('application_type')
+    def validate_capture_application_type(cls, v):
+        """Validate application type is a capture type"""
+        if v not in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
+            raise ValueError("Application type must be DRIVERS_LICENSE_CAPTURE or LEARNERS_PERMIT_CAPTURE")
+        return v
+
+
 # Base schemas
 class ApplicationBase(BaseModel):
     """Base schema for Application"""
@@ -171,6 +197,8 @@ class ApplicationCreate(ApplicationBase):
     """Schema for creating new applications"""
     # Medical information for comprehensive health assessment
     medical_information: Optional[MedicalInformation] = None
+    # License capture data for DRIVERS_LICENSE_CAPTURE and LEARNERS_PERMIT_CAPTURE applications
+    license_capture: Optional[LicenseCaptureData] = None
 
 
 class ApplicationUpdate(BaseModel):
@@ -253,6 +281,12 @@ class ApplicationInDBBase(ApplicationBase):
     photo_captured: bool = False
     signature_captured: bool = False
     fingerprint_captured: bool = False
+    
+    # Medical information
+    medical_information: Optional[Dict[str, Any]] = None
+    
+    # License capture data
+    license_capture: Optional[Dict[str, Any]] = None
     
     # Draft handling
     draft_data: Optional[Dict[str, Any]] = None

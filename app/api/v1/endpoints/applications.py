@@ -946,6 +946,30 @@ def _validate_and_enhance_application(
 ) -> ApplicationCreate:
     """Validate application data and set required flags based on business rules"""
     
+    # For capture applications, skip most validation and requirements
+    if application_in.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
+        # Validate that license_capture data is provided
+        if not application_in.license_capture:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="License capture data is required for capture applications"
+            )
+        
+        # Validate that captured licenses exist
+        if not application_in.license_capture.captured_licenses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one captured license is required for capture applications"
+            )
+        
+        # No medical certificate, parental consent, or existing license requirements for capture
+        application_in.medical_certificate_required = False
+        application_in.parental_consent_required = False
+        application_in.requires_existing_license = False
+        
+        return application_in
+    
+    # Regular validation for non-capture applications
     # Calculate age
     from dateutil.relativedelta import relativedelta
     age = relativedelta(datetime.now().date(), person.birth_date).years
