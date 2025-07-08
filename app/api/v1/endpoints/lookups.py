@@ -204,12 +204,13 @@ async def get_application_types() -> List[Dict[str, str]]:
     type_labels = {
         ApplicationType.LEARNERS_PERMIT: "Learner's Licence Application",
         ApplicationType.NEW_LICENSE: "Driving Licence Application", 
-        ApplicationType.CONVERSION: "Driving Licence Conversion",
         ApplicationType.RENEWAL: "Renew Driving Licence Card",
         ApplicationType.PROFESSIONAL_LICENSE: "Professional Driving Licence Application",
         ApplicationType.TEMPORARY_LICENSE: "Temporary Driving Licence Application",
         ApplicationType.FOREIGN_CONVERSION: "Convert Foreign Driving Licence",
         ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit Application",
+        ApplicationType.DRIVERS_LICENSE_CAPTURE: "Driver's License Capture",
+        ApplicationType.LEARNERS_PERMIT_CAPTURE: "Learner's Permit Capture",
         # Note: LEARNERS_PERMIT_DUPLICATE is handled in frontend logic only
     }
     
@@ -410,12 +411,13 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
                 "label": {
                     ApplicationType.LEARNERS_PERMIT: "Learner's Licence Application",
                     ApplicationType.NEW_LICENSE: "Driving Licence Application", 
-                    ApplicationType.CONVERSION: "Driving Licence Conversion",
                     ApplicationType.RENEWAL: "Renew Driving Licence Card",
                     ApplicationType.PROFESSIONAL_LICENSE: "Professional Driving Licence Application",
                     ApplicationType.TEMPORARY_LICENSE: "Temporary Driving Licence Application",
                     ApplicationType.FOREIGN_CONVERSION: "Convert Foreign Driving Licence",
                     ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit Application",
+                    ApplicationType.DRIVERS_LICENSE_CAPTURE: "Driver's License Capture",
+                    ApplicationType.LEARNERS_PERMIT_CAPTURE: "Learner's Permit Capture",
                 }.get(app_type, app_type.value.replace('_', ' ').title())
             }
             for app_type in ApplicationType if app_type != ApplicationType.REPLACEMENT
