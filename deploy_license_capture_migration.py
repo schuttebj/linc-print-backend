@@ -301,9 +301,9 @@ def create_sample_capture_application(engine):
                         "license_category": "B",
                         "issue_date": "2020-01-15",
                         "expiry_date": "2025-01-15",
-                        "issuing_location": "Antananarivo Central Office",
+                        "restrictions": ["CORRECTIVE_LENSES"],
                         "verified": True,
-                        "verification_notes": "Physical license verified by clerk"
+                        "verification_notes": "Physical license verified by clerk - requires corrective lenses"
                     }
                 ],
                 "application_type": "DRIVERS_LICENSE_CAPTURE"

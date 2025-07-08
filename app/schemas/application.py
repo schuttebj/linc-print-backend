@@ -119,7 +119,7 @@ class CapturedLicense(BaseModel):
     license_category: LicenseCategory = Field(..., description="Single license category")
     issue_date: str = Field(..., description="License issue date")
     expiry_date: str = Field(..., description="License expiry date")
-    issuing_location: str = Field(..., description="Location where license was issued")
+    restrictions: List[str] = Field(default_factory=list, description="License restrictions (corrective lenses, disability modifications)")
     verified: bool = Field(False, description="Whether license has been verified by clerk")
     verification_notes: Optional[str] = Field(None, description="Clerk verification notes")
 
