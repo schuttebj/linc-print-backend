@@ -240,6 +240,84 @@ class ProfessionalPermitCategory(PythonEnum):
     G = "G"                         # Goods (18 years minimum)
 
 
+class ProfessionalPermitCategory(PythonEnum):
+    """Professional driving permit categories for Madagascar"""
+    P = "P"  # Professional permit P
+    D = "D"  # Professional permit D  
+    G = "G"  # Professional permit G
+
+
+class LicenseRestrictionCode(PythonEnum):
+    """License restriction codes for Madagascar driver's licenses"""
+    
+    # Driver Physical Restrictions
+    CORRECTIVE_LENSES = "01"           # Driver must wear corrective lenses
+    PROSTHETICS = "02"                 # Driver uses prosthetics
+    
+    # Vehicle Type Restrictions  
+    AUTOMATIC_TRANSMISSION = "03"      # Automatic transmission vehicles only
+    ELECTRIC_POWERED = "04"            # Electric powered vehicles only
+    PHYSICAL_DISABLED = "05"           # Vehicles adapted for physical disabilities
+    TRACTOR_ONLY = "06"               # Tractor vehicles only
+    INDUSTRIAL_AGRICULTURE = "07"      # Industrial/agriculture vehicles only
+
+
+class LicenseRestrictionCategory(PythonEnum):
+    """Categories of license restrictions"""
+    DRIVER = "DRIVER"           # Restrictions on the driver
+    VEHICLE = "VEHICLE"         # Restrictions on vehicle type
+    OPERATIONAL = "OPERATIONAL" # Operational restrictions (time, location, etc.)
+
+
+# Restriction mapping for easy lookup
+LICENSE_RESTRICTION_MAPPING = {
+    # Driver restrictions
+    LicenseRestrictionCode.CORRECTIVE_LENSES: {
+        "code": "01",
+        "description": "Driver must wear corrective lenses",
+        "category": LicenseRestrictionCategory.DRIVER,
+        "display_name": "Corrective Lenses Required"
+    },
+    LicenseRestrictionCode.PROSTHETICS: {
+        "code": "02", 
+        "description": "Driver uses prosthetics",
+        "category": LicenseRestrictionCategory.DRIVER,
+        "display_name": "Prosthetics"
+    },
+    
+    # Vehicle restrictions
+    LicenseRestrictionCode.AUTOMATIC_TRANSMISSION: {
+        "code": "03",
+        "description": "Automatic transmission vehicles only", 
+        "category": LicenseRestrictionCategory.VEHICLE,
+        "display_name": "Automatic Transmission Only"
+    },
+    LicenseRestrictionCode.ELECTRIC_POWERED: {
+        "code": "04",
+        "description": "Electric powered vehicles only",
+        "category": LicenseRestrictionCategory.VEHICLE, 
+        "display_name": "Electric Vehicles Only"
+    },
+    LicenseRestrictionCode.PHYSICAL_DISABLED: {
+        "code": "05",
+        "description": "Vehicles adapted for physical disabilities",
+        "category": LicenseRestrictionCategory.VEHICLE,
+        "display_name": "Disability Adapted Vehicles"
+    },
+    LicenseRestrictionCode.TRACTOR_ONLY: {
+        "code": "06", 
+        "description": "Tractor vehicles only",
+        "category": LicenseRestrictionCategory.VEHICLE,
+        "display_name": "Tractor Vehicles Only"
+    },
+    LicenseRestrictionCode.INDUSTRIAL_AGRICULTURE: {
+        "code": "07",
+        "description": "Industrial/agriculture vehicles only", 
+        "category": LicenseRestrictionCategory.VEHICLE,
+        "display_name": "Industrial/Agriculture Only"
+    }
+}
+
 # Province display names mapping for frontend
 PROVINCE_DISPLAY_NAMES = {
     ProvinceCode.ANTANANARIVO: "ANTANANARIVO",
