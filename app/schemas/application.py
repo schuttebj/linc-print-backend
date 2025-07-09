@@ -134,13 +134,17 @@ class CapturedLicense(BaseModel):
 class LicenseCaptureData(BaseModel):
     """License capture data for capture applications"""
     captured_licenses: List[CapturedLicense] = Field(default_factory=list, description="List of captured licenses")
-    application_type: ApplicationType = Field(..., description="Must be DRIVERS_LICENSE_CAPTURE or LEARNERS_PERMIT_CAPTURE")
+    application_type: str = Field(..., description="Must be DRIVERS_LICENSE_CAPTURE or LEARNERS_PERMIT_CAPTURE")
     
     @validator('application_type')
     def validate_capture_application_type(cls, v):
-        """Validate application type is a capture type"""
-        if v not in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
-            raise ValueError("Application type must be DRIVERS_LICENSE_CAPTURE or LEARNERS_PERMIT_CAPTURE")
+        # Convert to string if it's an enum
+        if hasattr(v, 'value'):
+            v = v.value
+        # Validate that it's a valid capture application type
+        valid_types = ['DRIVERS_LICENSE_CAPTURE', 'LEARNERS_PERMIT_CAPTURE']
+        if v not in valid_types:
+            raise ValueError(f'application_type must be one of {valid_types}')
         return v
 
 
