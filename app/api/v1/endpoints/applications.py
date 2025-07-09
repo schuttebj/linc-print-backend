@@ -987,12 +987,15 @@ def _validate_and_enhance_application(
     if application_in.license_category == LicenseCategory.A_PRIME and 16 <= age < 18:
         application_in.parental_consent_required = True
     
-    # Set medical certificate requirement for C/D/E categories or age 60+
-    heavy_categories = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
+    # Set medical certificate requirement for heavy categories or age 60+
+    heavy_categories = [
+        LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
+        LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
+    ]
     if application_in.license_category in heavy_categories or age >= 60:
         application_in.medical_certificate_required = True
     
-    # Set existing license requirement for C/D/E categories  
+    # Set existing license requirement for heavy categories  
     if application_in.license_category in heavy_categories:
         application_in.requires_existing_license = True
     
@@ -1021,19 +1024,36 @@ def _validate_and_enhance_application(
 
 
 def _get_minimum_age_for_category(category: LicenseCategory) -> int:
-    """Get minimum age requirement for license category"""
+    """Get minimum age requirement for a license category"""
     age_requirements = {
-        LicenseCategory.A_PRIME: 16,
+        # Motorcycles
+        LicenseCategory.A1: 16,
+        LicenseCategory.A2: 18,
         LicenseCategory.A: 18,
+        
+        # Light Vehicles
+        LicenseCategory.B1: 16,
         LicenseCategory.B: 18,
+        LicenseCategory.B2: 21,
+        LicenseCategory.BE: 18,
+        
+        # Heavy Goods Vehicles
+        LicenseCategory.C1: 18,
         LicenseCategory.C: 21,
-        LicenseCategory.D: 21,
-        LicenseCategory.E: 21,
+        LicenseCategory.C1E: 18,
+        LicenseCategory.CE: 21,
+        
+        # Passenger Transport
+        LicenseCategory.D1: 21,
+        LicenseCategory.D: 24,
+        LicenseCategory.D2: 24,
+        
+        # Learner's permits
         LicenseCategory.LEARNERS_1: 16,
         LicenseCategory.LEARNERS_2: 16,
         LicenseCategory.LEARNERS_3: 16,
     }
-    return age_requirements.get(category, 18)
+    return age_requirements.get(category, 18)  # Default to 18 if not found
 
 
 def _get_minimum_age_for_professional_permit_category(category) -> int:

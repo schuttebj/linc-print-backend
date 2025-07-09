@@ -158,14 +158,31 @@ async def get_office_types() -> List[Dict[str, str]]:
 @router.get("/license-categories", response_model=List[Dict[str, Any]])
 async def get_license_categories() -> List[Dict[str, Any]]:
     """Get all available license categories with descriptions"""
-    # Custom mapping for detailed descriptions
+    # License category descriptions
     category_descriptions = {
-        LicenseCategory.A_PRIME: "Light Motorcycle/Moped (16+ years)",
-        LicenseCategory.A: "Full Motorcycle (18+ years)",
-        LicenseCategory.B: "Light Vehicle/Car (18+ years)",
-        LicenseCategory.C: "Heavy Goods Vehicle (21+ years, requires B)",
-        LicenseCategory.D: "Passenger Transport (21+ years, requires B)",
-        LicenseCategory.E: "Large Trailers (21+ years, requires B/C/D)",
+        # Motorcycles
+        LicenseCategory.A1: "Small motorcycles and mopeds (<125cc, 16+ years)",
+        LicenseCategory.A2: "Mid-range motorcycles (power limited, up to 35kW, 18+ years)",
+        LicenseCategory.A: "Unlimited motorcycles (no power restriction, 18+ years)",
+        
+        # Light Vehicles
+        LicenseCategory.B1: "Light quadricycles (motorized tricycles/quadricycles, 16+ years)",
+        LicenseCategory.B: "Standard passenger cars and light vehicles (up to 3.5t, 18+ years)",
+        LicenseCategory.B2: "Taxis or commercial passenger vehicles (21+ years)",
+        LicenseCategory.BE: "Category B with trailer exceeding 750kg (18+ years)",
+        
+        # Heavy Goods Vehicles
+        LicenseCategory.C1: "Medium-sized goods vehicles (3.5-7.5t, 18+ years)",
+        LicenseCategory.C: "Heavy goods vehicles (over 7.5t, 21+ years)",
+        LicenseCategory.C1E: "C1 category vehicles with heavy trailer (18+ years)",
+        LicenseCategory.CE: "Full heavy combination vehicles (21+ years)",
+        
+        # Passenger Transport
+        LicenseCategory.D1: "Small buses (up to 16 passengers, 21+ years)",
+        LicenseCategory.D: "Standard buses and coaches (over 16 passengers, 24+ years)",
+        LicenseCategory.D2: "Specialized public transport (articulated buses, 24+ years)",
+        
+        # Learner's permits
         LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
         LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
         LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
@@ -182,19 +199,36 @@ async def get_license_categories() -> List[Dict[str, Any]]:
     ]
 
 def _get_minimum_age_for_category(category: LicenseCategory) -> int:
-    """Get minimum age requirement for license category"""
+    """Get minimum age requirement for a license category"""
     age_requirements = {
-        LicenseCategory.A_PRIME: 16,
+        # Motorcycles
+        LicenseCategory.A1: 16,
+        LicenseCategory.A2: 18,
         LicenseCategory.A: 18,
+        
+        # Light Vehicles
+        LicenseCategory.B1: 16,
         LicenseCategory.B: 18,
+        LicenseCategory.B2: 21,
+        LicenseCategory.BE: 18,
+        
+        # Heavy Goods Vehicles
+        LicenseCategory.C1: 18,
         LicenseCategory.C: 21,
-        LicenseCategory.D: 21,
-        LicenseCategory.E: 21,
+        LicenseCategory.C1E: 18,
+        LicenseCategory.CE: 21,
+        
+        # Passenger Transport
+        LicenseCategory.D1: 21,
+        LicenseCategory.D: 24,
+        LicenseCategory.D2: 24,
+        
+        # Learner's permits
         LicenseCategory.LEARNERS_1: 16,
         LicenseCategory.LEARNERS_2: 16,
         LicenseCategory.LEARNERS_3: 16,
     }
-    return age_requirements.get(category, 18)
+    return age_requirements.get(category, 18)  # Default to 18 if not found
 
 
 @router.get("/application-types", response_model=List[Dict[str, str]])
@@ -387,19 +421,47 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
                 "value": category.value,
                 "label": f"Code {category.value}" if category.value in ["1", "2", "3"] else category.value,
                 "description": {
-                    LicenseCategory.A_PRIME: "Light Motorcycle/Moped (16+ years)",
-                    LicenseCategory.A: "Full Motorcycle (18+ years)",
-                    LicenseCategory.B: "Light Vehicle/Car (18+ years)",
-                    LicenseCategory.C: "Heavy Goods Vehicle (21+ years, requires B)",
-                    LicenseCategory.D: "Passenger Transport (21+ years, requires B)",
-                    LicenseCategory.E: "Large Trailers (21+ years, requires B/C/D)",
+                    # Motorcycles
+                    LicenseCategory.A1: "Small motorcycles and mopeds (<125cc, 16+ years)",
+                    LicenseCategory.A2: "Mid-range motorcycles (power limited, up to 35kW, 18+ years)",
+                    LicenseCategory.A: "Unlimited motorcycles (no power restriction, 18+ years)",
+                    
+                    # Light Vehicles
+                    LicenseCategory.B1: "Light quadricycles (motorized tricycles/quadricycles, 16+ years)",
+                    LicenseCategory.B: "Standard passenger cars and light vehicles (up to 3.5t, 18+ years)",
+                    LicenseCategory.B2: "Taxis or commercial passenger vehicles (21+ years)",
+                    LicenseCategory.BE: "Category B with trailer exceeding 750kg (18+ years)",
+                    
+                    # Heavy Goods Vehicles
+                    LicenseCategory.C1: "Medium-sized goods vehicles (3.5-7.5t, 18+ years)",
+                    LicenseCategory.C: "Heavy goods vehicles (over 7.5t, 21+ years)",
+                    LicenseCategory.C1E: "C1 category vehicles with heavy trailer (18+ years)",
+                    LicenseCategory.CE: "Full heavy combination vehicles (21+ years)",
+                    
+                    # Passenger Transport
+                    LicenseCategory.D1: "Small buses (up to 16 passengers, 21+ years)",
+                    LicenseCategory.D: "Standard buses and coaches (over 16 passengers, 24+ years)",
+                    LicenseCategory.D2: "Specialized public transport (articulated buses, 24+ years)",
+                    
+                    # Learner's permits
                     LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
                     LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
                     LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
                 }.get(category, category.value),
                 "minimum_age": {
-                    LicenseCategory.A_PRIME: 16, LicenseCategory.A: 18, LicenseCategory.B: 18,
-                    LicenseCategory.C: 21, LicenseCategory.D: 21, LicenseCategory.E: 21,
+                    # Motorcycles
+                    LicenseCategory.A1: 16, LicenseCategory.A2: 18, LicenseCategory.A: 18,
+                    
+                    # Light Vehicles
+                    LicenseCategory.B1: 16, LicenseCategory.B: 18, LicenseCategory.B2: 21, LicenseCategory.BE: 18,
+                    
+                    # Heavy Goods Vehicles
+                    LicenseCategory.C1: 18, LicenseCategory.C: 21, LicenseCategory.C1E: 18, LicenseCategory.CE: 21,
+                    
+                    # Passenger Transport
+                    LicenseCategory.D1: 21, LicenseCategory.D: 24, LicenseCategory.D2: 24,
+                    
+                    # Learner's permits
                     LicenseCategory.LEARNERS_1: 16, LicenseCategory.LEARNERS_2: 16, LicenseCategory.LEARNERS_3: 16,
                 }.get(category, 18)
             }

@@ -185,15 +185,21 @@ class Application(BaseModel):
 
     def requires_medical_certificate_for_categories(self) -> bool:
         """Check if selected category requires medical certificate"""
-        categories_requiring_medical = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
+        categories_requiring_medical = [
+            LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
+            LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
+        ]
         return self.license_category in categories_requiring_medical
 
     def get_theory_test_fee_amount(self) -> int:
         """Calculate theory test fee based on category (10,000 or 15,000 Ar)"""
-        heavy_categories = [LicenseCategory.C, LicenseCategory.D, LicenseCategory.E]
+        heavy_categories = [
+            LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
+            LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
+        ]
         if self.license_category in heavy_categories:
-            return 15000  # Ar for C/D/E categories
-        return 10000  # Ar for A/A′/B categories
+            return 15000  # Ar for heavy categories
+        return 10000  # Ar for light categories
 
 
 class ApplicationBiometricData(BaseModel):

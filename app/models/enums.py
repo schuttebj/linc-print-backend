@@ -126,13 +126,28 @@ class CountryCode(PythonEnum):
 
 # Application-specific enums
 class LicenseCategory(PythonEnum):
-    """Madagascar driver's license categories"""
-    A_PRIME = "A'"          # A′ - Light Motorcycle/Moped (16+ years)
-    A = "A"                 # A - Full Motorcycle (18+ years)
-    B = "B"                 # B - Light Vehicle/Car (18+ years)
-    C = "C"                 # C - Heavy Goods Vehicle (21+ years, requires B)
-    D = "D"                 # D - Passenger Transport (21+ years, requires B)
-    E = "E"                 # E - Large Trailers (21+ years, requires B/C/D)
+    """SADC driver's license categories"""
+    # Motorcycles and Mopeds
+    A1 = "A1"               # Small motorcycles and mopeds (<125cc, 16+)
+    A2 = "A2"               # Mid-range motorcycles (power limited, up to 35kW, 18+)
+    A = "A"                 # Unlimited motorcycles (no power restriction, 18+)
+    
+    # Light Vehicles
+    B1 = "B1"               # Light quadricycles (motorized tricycles/quadricycles, 16+)
+    B = "B"                 # Standard passenger cars and light vehicles (up to 3.5t, 18+)
+    B2 = "B2"               # Taxis or commercial passenger vehicles (21+)
+    BE = "BE"               # Category B with trailer exceeding 750kg (18+)
+    
+    # Heavy Goods Vehicles
+    C1 = "C1"               # Medium-sized goods vehicles (3.5-7.5t, 18+)
+    C = "C"                 # Heavy goods vehicles (over 7.5t, 21+)
+    C1E = "C1E"             # C1 category vehicles with heavy trailer (18+)
+    CE = "CE"               # Full heavy combination vehicles (21+)
+    
+    # Passenger Transport (Public Transport)
+    D1 = "D1"               # Small buses (up to 16 passengers, 21+)
+    D = "D"                 # Standard buses and coaches (over 16 passengers, 24+)
+    D2 = "D2"               # Specialized public transport (articulated buses, 24+)
     
     # Learner's Permit Categories
     LEARNERS_1 = "1"        # Motor cycles, motor tricycles and motor quadricycles with engine of any capacity
