@@ -47,11 +47,31 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         # Calculate draft expiry (30 days from now)
         draft_expires_at = datetime.utcnow() + timedelta(days=30)
         
+        # Convert ApplicationCreate to dict and handle enum serialization
+        obj_data = obj_in.dict(exclude={'application_number'})
+        
+        # Convert enum values to strings for database storage
+        if 'application_type' in obj_data and obj_data['application_type']:
+            obj_data['application_type'] = obj_data['application_type'].value if hasattr(obj_data['application_type'], 'value') else str(obj_data['application_type'])
+        
+        if 'license_category' in obj_data and obj_data['license_category']:
+            obj_data['license_category'] = obj_data['license_category'].value if hasattr(obj_data['license_category'], 'value') else str(obj_data['license_category'])
+        
+        if 'replacement_reason' in obj_data and obj_data['replacement_reason']:
+            obj_data['replacement_reason'] = obj_data['replacement_reason'].value if hasattr(obj_data['replacement_reason'], 'value') else str(obj_data['replacement_reason'])
+        
+        # Handle professional_permit_categories list
+        if 'professional_permit_categories' in obj_data and obj_data['professional_permit_categories']:
+            obj_data['professional_permit_categories'] = [
+                category.value if hasattr(category, 'value') else str(category)
+                for category in obj_data['professional_permit_categories']
+            ]
+        
         # Create application
         db_obj = Application(
             application_number=application_number,
             draft_expires_at=draft_expires_at,
-            **obj_in.dict(exclude={'application_number'})
+            **obj_data
         )
         
         # Set audit fields
