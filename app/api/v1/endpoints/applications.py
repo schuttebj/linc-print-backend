@@ -155,7 +155,6 @@ def get_in_progress_applications(
 
 
 @router.post("/", response_model=ApplicationSchema)
-@router.post("", response_model=ApplicationSchema)  # Handle both with and without trailing slash
 def create_application(
     *,
     db: Session = Depends(get_db),
