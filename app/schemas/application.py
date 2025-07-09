@@ -116,12 +116,19 @@ class CapturedLicense(BaseModel):
     """Individual captured license data"""
     id: str = Field(..., description="Temporary ID for form management")
     license_number: str = Field(..., description="License number")
-    license_category: LicenseCategory = Field(..., description="Single license category")
+    license_category: str = Field(..., description="Single license category as string")
     issue_date: str = Field(..., description="License issue date")
     expiry_date: str = Field(..., description="License expiry date")
     restrictions: List[str] = Field(default_factory=list, description="License restrictions (corrective lenses, disability modifications)")
     verified: bool = Field(False, description="Whether license has been verified by clerk")
     verification_notes: Optional[str] = Field(None, description="Clerk verification notes")
+    
+    @validator('license_category')
+    def validate_license_category(cls, v):
+        """Validate that license_category is a valid LicenseCategory enum value"""
+        if v not in [category.value for category in LicenseCategory]:
+            raise ValueError(f"Invalid license category: {v}")
+        return v
 
 
 class LicenseCaptureData(BaseModel):
