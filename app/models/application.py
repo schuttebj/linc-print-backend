@@ -438,12 +438,32 @@ class FeeStructure(BaseModel):
 
 # License category display names for frontend
 LICENSE_CATEGORY_DISPLAY_NAMES = {
-    LicenseCategory.A_PRIME: "A′ - Light Motorcycle/Moped",
-    LicenseCategory.A: "A - Full Motorcycle", 
-    LicenseCategory.B: "B - Light Vehicle/Car",
-    LicenseCategory.C: "C - Heavy Goods Vehicle",
-    LicenseCategory.D: "D - Passenger Transport",
-    LicenseCategory.E: "E - Large Trailers",
+    # Motorcycles and Mopeds
+    LicenseCategory.A1: "A1 - Small motorcycles and mopeds (<125cc)",
+    LicenseCategory.A2: "A2 - Mid-range motorcycles (power limited, up to 35kW)",
+    LicenseCategory.A: "A - Unlimited motorcycles (no power restriction)",
+    
+    # Light Vehicles
+    LicenseCategory.B1: "B1 - Light quadricycles (motorized tricycles/quadricycles)",
+    LicenseCategory.B: "B - Standard passenger cars and light vehicles (up to 3.5t)",
+    LicenseCategory.B2: "B2 - Taxis or commercial passenger vehicles",
+    LicenseCategory.BE: "BE - Category B with trailer exceeding 750kg",
+    
+    # Heavy Goods Vehicles
+    LicenseCategory.C1: "C1 - Medium-sized goods vehicles (3.5-7.5t)",
+    LicenseCategory.C: "C - Heavy goods vehicles (over 7.5t)",
+    LicenseCategory.C1E: "C1E - C1 category vehicles with heavy trailer",
+    LicenseCategory.CE: "CE - Full heavy combination vehicles",
+    
+    # Passenger Transport
+    LicenseCategory.D1: "D1 - Small buses (up to 16 passengers)",
+    LicenseCategory.D: "D - Standard buses and coaches (over 16 passengers)",
+    LicenseCategory.D2: "D2 - Specialized public transport (articulated buses)",
+    
+    # Learner's Permits
+    LicenseCategory.LEARNERS_1: "1 - Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
+    LicenseCategory.LEARNERS_2: "2 - Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
+    LicenseCategory.LEARNERS_3: "3 - Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles",
 }
 
 # Application type display names for frontend
@@ -479,26 +499,57 @@ APPLICATION_STATUS_DISPLAY_NAMES = {
 
 # Age requirements for license categories
 LICENSE_CATEGORY_AGE_REQUIREMENTS = {
-    LicenseCategory.A_PRIME: 16,  # Requires parental consent for 16-17
+    # Motorcycles and Mopeds
+    LicenseCategory.A1: 16,  # Requires parental consent for 16-17
+    LicenseCategory.A2: 18,
     LicenseCategory.A: 18,
+    
+    # Light Vehicles
+    LicenseCategory.B1: 16,  # Requires parental consent for 16-17
     LicenseCategory.B: 18,
-    LicenseCategory.C: 21,  # Plus existing B license
-    LicenseCategory.D: 21,  # Plus existing B license
-    LicenseCategory.E: 21,  # Plus existing B/C/D license
+    LicenseCategory.B2: 21,  # Plus existing B license
+    LicenseCategory.BE: 18,  # Plus existing B license
+    
+    # Heavy Goods Vehicles
+    LicenseCategory.C1: 18,  # Plus existing B license
+    LicenseCategory.C: 21,   # Plus existing B license
+    LicenseCategory.C1E: 18, # Plus existing C1 license
+    LicenseCategory.CE: 21,  # Plus existing C license
+    
+    # Passenger Transport
+    LicenseCategory.D1: 21,  # Plus existing B license
+    LicenseCategory.D: 24,   # Plus existing B license
+    LicenseCategory.D2: 24,  # Plus existing B license
+    
+    # Learner's Permits
+    LicenseCategory.LEARNERS_1: 16,  # Requires parental consent for 16-17
+    LicenseCategory.LEARNERS_2: 18,
+    LicenseCategory.LEARNERS_3: 18,
 }
 
 # Categories requiring existing B license
 CATEGORIES_REQUIRING_B_LICENSE = [
-    LicenseCategory.C,
-    LicenseCategory.D,
-    LicenseCategory.E,
+    LicenseCategory.B2,   # Commercial passenger vehicles
+    LicenseCategory.BE,   # B with trailer
+    LicenseCategory.C1,   # Medium goods vehicles
+    LicenseCategory.C,    # Heavy goods vehicles
+    LicenseCategory.C1E,  # C1 with trailer
+    LicenseCategory.CE,   # C with trailer
+    LicenseCategory.D1,   # Small buses
+    LicenseCategory.D,    # Standard buses
+    LicenseCategory.D2,   # Specialized transport
 ]
 
 # Categories requiring medical certificate
 CATEGORIES_REQUIRING_MEDICAL = [
-    LicenseCategory.C,
-    LicenseCategory.D,
-    LicenseCategory.E,
+    LicenseCategory.B2,   # Commercial passenger vehicles
+    LicenseCategory.C1,   # Medium goods vehicles
+    LicenseCategory.C,    # Heavy goods vehicles
+    LicenseCategory.C1E,  # C1 with trailer
+    LicenseCategory.CE,   # C with trailer
+    LicenseCategory.D1,   # Small buses
+    LicenseCategory.D,    # Standard buses
+    LicenseCategory.D2,   # Specialized transport
 ]
 
 # Replacement reason display names for frontend
