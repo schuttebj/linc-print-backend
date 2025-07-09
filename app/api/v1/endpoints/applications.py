@@ -406,7 +406,7 @@ def update_application_status(
         )
     
     # Validate status transition
-    if not _is_valid_status_transition(application.status, new_status):
+    if not _is_valid_status_transition(application.status, new_status, application):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status transition from {application.status} to {new_status}"
@@ -1067,7 +1067,7 @@ def _get_minimum_age_for_professional_permit_category(category) -> int:
     return age_requirements.get(category, 18)
 
 
-def _is_valid_status_transition(current_status: ApplicationStatus, new_status: ApplicationStatus) -> bool:
+def _is_valid_status_transition(current_status: ApplicationStatus, new_status: ApplicationStatus, application: Application) -> bool:
     """Validate if status transition is allowed"""
     
     # Define valid status transitions
@@ -1120,6 +1120,21 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
         ApplicationStatus.REJECTED: [],  # No transitions from rejected
         ApplicationStatus.CANCELLED: []  # No transitions from cancelled
     }
+    
+    # Special handling for license capture applications
+    if application.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
+        # Simplified workflow for capture applications: DRAFT → SUBMITTED → COMPLETED
+        if current_status == ApplicationStatus.DRAFT:
+            return new_status in [ApplicationStatus.SUBMITTED, ApplicationStatus.CANCELLED]
+        elif current_status == ApplicationStatus.SUBMITTED:
+            return new_status in [ApplicationStatus.COMPLETED, ApplicationStatus.CANCELLED]
+        elif current_status == ApplicationStatus.COMPLETED:
+            return False  # No transitions from completed
+        elif current_status == ApplicationStatus.CANCELLED:
+            return False  # No transitions from cancelled
+        else:
+            # Allow any other transitions to follow normal rules (fallback)
+            pass
     
     allowed_statuses = valid_transitions.get(current_status, [])
     return new_status in allowed_statuses 
