@@ -1057,49 +1057,49 @@ async def initialize_fee_structures():
             # Madagascar Driver's License Fee Structure
             # Using FeeStructure model with proper field names
             fee_structures = [
-                # Theory Test Fees for A′/A/B categories (10,000 Ar)
+                # Theory Test Fees for Light Categories (10,000 Ar)
                 {
                     "fee_type": "theory_test_light",
                     "display_name": "Theory Test - Light Categories",
-                    "description": "Theory test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
+                    "description": "Theory test fee for A1/A2/A (Motorcycles), B1/B (Light Vehicles)",
                     "amount": 10000.0,
-                    "applies_to_categories": ["A'", "A", "B"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B"],
                     "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
                     "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # Theory Test Fees for C/D/E categories (15,000 Ar)
+                # Theory Test Fees for Heavy/Commercial Categories (15,000 Ar)
                 {
                     "fee_type": "theory_test_heavy",
-                    "display_name": "Theory Test - Heavy Categories", 
-                    "description": "Theory test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
+                    "display_name": "Theory Test - Heavy/Commercial Categories", 
+                    "description": "Theory test fee for B2, BE, C1, C, C1E, CE, D1, D, D2 categories",
                     "amount": 15000.0,
-                    "applies_to_categories": ["C", "D", "E"],
+                    "applies_to_categories": ["B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
                     "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # Practical Test Fees for A′/A/B categories (10,000 Ar)
+                # Practical Test Fees for Light Categories (10,000 Ar)
                 {
                     "fee_type": "practical_test_light",
                     "display_name": "Practical Test - Light Categories",
-                    "description": "Practical test fee for A′ (Moped), A (Motorcycle), and B (Light Vehicle) categories",
+                    "description": "Practical test fee for A1/A2/A (Motorcycles), B1/B (Light Vehicles)",
                     "amount": 10000.0,
-                    "applies_to_categories": ["A'", "A", "B"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B"],
                     "applies_to_application_types": ["NEW_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
                 },
                 
-                # Practical Test Fees for C/D/E categories (15,000 Ar)
+                # Practical Test Fees for Heavy/Commercial Categories (15,000 Ar)
                 {
                     "fee_type": "practical_test_heavy",
-                    "display_name": "Practical Test - Heavy Categories",
-                    "description": "Practical test fee for C (Heavy Goods), D (Passenger Transport), and E (Large Trailers) categories",
+                    "display_name": "Practical Test - Heavy/Commercial Categories",
+                    "description": "Practical test fee for B2, BE, C1, C, C1E, CE, D1, D, D2 categories",
                     "amount": 15000.0,
-                    "applies_to_categories": ["C", "D", "E"],
+                    "applies_to_categories": ["B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["NEW_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1109,9 +1109,9 @@ async def initialize_fee_structures():
                 {
                     "fee_type": "card_production",
                     "display_name": "License Card Production",
-                    "description": "Card production fee for CIM-produced license cards (all categories)",
+                    "description": "Card production fee for CIM-produced license cards (all SADC categories)",
                     "amount": 38000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["NEW_LICENSE", "RENEWAL", "REPLACEMENT"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1123,7 +1123,7 @@ async def initialize_fee_structures():
                     "display_name": "Temporary License - Standard",
                     "description": "Standard temporary license fee (90-day A4 permit)",
                     "amount": 30000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["TEMPORARY_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1133,7 +1133,7 @@ async def initialize_fee_structures():
                     "display_name": "Temporary License - Urgent",
                     "description": "Urgent temporary license fee (same-day processing)",
                     "amount": 100000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["TEMPORARY_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1143,7 +1143,7 @@ async def initialize_fee_structures():
                     "display_name": "Temporary License - Emergency",
                     "description": "Emergency temporary license fee (immediate processing)",
                     "amount": 400000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["TEMPORARY_LICENSE"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1155,7 +1155,7 @@ async def initialize_fee_structures():
                     "display_name": "International Driving Permit",
                     "description": "International driving permit fee (based on existing license)",
                     "amount": 50000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["INTERNATIONAL_PERMIT"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1167,7 +1167,7 @@ async def initialize_fee_structures():
                     "display_name": "License Renewal",
                     "description": "License renewal fee (5-year validity for all categories)",
                     "amount": 20000.0,
-                    "applies_to_categories": ["A'", "A", "B", "C", "D", "E"],
+                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
                     "applies_to_application_types": ["RENEWAL"],
                     "is_mandatory": True,
                     "is_active": True
@@ -1226,14 +1226,14 @@ async def initialize_fee_structures():
                 "created_fee_structures": created_fees,
                 "total_created": len(created_fees),
                 "summary": {
-                    "theory_test_fees": "A′/A/B: 10,000 Ar, C/D/E: 15,000 Ar",
+                    "theory_test_fees": "Light (A1/A2/A/B1/B): 10,000 Ar, Heavy/Commercial (B2/BE/C1/C/C1E/CE/D1/D/D2): 15,000 Ar",
                     "practical_test_fees": "Same as theory test fees",
                     "card_production": "38,000 Ar (single fee)",
                     "temporary_licenses": "30,000-400,000 Ar (urgency-based)",
                     "international_permit": "50,000 Ar",
                     "renewals": "20,000 Ar"
                 },
-                "note": "Madagascar driver's license fee structure based on Applications_Doc.md",
+                "note": "Madagascar driver's license fee structure using SADC license codes",
                 "timestamp": time.time()
             }
             
