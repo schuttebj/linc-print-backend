@@ -1122,10 +1122,12 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
     
     # Special handling for license capture applications
     if application.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
-        # Simplified workflow for capture applications: DRAFT → SUBMITTED → COMPLETED
+        # Authorization workflow for capture applications: DRAFT → SUBMITTED → APPROVED → COMPLETED
         if current_status == ApplicationStatus.DRAFT:
             return new_status in [ApplicationStatus.SUBMITTED, ApplicationStatus.CANCELLED]
         elif current_status == ApplicationStatus.SUBMITTED:
+            return new_status in [ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED]
+        elif current_status == ApplicationStatus.APPROVED:
             return new_status in [ApplicationStatus.COMPLETED, ApplicationStatus.CANCELLED]
         elif current_status == ApplicationStatus.COMPLETED:
             return False  # No transitions from completed
