@@ -209,14 +209,56 @@ async def drop_all_tables():
 async def initialize_tables():
     """Initialize database tables with latest schema"""
     try:
-        from app.core.database import create_tables
+        from app.core.database import create_tables, engine
+        from app.models.enums import LicenseCategory
+        from sqlalchemy import text
         
+        logger.info("Creating database tables with explicit enum creation")
+        
+        # Step 1: Explicitly create LicenseCategory enum first
+        logger.info("Creating LicenseCategory enum with all values")
+        enum_values = [category.value for category in LicenseCategory]
+        logger.info(f"Enum values to create: {enum_values}")
+        
+        with engine.connect() as conn:
+            # Drop existing enum if it exists
+            try:
+                conn.execute(text("DROP TYPE IF EXISTS licensecategory CASCADE"))
+                logger.info("Dropped existing licensecategory enum")
+            except Exception as e:
+                logger.info(f"No existing enum to drop: {e}")
+            
+            # Create new enum with all values
+            values_str = "', '".join(enum_values)
+            create_enum_sql = f"CREATE TYPE licensecategory AS ENUM ('{values_str}')"
+            conn.execute(text(create_enum_sql))
+            logger.info(f"Created licensecategory enum: {create_enum_sql}")
+            
+            # Verify the enum was created correctly
+            result = conn.execute(text("""
+                SELECT enumlabel 
+                FROM pg_enum 
+                WHERE enumtypid = (
+                    SELECT oid 
+                    FROM pg_type 
+                    WHERE typname = 'licensecategory'
+                )
+                ORDER BY enumsortorder
+            """))
+            
+            created_values = [row[0] for row in result.fetchall()]
+            logger.info(f"Verified enum values in database: {created_values}")
+            conn.commit()
+        
+        # Step 2: Now create all tables
         logger.info("Creating database tables")
         create_tables()
         
         return {
             "status": "success", 
             "message": "Database tables created successfully",
+            "enum_values_created": created_values,
+            "total_enum_values": len(created_values),
             "timestamp": time.time()
         }
     except Exception as e:
@@ -226,6 +268,96 @@ async def initialize_tables():
             content={
                 "status": "error",
                 "message": f"Failed to create tables: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
+@app.post("/admin/fix-license-enum", tags=["Admin"])
+async def fix_license_category_enum():
+    """Fix LicenseCategory enum to include all values including '3'"""
+    try:
+        from app.core.database import engine
+        from app.models.enums import LicenseCategory
+        from sqlalchemy import text
+        
+        logger.info("Fixing LicenseCategory enum to include all values")
+        
+        # Get all enum values from the Python enum
+        enum_values = [category.value for category in LicenseCategory]
+        logger.info(f"LicenseCategory enum values to create: {enum_values}")
+        
+        with engine.connect() as conn:
+            # Drop existing enum if it exists
+            try:
+                conn.execute(text("DROP TYPE IF EXISTS licensecategory CASCADE"))
+                logger.info("Dropped existing licensecategory enum")
+            except Exception as e:
+                logger.info(f"No existing enum to drop: {e}")
+            
+            # Create new enum with all values
+            values_str = "', '".join(enum_values)
+            create_enum_sql = f"CREATE TYPE licensecategory AS ENUM ('{values_str}')"
+            conn.execute(text(create_enum_sql))
+            logger.info(f"Created licensecategory enum: {create_enum_sql}")
+            
+            # Verify the enum was created correctly
+            result = conn.execute(text("""
+                SELECT enumlabel 
+                FROM pg_enum 
+                WHERE enumtypid = (
+                    SELECT oid 
+                    FROM pg_type 
+                    WHERE typname = 'licensecategory'
+                )
+                ORDER BY enumsortorder
+            """))
+            
+            created_values = [row[0] for row in result.fetchall()]
+            logger.info(f"Verified enum values in database: {created_values}")
+            conn.commit()
+            
+            # Check if all our values are present
+            missing_values = set(enum_values) - set(created_values)
+            if missing_values:
+                logger.error(f"Missing values after enum creation: {missing_values}")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": "error",
+                        "message": f"Missing enum values: {missing_values}",
+                        "created_values": created_values,
+                        "expected_values": enum_values,
+                        "timestamp": time.time()
+                    }
+                )
+            
+            # Now recreate the applications table to use the new enum
+            logger.info("Recreating applications table with fixed enum")
+            conn.execute(text("DROP TABLE IF EXISTS applications CASCADE"))
+            
+            # Import and create just the applications table
+            from app.models.application import Application
+            from app.models.base import Base
+            Application.__table__.create(bind=engine, checkfirst=True)
+            logger.info("Recreated applications table")
+            
+            return {
+                "status": "success",
+                "message": "LicenseCategory enum fixed successfully",
+                "enum_values_created": created_values,
+                "total_enum_values": len(created_values),
+                "includes_learners_3": "3" in created_values,
+                "timestamp": time.time()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to fix enum: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to fix enum: {str(e)}",
                 "timestamp": time.time()
             }
         )
