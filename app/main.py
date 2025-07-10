@@ -1718,6 +1718,127 @@ async def debug_test_application_creation(db: Session = Depends(get_db)):
             }
         }
 
+@app.post("/debug/test-enum-fix", tags=["Debug"])
+async def debug_test_enum_fix(db: Session = Depends(get_db)):
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
+    Test the custom EnumValueType fix for LicenseCategory enum
+    """
+    try:
+        from app.models.enums import LicenseCategory, ApplicationType, ApplicationStatus
+        from app.models.application import Application
+        
+        results = {
+            "step_1_enum_creation": None,
+            "step_2_direct_db_test": None,
+            "step_3_raw_sql_check": None,
+            "error_details": None
+        }
+        
+        # Step 1: Test enum creation
+        try:
+            test_enum = LicenseCategory.LEARNERS_3
+            results["step_1_enum_creation"] = {
+                "status": "SUCCESS",
+                "enum_name": test_enum.name,
+                "enum_value": test_enum.value
+            }
+        except Exception as e:
+            results["step_1_enum_creation"] = {
+                "status": "FAILED",
+                "error": str(e)
+            }
+        
+        # Step 2: Test direct database insert with new EnumValueType
+        try:
+            from datetime import datetime, timezone
+            import uuid
+            
+            # Create a minimal application instance for testing
+            test_app = Application(
+                id=uuid.uuid4(),
+                application_number="ENUM-TEST-001",
+                application_type=ApplicationType.LEARNERS_PERMIT,
+                person_id=uuid.UUID('123e4567-e89b-12d3-a456-426614174000'),
+                license_category=LicenseCategory.LEARNERS_3,  # This should now work!
+                status=ApplicationStatus.DRAFT,
+                priority=1,
+                application_date=datetime.now(timezone.utc),
+                location_id=uuid.UUID('123e4567-e89b-12d3-a456-426614174001'),
+                medical_certificate_required=False,
+                medical_certificate_status='NOT_REQUIRED',
+                parental_consent_required=False,
+                parental_consent_status='NOT_REQUIRED',
+                requires_existing_license=False,
+                existing_license_verified=False,
+                photo_captured=False,
+                signature_captured=False,
+                fingerprint_captured=False,
+                is_urgent=False,
+                is_on_hold=False,
+                has_special_requirements=False,
+                professional_permit_previous_refusal=False,
+                is_temporary_license=False,
+                temporary_license_validity_days=90,
+                print_ready=False,
+                collection_notice_sent=False,
+                is_active=True
+            )
+            
+            # Add and flush to test the EnumValueType conversion
+            db.add(test_app)
+            db.flush()  # This should work now with EnumValueType
+            
+            results["step_2_direct_db_test"] = {
+                "status": "SUCCESS",
+                "app_id": str(test_app.id),
+                "license_category_stored": test_app.license_category.value if test_app.license_category else None,
+                "license_category_type": str(type(test_app.license_category))
+            }
+            
+            # Clean up
+            db.delete(test_app)
+            db.commit()
+            
+        except Exception as e:
+            results["step_2_direct_db_test"] = {
+                "status": "FAILED",
+                "error": str(e),
+                "error_type": str(type(e).__name__)
+            }
+            db.rollback()
+        
+        # Step 3: Check what's actually stored in database for enum values
+        try:
+            # Raw SQL to check enum values in database
+            enum_check_sql = "SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'licensecategory');"
+            result = db.execute(enum_check_sql)
+            db_enum_values = [row[0] for row in result.fetchall()]
+            
+            results["step_3_raw_sql_check"] = {
+                "status": "SUCCESS",
+                "database_enum_values": db_enum_values,
+                "has_value_3": "3" in db_enum_values,
+                "has_name_LEARNERS_3": "LEARNERS_3" in db_enum_values
+            }
+            
+        except Exception as e:
+            results["step_3_raw_sql_check"] = {
+                "status": "FAILED",
+                "error": str(e)
+            }
+        
+        return results
+        
+    except Exception as e:
+        return {
+            "error_details": {
+                "error": str(e),
+                "error_type": str(type(e).__name__),
+                "traceback": __import__('traceback').format_exc()
+            }
+        }
+
 
 if __name__ == "__main__":
     import uvicorn

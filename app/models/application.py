@@ -14,7 +14,7 @@ Features:
 - Medical certificate requirements: C/D/E categories, age 60+, specific health conditions
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Numeric, JSON, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Numeric, JSON, Enum as SQLEnum, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -29,6 +29,48 @@ from app.models.enums import (
     TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
     ProfessionalPermitCategory
 )
+
+
+class EnumValueType(TypeDecorator):
+    """
+    Custom type decorator that ensures enum values (not names) are sent to database
+    This fixes the SQLAlchemy issue where enum names are sent instead of values
+    even when native_enum=False is specified
+    """
+    impl = String
+    
+    def __init__(self, enum_class, *args, **kwargs):
+        self.enum_class = enum_class
+        super().__init__(*args, **kwargs)
+    
+    def process_bind_param(self, value, dialect):
+        """Convert Python enum to database value"""
+        if value is None:
+            return value
+        if isinstance(value, self.enum_class):
+            return value.value  # Always return the enum value, not name
+        if isinstance(value, str):
+            # If it's already a string, check if it's a valid enum value
+            try:
+                enum_instance = self.enum_class(value)
+                return enum_instance.value
+            except ValueError:
+                # If not a valid value, try to find by name
+                for enum_member in self.enum_class:
+                    if enum_member.name == value:
+                        return enum_member.value
+                raise ValueError(f"Invalid enum value: {value}")
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Convert database value back to Python enum"""
+        if value is None:
+            return value
+        try:
+            return self.enum_class(value)
+        except ValueError:
+            # If the database value doesn't match any enum value, return as-is
+            return value
 
 
 class Application(BaseModel):
@@ -54,7 +96,7 @@ class Application(BaseModel):
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="Applicant person ID")
     
     # License category - Single category per application (changed from JSON array)
-    license_category = Column(SQLEnum(LicenseCategory, native_enum=False), nullable=False, comment="Single license category for this application")
+    license_category = Column(EnumValueType(LicenseCategory), nullable=False, comment="Single license category for this application")
     
     # Application status and workflow
     status = Column(SQLEnum(ApplicationStatus), nullable=False, default=ApplicationStatus.DRAFT, index=True, comment="Current application status")
