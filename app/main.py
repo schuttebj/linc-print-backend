@@ -35,15 +35,16 @@ TODO: Future Enhancements
    - TODO: Performance optimization and caching
 """
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
 import logging
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.database import create_tables
+from app.core.database import create_tables, get_db
 from app.api.v1.api import api_router
 
 # Configure logging
@@ -1587,6 +1588,134 @@ async def debug_test_license_capture(request: dict):
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc(),
             "request_data": request
+        }
+
+@app.post("/debug/test-application-creation", tags=["Debug"])
+async def debug_test_application_creation(db: Session = Depends(get_db)):
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
+    Test the full application creation process with LEARNERS_3 category
+    """
+    try:
+        from app.models.enums import LicenseCategory, ApplicationType
+        from app.schemas.application import ApplicationCreate
+        from app.crud.crud_application import application as crud_application
+        from app.models.application import Application
+        
+        results = {
+            "step_1_enum_conversion": None,
+            "step_2_schema_validation": None,
+            "step_3_crud_creation": None,
+            "step_4_database_save": None,
+            "error_details": None
+        }
+        
+        # Step 1: Test enum conversion
+        try:
+            learners_3_enum = LicenseCategory.LEARNERS_3
+            results["step_1_enum_conversion"] = {
+                "status": "SUCCESS",
+                "enum_name": learners_3_enum.name,
+                "enum_value": learners_3_enum.value
+            }
+        except Exception as e:
+            results["step_1_enum_conversion"] = {"status": "FAILED", "error": str(e)}
+            return results
+        
+        # Step 2: Test schema validation with real data
+        try:
+            # Create a minimal but valid application request
+            app_data = ApplicationCreate(
+                application_type=ApplicationType.LEARNERS_PERMIT_CAPTURE,
+                person_id="123e4567-e89b-12d3-a456-426614174000",  # Valid UUID format
+                license_category="3",  # This should convert to LicenseCategory.LEARNERS_3
+                location_id="123e4567-e89b-12d3-a456-426614174001",  # Valid UUID format
+                license_capture={
+                    "captured_licenses": [{
+                        "id": "temp-1",
+                        "license_number": "TEST123",
+                        "license_category": "3",
+                        "issue_date": "2020-01-01",
+                        "expiry_date": "2025-01-01",
+                        "restrictions": [],
+                        "verified": False
+                    }],
+                    "application_type": "LEARNERS_PERMIT_CAPTURE"
+                }
+            )
+            results["step_2_schema_validation"] = {
+                "status": "SUCCESS",
+                "license_category_type": str(type(app_data.license_category)),
+                "license_category_value": str(app_data.license_category),
+                "license_category_name": app_data.license_category.name if hasattr(app_data.license_category, 'name') else 'N/A'
+            }
+        except Exception as e:
+            results["step_2_schema_validation"] = {"status": "FAILED", "error": str(e)}
+            return results
+        
+        # Step 3: Test direct database model creation (without save)
+        try:
+            from app.models.application import Application
+            import uuid
+            from datetime import datetime, timezone
+            
+            # Create application model instance directly
+            app_model = Application(
+                id=uuid.uuid4(),
+                application_type=ApplicationType.LEARNERS_PERMIT_CAPTURE,
+                application_number="TEST-001",
+                person_id=uuid.UUID("123e4567-e89b-12d3-a456-426614174000"),
+                license_category=LicenseCategory.LEARNERS_3,  # Direct enum assignment
+                location_id=uuid.UUID("123e4567-e89b-12d3-a456-426614174001"),
+                application_date=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            )
+            
+            results["step_3_crud_creation"] = {
+                "status": "SUCCESS",
+                "model_license_category": str(app_model.license_category),
+                "model_license_category_type": str(type(app_model.license_category))
+            }
+        except Exception as e:
+            results["step_3_crud_creation"] = {"status": "FAILED", "error": str(e)}
+            return results
+        
+        # Step 4: Test database save (this is where the SQLAlchemy error likely occurs)
+        try:
+            db.add(app_model)
+            db.flush()  # This should trigger the SQLAlchemy enum validation
+            
+            results["step_4_database_save"] = {
+                "status": "SUCCESS", 
+                "message": "Database save completed without error"
+            }
+            
+            # Rollback to avoid saving test data
+            db.rollback()
+            
+        except Exception as e:
+            # Rollback on error
+            db.rollback()
+            import traceback
+            results["step_4_database_save"] = {
+                "status": "FAILED",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
+        
+        return results
+        
+    except Exception as e:
+        db.rollback()
+        import traceback
+        return {
+            "error_details": {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
         }
 
 
