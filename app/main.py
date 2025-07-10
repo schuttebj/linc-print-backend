@@ -1469,6 +1469,126 @@ async def reset_database():
             }
         )
 
+@app.get("/debug/enum-validation", tags=["Debug"])
+async def debug_enum_validation():
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
+    Test LicenseCategory enum validation in Pydantic schemas
+    """
+    from app.models.enums import LicenseCategory
+    from app.schemas.application import CapturedLicense, LicenseCaptureData
+    
+    results = {
+        "enum_info": {},
+        "validation_tests": {},
+        "error_details": None
+    }
+    
+    try:
+        # Test 1: Check enum values
+        enum_values = [category.value for category in LicenseCategory]
+        results["enum_info"] = {
+            "total_count": len(list(LicenseCategory)),
+            "all_values": enum_values,
+            "has_learners_3": "3" in enum_values,
+            "learners_values": [v for v in enum_values if v in ["1", "2", "3"]]
+        }
+        
+        # Test 2: Individual category validation
+        test_categories = ["A", "B", "1", "2", "3"]
+        validation_results = {}
+        
+        for category in test_categories:
+            try:
+                captured_license = CapturedLicense(
+                    id="test-id",
+                    license_number="TEST123",
+                    license_category=category,
+                    issue_date="2020-01-01",
+                    expiry_date="2025-01-01",
+                    restrictions=[],
+                    verified=False
+                )
+                validation_results[category] = {
+                    "status": "SUCCESS",
+                    "validated_value": captured_license.license_category
+                }
+            except Exception as e:
+                validation_results[category] = {
+                    "status": "FAILED",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+        
+        results["validation_tests"] = validation_results
+        
+        # Test 3: Full LicenseCaptureData validation with category "3"
+        try:
+            license_capture_data = LicenseCaptureData(
+                captured_licenses=[{
+                    "id": "test-id",
+                    "license_number": "TEST123",
+                    "license_category": "3",
+                    "issue_date": "2020-01-01",
+                    "expiry_date": "2025-01-01",
+                    "restrictions": [],
+                    "verified": False
+                }],
+                application_type="LEARNERS_PERMIT_CAPTURE"
+            )
+            results["full_validation_test"] = {
+                "status": "SUCCESS",
+                "captured_category": license_capture_data.captured_licenses[0].license_category
+            }
+        except Exception as e:
+            results["full_validation_test"] = {
+                "status": "FAILED",
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
+            
+    except Exception as e:
+        results["error_details"] = {
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+        import traceback
+        results["traceback"] = traceback.format_exc()
+    
+    return results
+
+@app.post("/debug/test-license-capture", tags=["Debug"])
+async def debug_test_license_capture(request: dict):
+    """
+    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
+    Test the actual license capture data that's failing
+    """
+    try:
+        from app.schemas.application import LicenseCaptureData
+        
+        # Try to validate the actual request data
+        license_capture_data = LicenseCaptureData(**request)
+        
+        return {
+            "status": "SUCCESS",
+            "message": "License capture validation passed",
+            "validated_data": {
+                "application_type": license_capture_data.application_type,
+                "captured_licenses_count": len(license_capture_data.captured_licenses),
+                "categories": [license.license_category for license in license_capture_data.captured_licenses]
+            }
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+            "request_data": request
+        }
+
 
 if __name__ == "__main__":
     import uvicorn
