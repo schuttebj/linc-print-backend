@@ -205,7 +205,6 @@ async def drop_all_tables():
             }
         )
 
-
 @app.post("/admin/init-tables", tags=["Admin"])
 async def initialize_tables():
     """Initialize database tables with latest schema"""
@@ -1387,465 +1386,57 @@ async def initialize_fee_structures():
 
 @app.post("/admin/reset-database", tags=["Admin"])
 async def reset_database():
-    """Complete database reset - Drop, recreate, and initialize everything"""
+    """
+    DEVELOPMENT ONLY: Complete database reset
+    Drops all tables, recreates them, and initializes with base data
+    """
     try:
-        # Step 1: Drop all tables
-        drop_result = await drop_all_tables()
-        if isinstance(drop_result, JSONResponse):
-            return drop_result
-        if drop_result.get("status") != "success":
-            return drop_result
+        from app.core.database import drop_tables, create_tables
+        from app.models.enums import LicenseCategory
         
-        # Step 2: Initialize tables
-        init_result = await initialize_tables()
-        if isinstance(init_result, JSONResponse):
-            return init_result
-        if init_result.get("status") != "success":
-            return init_result
+        logger.warning("Resetting entire database - all data will be lost")
         
-        # Step 3: Initialize users and roles
-        users_result = await initialize_users()
-        if isinstance(users_result, JSONResponse):
-            return users_result
-        if users_result.get("status") != "success":
-            return users_result
+        # Drop and recreate all tables
+        drop_tables()
+        create_tables()
         
-        # Step 4: Initialize locations
-        locations_result = await initialize_locations()
-        if isinstance(locations_result, JSONResponse):
-            return locations_result
-        if locations_result.get("status") != "success":
-            return locations_result
-        
-        # Step 5: Initialize location-based users
-        location_users_result = await initialize_location_users()
-        if isinstance(location_users_result, JSONResponse):
-            return location_users_result
-        if location_users_result.get("status") != "success":
-            return location_users_result
-        
-        # Step 6: Initialize fee structures for applications module
-        fee_structures_result = await initialize_fee_structures()
-        if isinstance(fee_structures_result, JSONResponse):
-            return fee_structures_result
-        if fee_structures_result.get("status") != "success":
-            return fee_structures_result
+        # Verify enum values are properly created
+        from app.core.database import get_db
+        db = next(get_db())
+        try:
+            # Check if enum is created with correct values
+            result = db.execute("SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'licensecategory');")
+            enum_values = [row[0] for row in result.fetchall()]
+            logger.info(f"Verified enum values in database: {enum_values}")
+        except Exception as enum_error:
+            logger.error(f"Error checking enum values: {enum_error}")
+        finally:
+            db.close()
         
         return {
             "status": "success",
-            "message": "Complete database reset successful",
-            "steps_completed": [
-                "Tables dropped",
-                "Tables recreated", 
-                "Base users and roles initialized",
-                "Madagascar locations initialized",
-                "Location-based users created",
-                "Application fee structures initialized"
-            ],
-            "summary": {
-                "permissions_created": users_result.get("permissions_created", 0),
-                "roles_created": users_result.get("roles_created", 0),
-                "locations_created": len(locations_result.get("created_locations", [])),
-                "location_users_created": location_users_result.get("total_users_created", 0),
-                "fee_structures_created": fee_structures_result.get("total_created", 0)
-            },
-            "admin_credentials": users_result.get("admin_credentials"),
-            "applications_module": {
-                "status": "ready",
-                "fee_structure": fee_structures_result.get("summary", {}),
-                "note": "Applications module fully initialized and ready for testing"
-            },
-            "note": "Madagascar License System fully initialized with applications module support",
-            "timestamp": time.time()
+            "message": "Database reset completed successfully",
+            "warning": "All previous data has been permanently deleted",
+            "timestamp": time.time(),
+            "next_steps": [
+                "Initialize users: POST /admin/init-users",
+                "Initialize locations: POST /admin/init-locations", 
+                "Initialize location users: POST /admin/init-location-users",
+                "Initialize fee structures: POST /admin/init-fee-structures"
+            ]
         }
-        
     except Exception as e:
         logger.error(f"Failed to reset database: {e}")
         return JSONResponse(
             status_code=500,
             content={
                 "status": "error",
-                "message": f"Failed to reset database: {str(e)}",
+                "message": f"Database reset failed: {str(e)}",
                 "timestamp": time.time()
             }
         )
 
-@app.get("/debug/enum-validation", tags=["Debug"])
-async def debug_enum_validation():
-    """
-    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
-    Test LicenseCategory enum validation in Pydantic schemas
-    """
-    from app.models.enums import LicenseCategory
-    from app.schemas.application import CapturedLicense, LicenseCaptureData
-    
-    results = {
-        "enum_info": {},
-        "validation_tests": {},
-        "error_details": None
-    }
-    
-    try:
-        # Test 1: Check enum values
-        enum_values = [category.value for category in LicenseCategory]
-        results["enum_info"] = {
-            "total_count": len(list(LicenseCategory)),
-            "all_values": enum_values,
-            "has_learners_3": "3" in enum_values,
-            "learners_values": [v for v in enum_values if v in ["1", "2", "3"]]
-        }
-        
-        # Test 2: Individual category validation
-        test_categories = ["A", "B", "1", "2", "3"]
-        validation_results = {}
-        
-        for category in test_categories:
-            try:
-                captured_license = CapturedLicense(
-                    id="test-id",
-                    license_number="TEST123",
-                    license_category=category,
-                    issue_date="2020-01-01",
-                    expiry_date="2025-01-01",
-                    restrictions=[],
-                    verified=False
-                )
-                validation_results[category] = {
-                    "status": "SUCCESS",
-                    "validated_value": captured_license.license_category
-                }
-            except Exception as e:
-                validation_results[category] = {
-                    "status": "FAILED",
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                }
-        
-        results["validation_tests"] = validation_results
-        
-        # Test 3: Full LicenseCaptureData validation with category "3"
-        try:
-            license_capture_data = LicenseCaptureData(
-                captured_licenses=[{
-                    "id": "test-id",
-                    "license_number": "TEST123",
-                    "license_category": "3",
-                    "issue_date": "2020-01-01",
-                    "expiry_date": "2025-01-01",
-                    "restrictions": [],
-                    "verified": False
-                }],
-                application_type="LEARNERS_PERMIT_CAPTURE"
-            )
-            results["full_validation_test"] = {
-                "status": "SUCCESS",
-                "captured_category": license_capture_data.captured_licenses[0].license_category
-            }
-        except Exception as e:
-            results["full_validation_test"] = {
-                "status": "FAILED",
-                "error": str(e),
-                "error_type": type(e).__name__
-            }
-            
-    except Exception as e:
-        results["error_details"] = {
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
-        import traceback
-        results["traceback"] = traceback.format_exc()
-    
-    return results
-
-@app.post("/debug/test-license-capture", tags=["Debug"])
-async def debug_test_license_capture(request: dict):
-    """
-    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
-    Test the actual license capture data that's failing
-    """
-    try:
-        from app.schemas.application import LicenseCaptureData
-        
-        # Try to validate the actual request data
-        license_capture_data = LicenseCaptureData(**request)
-        
-        return {
-            "status": "SUCCESS",
-            "message": "License capture validation passed",
-            "validated_data": {
-                "application_type": license_capture_data.application_type,
-                "captured_licenses_count": len(license_capture_data.captured_licenses),
-                "categories": [license.license_category for license in license_capture_data.captured_licenses]
-            }
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            "status": "FAILED",
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "traceback": traceback.format_exc(),
-            "request_data": request
-        }
-
-@app.post("/debug/test-application-creation", tags=["Debug"])
-async def debug_test_application_creation(db: Session = Depends(get_db)):
-    """
-    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
-    Test the full application creation process with LEARNERS_3 category
-    """
-    try:
-        from app.models.enums import LicenseCategory, ApplicationType
-        from app.schemas.application import ApplicationCreate
-        from app.crud.crud_application import crud_application
-        from app.models.application import Application
-        
-        results = {
-            "step_1_enum_conversion": None,
-            "step_2_schema_validation": None,
-            "step_3_crud_creation": None,
-            "step_4_database_save": None,
-            "error_details": None
-        }
-        
-        # Step 1: Test enum conversion
-        try:
-            learners_3_enum = LicenseCategory.LEARNERS_3
-            results["step_1_enum_conversion"] = {
-                "status": "SUCCESS",
-                "enum_name": learners_3_enum.name,
-                "enum_value": learners_3_enum.value
-            }
-        except Exception as e:
-            results["step_1_enum_conversion"] = {"status": "FAILED", "error": str(e)}
-            return results
-        
-        # Step 2: Test schema validation with real data
-        try:
-            # Create a minimal but valid application request
-            app_data = ApplicationCreate(
-                application_type=ApplicationType.LEARNERS_PERMIT_CAPTURE,
-                person_id="123e4567-e89b-12d3-a456-426614174000",  # Valid UUID format
-                license_category="3",  # This should convert to LicenseCategory.LEARNERS_3
-                location_id="123e4567-e89b-12d3-a456-426614174001",  # Valid UUID format
-                license_capture={
-                    "captured_licenses": [{
-                        "id": "temp-1",
-                        "license_number": "TEST123",
-                        "license_category": "3",
-                        "issue_date": "2020-01-01",
-                        "expiry_date": "2025-01-01",
-                        "restrictions": [],
-                        "verified": False
-                    }],
-                    "application_type": "LEARNERS_PERMIT_CAPTURE"
-                }
-            )
-            results["step_2_schema_validation"] = {
-                "status": "SUCCESS",
-                "license_category_type": str(type(app_data.license_category)),
-                "license_category_value": str(app_data.license_category),
-                "license_category_name": app_data.license_category.name if hasattr(app_data.license_category, 'name') else 'N/A'
-            }
-        except Exception as e:
-            results["step_2_schema_validation"] = {"status": "FAILED", "error": str(e)}
-            return results
-        
-        # Step 3: Test direct database model creation (without save)
-        try:
-            from app.models.application import Application
-            import uuid
-            from datetime import datetime, timezone
-            
-            # Create application model instance directly
-            app_model = Application(
-                id=uuid.uuid4(),
-                application_type=ApplicationType.LEARNERS_PERMIT_CAPTURE,
-                application_number="TEST-001",
-                person_id=uuid.UUID("123e4567-e89b-12d3-a456-426614174000"),
-                license_category=LicenseCategory.LEARNERS_3,  # Direct enum assignment
-                location_id=uuid.UUID("123e4567-e89b-12d3-a456-426614174001"),
-                application_date=datetime.now(timezone.utc),
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            
-            results["step_3_crud_creation"] = {
-                "status": "SUCCESS",
-                "model_license_category": str(app_model.license_category),
-                "model_license_category_type": str(type(app_model.license_category))
-            }
-        except Exception as e:
-            results["step_3_crud_creation"] = {"status": "FAILED", "error": str(e)}
-            return results
-        
-        # Step 4: Test database save (this is where the SQLAlchemy error likely occurs)
-        try:
-            db.add(app_model)
-            db.flush()  # This should trigger the SQLAlchemy enum validation
-            
-            results["step_4_database_save"] = {
-                "status": "SUCCESS", 
-                "message": "Database save completed without error"
-            }
-            
-            # Rollback to avoid saving test data
-            db.rollback()
-            
-        except Exception as e:
-            # Rollback on error
-            db.rollback()
-            import traceback
-            results["step_4_database_save"] = {
-                "status": "FAILED",
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "traceback": traceback.format_exc()
-            }
-        
-        return results
-        
-    except Exception as e:
-        db.rollback()
-        import traceback
-        return {
-            "error_details": {
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "traceback": traceback.format_exc()
-            }
-        }
-
-@app.post("/debug/test-enum-fix", tags=["Debug"])
-async def debug_test_enum_fix(db: Session = Depends(get_db)):
-    """
-    TEMPORARY DIAGNOSTIC ENDPOINT - Remove after fixing enum issue
-    Test the custom EnumValueType fix for LicenseCategory enum
-    """
-    try:
-        from app.models.enums import LicenseCategory, ApplicationType, ApplicationStatus
-        from app.models.application import Application
-        
-        results = {
-            "step_1_enum_creation": None,
-            "step_2_direct_db_test": None,
-            "step_3_raw_sql_check": None,
-            "error_details": None
-        }
-        
-        # Step 1: Test enum creation
-        try:
-            test_enum = LicenseCategory.LEARNERS_3
-            results["step_1_enum_creation"] = {
-                "status": "SUCCESS",
-                "enum_name": test_enum.name,
-                "enum_value": test_enum.value
-            }
-        except Exception as e:
-            results["step_1_enum_creation"] = {
-                "status": "FAILED",
-                "error": str(e)
-            }
-        
-        # Step 2: Test direct database insert with new EnumValueType
-        try:
-            from datetime import datetime, timezone
-            import uuid
-            
-            # Create a minimal application instance for testing
-            test_app = Application(
-                id=uuid.uuid4(),
-                application_number="ENUM-TEST-001",
-                application_type=ApplicationType.LEARNERS_PERMIT,
-                person_id=uuid.UUID('123e4567-e89b-12d3-a456-426614174000'),
-                license_category=LicenseCategory.LEARNERS_3,  # This should now work!
-                status=ApplicationStatus.DRAFT,
-                priority=1,
-                application_date=datetime.now(timezone.utc),
-                location_id=uuid.UUID('123e4567-e89b-12d3-a456-426614174001'),
-                medical_certificate_required=False,
-                medical_certificate_status='NOT_REQUIRED',
-                parental_consent_required=False,
-                parental_consent_status='NOT_REQUIRED',
-                requires_existing_license=False,
-                existing_license_verified=False,
-                photo_captured=False,
-                signature_captured=False,
-                fingerprint_captured=False,
-                is_urgent=False,
-                is_on_hold=False,
-                has_special_requirements=False,
-                professional_permit_previous_refusal=False,
-                is_temporary_license=False,
-                temporary_license_validity_days=90,
-                print_ready=False,
-                collection_notice_sent=False,
-                is_active=True
-            )
-            
-            # Add and flush to test the EnumValueType conversion
-            db.add(test_app)
-            db.flush()  # This should work now with EnumValueType
-            
-            results["step_2_direct_db_test"] = {
-                "status": "SUCCESS",
-                "app_id": str(test_app.id),
-                "license_category_stored": test_app.license_category.value if test_app.license_category else None,
-                "license_category_type": str(type(test_app.license_category))
-            }
-            
-            # Clean up
-            db.delete(test_app)
-            db.commit()
-            
-        except Exception as e:
-            results["step_2_direct_db_test"] = {
-                "status": "FAILED",
-                "error": str(e),
-                "error_type": str(type(e).__name__)
-            }
-            db.rollback()
-        
-        # Step 3: Check what's actually stored in database for enum values
-        try:
-            # Raw SQL to check enum values in database
-            enum_check_sql = "SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'licensecategory');"
-            result = db.execute(enum_check_sql)
-            db_enum_values = [row[0] for row in result.fetchall()]
-            
-            results["step_3_raw_sql_check"] = {
-                "status": "SUCCESS",
-                "database_enum_values": db_enum_values,
-                "has_value_3": "3" in db_enum_values,
-                "has_name_LEARNERS_3": "LEARNERS_3" in db_enum_values
-            }
-            
-        except Exception as e:
-            results["step_3_raw_sql_check"] = {
-                "status": "FAILED",
-                "error": str(e)
-            }
-        
-        return results
-        
-    except Exception as e:
-        return {
-            "error_details": {
-                "error": str(e),
-                "error_type": str(type(e).__name__),
-                "traceback": __import__('traceback').format_exc()
-            }
-        }
-
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG,
-        log_level="info"
-    ) 
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
