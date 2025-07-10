@@ -1599,7 +1599,7 @@ async def debug_test_application_creation(db: Session = Depends(get_db)):
     try:
         from app.models.enums import LicenseCategory, ApplicationType
         from app.schemas.application import ApplicationCreate
-        from app.crud.crud_application import application as crud_application
+        from app.crud.crud_application import crud_application
         from app.models.application import Application
         
         results = {
