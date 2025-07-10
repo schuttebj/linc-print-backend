@@ -54,7 +54,7 @@ class Application(BaseModel):
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="Applicant person ID")
     
     # License category - Single category per application (changed from JSON array)
-    license_category = Column(SQLEnum(LicenseCategory, native_enum=False), nullable=False, comment="Single license category for this application")
+    license_category = Column(SQLEnum(LicenseCategory), nullable=False, comment="Single license category for this application")
     
     # Application status and workflow
     status = Column(SQLEnum(ApplicationStatus), nullable=False, default=ApplicationStatus.DRAFT, index=True, comment="Current application status")

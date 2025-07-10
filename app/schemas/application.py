@@ -203,6 +203,21 @@ class ApplicationBase(BaseModel):
             raise ValueError("Existing license number required when requires_existing_license is True")
         return v
 
+    @validator('license_category', pre=True)
+    def validate_license_category(cls, v):
+        """Convert string license category to LicenseCategory enum"""
+        if isinstance(v, str):
+            # Find the enum member by value
+            for category in LicenseCategory:
+                if category.value == v:
+                    return category
+            raise ValueError(f"Invalid license category value: {v}")
+        elif isinstance(v, LicenseCategory):
+            return v
+        else:
+            raise ValueError(f"license_category must be string or LicenseCategory enum, got {type(v)}")
+        return v
+
 
 class ApplicationCreate(ApplicationBase):
     """Schema for creating new applications"""

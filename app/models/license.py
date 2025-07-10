@@ -61,7 +61,7 @@ class License(BaseModel):
     created_from_application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, comment="Application that created this license")
     
     # License details
-    category = Column(SQLEnum(LicenseCategory, native_enum=False), nullable=False, comment="Single license category for this license")
+    category = Column(SQLEnum(LicenseCategory), nullable=False, comment="Single license category for this license")
     status = Column(SQLEnum(LicenseStatus), nullable=False, default=LicenseStatus.ACTIVE, index=True, comment="Current license status")
     
     # Issue information
@@ -105,7 +105,7 @@ class License(BaseModel):
     # License history tracking
     previous_license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=True, comment="Previous license (for upgrades)")
     is_upgrade = Column(Boolean, nullable=False, default=False, comment="Is this an upgrade from a lower category")
-    upgrade_from_category = Column(SQLEnum(LicenseCategory, native_enum=False), nullable=True, comment="Previous category if upgrade")
+    upgrade_from_category = Column(SQLEnum(LicenseCategory), nullable=True, comment="Previous category if upgrade")
     
     # External references
     legacy_license_number = Column(String(20), nullable=True, comment="Legacy license number (for imports)")
