@@ -50,15 +50,8 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         # Convert ApplicationCreate to dict and handle enum serialization
         obj_data = obj_in.dict(exclude={'application_number'})
         
-        # Convert enum values to strings for database storage
-        if 'application_type' in obj_data and obj_data['application_type']:
-            obj_data['application_type'] = obj_data['application_type'].value if hasattr(obj_data['application_type'], 'value') else str(obj_data['application_type'])
-        
-        if 'license_category' in obj_data and obj_data['license_category']:
-            obj_data['license_category'] = obj_data['license_category'].value if hasattr(obj_data['license_category'], 'value') else str(obj_data['license_category'])
-        
-        if 'replacement_reason' in obj_data and obj_data['replacement_reason']:
-            obj_data['replacement_reason'] = obj_data['replacement_reason'].value if hasattr(obj_data['replacement_reason'], 'value') else str(obj_data['replacement_reason'])
+        # Note: Enum conversion is handled by Pydantic validators in schemas
+        # SQLAlchemy with native_enum=False will handle enum-to-string conversion automatically
         
         # Handle professional_permit_categories list
         if 'professional_permit_categories' in obj_data and obj_data['professional_permit_categories']:
