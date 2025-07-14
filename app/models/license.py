@@ -194,11 +194,19 @@ class License(BaseModel):
     @staticmethod
     def _calculate_check_digit(number_string: str) -> int:
         """
-        Calculate check digit using Luhn algorithm
-        Similar to South African ID number validation
+        Calculate check digit using modified Luhn algorithm
+        Handles alphanumeric characters (A=10, B=11, etc.)
         """
-        # Convert to list of integers
-        digits = [int(d) for d in number_string]
+        # Convert to list of integers, handling both letters and numbers
+        digits = []
+        for char in number_string:
+            if char.isdigit():
+                digits.append(int(char))
+            elif char.isalpha():
+                # Convert letters to numbers: A=10, B=11, ..., Z=35
+                digits.append(ord(char.upper()) - ord('A') + 10)
+            else:
+                raise ValueError(f"Invalid character in license number: {char}")
         
         # Double every second digit from right to left
         for i in range(len(digits) - 2, -1, -2):
@@ -224,13 +232,25 @@ class License(BaseModel):
         if not (location_code[0].isalpha() and location_code[1:].isdigit()):
             return False
         
+        # Validate sequence part (characters 4-11) are digits
+        sequence_part = license_number[3:11]
+        if not sequence_part.isdigit():
+            return False
+        
+        # Validate check digit is a single digit
+        if not license_number[-1].isdigit():
+            return False
+        
         # Extract components
         base_number = license_number[:-1]
         check_digit = int(license_number[-1])
         
         # Verify check digit
-        calculated_check_digit = License._calculate_check_digit(base_number)
-        return check_digit == calculated_check_digit
+        try:
+            calculated_check_digit = License._calculate_check_digit(base_number)
+            return check_digit == calculated_check_digit
+        except ValueError:
+            return False
 
 
 class LicenseCard(BaseModel):
