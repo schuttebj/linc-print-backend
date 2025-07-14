@@ -27,7 +27,7 @@ from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
     TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
-    ProfessionalPermitCategory
+    ProfessionalPermitCategory, LicenseRestrictionCode
 )
 
 
@@ -195,6 +195,7 @@ class Application(BaseModel):
     fees = relationship("ApplicationFee", back_populates="application")
     status_history = relationship("ApplicationStatusHistory", back_populates="application")
     documents = relationship("ApplicationDocument", back_populates="application")
+    authorization = relationship("ApplicationAuthorization", back_populates="application", uselist=False)
     
     def __repr__(self):
         return f"<Application(id={self.id}, number='{self.application_number}', type='{self.application_type}', status='{self.status}')>"
@@ -603,3 +604,114 @@ REPLACEMENT_REASON_DISPLAY_NAMES = {
     ReplacementReason.ADDRESS_CHANGE: "Address Change",
     ReplacementReason.OTHER: "Other Reason",
 } 
+
+class ApplicationAuthorization(BaseModel):
+    """
+    Authorization model for capturing test results and examiner decisions
+    This model captures the test day form data including eye test results,
+    driving test results, restrictions, and final authorization decision
+    """
+    __tablename__ = "application_authorizations"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, unique=True, index=True, comment="Application ID (one authorization per application)")
+    
+    # Examiner information
+    examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="Examiner user ID")
+    infrastructure_number = Column(String(50), nullable=True, comment="Infrastructure number and name")
+    examiner_signature_path = Column(String(500), nullable=True, comment="Path to examiner signature file")
+    
+    # Test attendance and basic result
+    is_absent = Column(Boolean, nullable=False, default=False, comment="Applicant was absent for test")
+    is_failed = Column(Boolean, nullable=False, default=False, comment="Applicant failed the test")
+    absent_failed_reason = Column(Text, nullable=True, comment="Reason for absence or failure")
+    
+    # Eye test results (from medical information section)
+    eye_test_result = Column(String(20), nullable=True, comment="Eye test result: PASS/FAIL")
+    eye_test_notes = Column(Text, nullable=True, comment="Additional eye test notes")
+    
+    # Driving test results
+    driving_test_result = Column(String(20), nullable=True, comment="Driving test result: PASS/FAIL")
+    driving_test_score = Column(Numeric(5, 2), nullable=True, comment="Driving test score (percentage)")
+    driving_test_notes = Column(Text, nullable=True, comment="Driving test examiner notes")
+    
+    # Vehicle restrictions (from test form)
+    vehicle_restriction_none = Column(Boolean, nullable=False, default=True, comment="No vehicle restrictions")
+    vehicle_restriction_automatic = Column(Boolean, nullable=False, default=False, comment="Automatic transmission only")
+    vehicle_restriction_electric = Column(Boolean, nullable=False, default=False, comment="Electric powered vehicles only")
+    vehicle_restriction_disabled = Column(Boolean, nullable=False, default=False, comment="Adapted for physically disabled person")
+    
+    # Driver restrictions (from test form)
+    driver_restriction_none = Column(Boolean, nullable=False, default=True, comment="No driver restrictions")
+    driver_restriction_glasses = Column(Boolean, nullable=False, default=False, comment="Glasses or contact lenses required")
+    driver_restriction_artificial_limb = Column(Boolean, nullable=False, default=False, comment="Has artificial limb")
+    driver_restriction_glasses_and_limb = Column(Boolean, nullable=False, default=False, comment="Glasses and artificial limb")
+    
+    # Applied restrictions (final restrictions applied to license)
+    applied_restrictions = Column(JSON, nullable=True, comment="JSON array of applied LicenseRestrictionCode values")
+    
+    # Authorization decision
+    is_authorized = Column(Boolean, nullable=False, default=False, comment="Application authorized for license generation")
+    authorization_date = Column(DateTime, nullable=False, default=func.now(), comment="Date of authorization")
+    authorization_notes = Column(Text, nullable=True, comment="Examiner authorization notes")
+    
+    # License generation tracking
+    license_generated = Column(Boolean, nullable=False, default=False, comment="License generated from this authorization")
+    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=True, comment="Generated license ID")
+    license_generated_at = Column(DateTime, nullable=True, comment="Date license was generated")
+    
+    # Quality assurance
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="Supervisor who reviewed authorization")
+    reviewed_at = Column(DateTime, nullable=True, comment="Date authorization was reviewed")
+    review_notes = Column(Text, nullable=True, comment="Review notes")
+    
+    # Relationships
+    application = relationship("Application", back_populates="authorization", foreign_keys=[application_id])
+    examiner = relationship("User", foreign_keys=[examiner_id])
+    generated_license = relationship("License", foreign_keys=[license_id])
+    reviewed_by_user = relationship("User", foreign_keys=[reviewed_by])
+    
+    def __repr__(self):
+        return f"<ApplicationAuthorization(application_id={self.application_id}, examiner_id={self.examiner_id}, authorized={self.is_authorized})>"
+    
+    @property
+    def has_vehicle_restrictions(self) -> bool:
+        """Check if any vehicle restrictions are applied"""
+        return not self.vehicle_restriction_none
+    
+    @property
+    def has_driver_restrictions(self) -> bool:
+        """Check if any driver restrictions are applied"""
+        return not self.driver_restriction_none
+    
+    @property
+    def test_passed(self) -> bool:
+        """Check if both eye test and driving test passed"""
+        return (
+            not self.is_absent and 
+            not self.is_failed and 
+            self.eye_test_result == "PASS" and 
+            self.driving_test_result == "PASS"
+        )
+    
+    def get_restriction_codes(self) -> list:
+        """Get list of restriction codes to apply to license"""
+        restrictions = []
+        
+        # Driver restrictions
+        if self.driver_restriction_glasses or self.driver_restriction_glasses_and_limb:
+            restrictions.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
+        
+        if self.driver_restriction_artificial_limb or self.driver_restriction_glasses_and_limb:
+            restrictions.append(LicenseRestrictionCode.PROSTHETICS)
+        
+        # Vehicle restrictions
+        if self.vehicle_restriction_automatic:
+            restrictions.append(LicenseRestrictionCode.AUTOMATIC_TRANSMISSION)
+        
+        if self.vehicle_restriction_electric:
+            restrictions.append(LicenseRestrictionCode.ELECTRIC_POWERED)
+        
+        if self.vehicle_restriction_disabled:
+            restrictions.append(LicenseRestrictionCode.PHYSICAL_DISABLED)
+        
+        return restrictions 

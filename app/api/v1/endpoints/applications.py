@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
-from app.models.application import Application
-from app.models.enums import ApplicationStatus, ApplicationType, LicenseCategory
+from app.models.application import Application, ApplicationAuthorization
+from app.models.enums import ApplicationStatus, ApplicationType, LicenseCategory, RoleHierarchy
 from app.schemas.application import (
     Application as ApplicationSchema,
     ApplicationCreate,
@@ -1098,7 +1098,7 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
             ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.PRACTICAL_PASSED: [
-            ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
+            ApplicationStatus.APPROVED, ApplicationStatus.PRACTICAL_FAILED, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.PRACTICAL_FAILED: [
             ApplicationStatus.PRACTICAL_TEST_REQUIRED, ApplicationStatus.CANCELLED
@@ -1139,3 +1139,318 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
     
     allowed_statuses = valid_transitions.get(current_status, [])
     return new_status in allowed_statuses 
+
+
+# ====================
+# AUTHORIZATION ENDPOINTS
+# ====================
+
+@router.get("/pending-authorization", response_model=List[ApplicationSchema])
+def get_applications_pending_authorization(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    location_id: Optional[uuid.UUID] = None
+) -> List[ApplicationSchema]:
+    """
+    Get applications that are pending authorization by examiners
+    
+    Requires: applications.authorize permission or EXAMINER role
+    """
+    # Check if user has authorization permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view applications pending authorization"
+        )
+    
+    # Apply location filtering for location users
+    if current_user.user_type.value == "LOCATION_USER":
+        location_id = current_user.primary_location_id
+    
+    # Get applications with PRACTICAL_PASSED status (ready for authorization)
+    search_params = ApplicationSearch()
+    search_params.status = ApplicationStatus.PRACTICAL_PASSED
+    if location_id:
+        search_params.location_id = location_id
+    
+    applications = crud_application.search_applications(
+        db=db, search_params=search_params, skip=skip, limit=limit
+    )
+    
+    return applications
+
+
+@router.get("/{application_id}/authorization")
+def get_application_authorization(
+    application_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get authorization details for an application
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read authorization details"
+        )
+    
+    # Get application
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this application"
+        )
+    
+    # Get authorization if it exists
+    authorization = db.query(ApplicationAuthorization).filter(
+        ApplicationAuthorization.application_id == application_id
+    ).first()
+    
+    return {
+        "application": application,
+        "authorization": authorization,
+        "can_authorize": (
+            current_user.has_permission("applications.authorize") or
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER
+        )
+    }
+
+
+@router.post("/{application_id}/authorization")
+def create_application_authorization(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    authorization_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Create or update authorization for an application
+    
+    Requires: applications.authorize permission or EXAMINER role
+    """
+    # Check if user has authorization permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to authorize applications"
+        )
+    
+    # Get application
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check if application is in correct status
+    if application.status != ApplicationStatus.PRACTICAL_PASSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application status must be PRACTICAL_PASSED, current status: {application.status}"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this application"
+        )
+    
+    # Check if authorization already exists
+    existing_authorization = db.query(ApplicationAuthorization).filter(
+        ApplicationAuthorization.application_id == application_id
+    ).first()
+    
+    if existing_authorization:
+        # Update existing authorization
+        for key, value in authorization_data.items():
+            if hasattr(existing_authorization, key):
+                setattr(existing_authorization, key, value)
+        authorization = existing_authorization
+    else:
+        # Create new authorization
+        authorization = ApplicationAuthorization(
+            application_id=application_id,
+            examiner_id=current_user.id,
+            **authorization_data
+        )
+        db.add(authorization)
+    
+    # Determine if application should be authorized based on test results
+    test_passed = (
+        not authorization.is_absent and
+        not authorization.is_failed and
+        authorization.eye_test_result == "PASS" and
+        authorization.driving_test_result == "PASS"
+    )
+    
+    # Update authorization status
+    authorization.is_authorized = test_passed
+    authorization.authorization_date = datetime.utcnow()
+    
+    # Apply restrictions based on test results
+    if test_passed:
+        authorization.applied_restrictions = authorization.get_restriction_codes()
+    
+    db.commit()
+    db.refresh(authorization)
+    
+    # Update application status based on authorization result
+    if test_passed:
+        # Move to APPROVED status and generate license
+        application.status = ApplicationStatus.APPROVED
+        
+        # Generate license automatically
+        license = _generate_license_from_authorization(db, application, authorization)
+        
+        # Update authorization with generated license
+        authorization.license_generated = True
+        authorization.license_id = license.id
+        authorization.license_generated_at = datetime.utcnow()
+        
+        # Add status history
+        from app.models.application import ApplicationStatusHistory
+        status_history = ApplicationStatusHistory(
+            application_id=application_id,
+            from_status=ApplicationStatus.PRACTICAL_PASSED,
+            to_status=ApplicationStatus.APPROVED,
+            changed_by=current_user.id,
+            reason="Application authorized by examiner",
+            notes=f"Authorized by {current_user.username}"
+        )
+        db.add(status_history)
+        
+    else:
+        # Move back to appropriate test status based on failure reason
+        if authorization.is_absent:
+            application.status = ApplicationStatus.PRACTICAL_TEST_REQUIRED
+        elif authorization.eye_test_result == "FAIL":
+            application.status = ApplicationStatus.REJECTED
+        elif authorization.driving_test_result == "FAIL":
+            application.status = ApplicationStatus.PRACTICAL_FAILED
+        else:
+            application.status = ApplicationStatus.PRACTICAL_FAILED
+    
+    db.commit()
+    db.refresh(application)
+    
+    return {
+        "application": application,
+        "authorization": authorization,
+        "message": "Authorization processed successfully"
+    }
+
+
+@router.put("/{application_id}/authorization/{authorization_id}")
+def update_application_authorization(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    authorization_id: uuid.UUID,
+    authorization_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Update existing authorization
+    
+    Requires: applications.authorize permission or EXAMINER role
+    """
+    # Check if user has authorization permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to update authorization"
+        )
+    
+    # Get authorization
+    authorization = db.query(ApplicationAuthorization).filter(
+        ApplicationAuthorization.id == authorization_id,
+        ApplicationAuthorization.application_id == application_id
+    ).first()
+    
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Authorization not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(authorization.application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this authorization"
+        )
+    
+    # Update authorization
+    for key, value in authorization_data.items():
+        if hasattr(authorization, key):
+            setattr(authorization, key, value)
+    
+    db.commit()
+    db.refresh(authorization)
+    
+    return {
+        "authorization": authorization,
+        "message": "Authorization updated successfully"
+    }
+
+
+def _generate_license_from_authorization(db: Session, application: Application, authorization: ApplicationAuthorization):
+    """
+    Generate a license from an authorized application
+    """
+    from app.models.license import License, LicenseSequenceCounter
+    from app.models.license import LicenseStatus
+    from app.models.user import Location
+    
+    # Get location for license number generation
+    location = db.query(Location).filter(Location.id == application.location_id).first()
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Location {application.location_id} not found"
+        )
+    
+    # Generate license number using proper sequence counter
+    sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(authorization.examiner_id))
+    license_number = License.generate_license_number(location.code, sequence_number)
+    
+    # Create license
+    license = License(
+        person_id=application.person_id,
+        created_from_application_id=application.id,
+        category=application.license_category,
+        license_number=license_number,
+        status=LicenseStatus.ACTIVE,
+        issue_date=datetime.utcnow(),
+        issuing_location_id=application.location_id,
+        issued_by_user_id=authorization.examiner_id,
+        restrictions=authorization.applied_restrictions or []
+    )
+    
+    db.add(license)
+    db.commit()
+    db.refresh(license)
+    
+    return license
+
+
+ 

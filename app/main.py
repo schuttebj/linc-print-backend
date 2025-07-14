@@ -526,15 +526,33 @@ async def initialize_users():
                 "roles.read", "users.read"
             ]
             
+            # Define examiner permissions (authorization and review)
+            examiner_permissions = [
+                "applications.authorize", "applications.review_authorization",
+                "license_applications.read", "license_applications.approve",
+                # Basic permissions for interface
+                "roles.read", "users.read"
+            ]
+            
             admin_permissions = [perm for perm in permissions.keys()]  # All permissions
             
-            # Create roles with corrected structure - only office-level roles
+            # Create roles with corrected structure - including EXAMINER role
             roles_data = [
                 {
                     "name": "office_supervisor",
                     "display_name": "Office Supervisor",
                     "description": "Office level supervisor - can manage clerks and office operations",
                     "permissions": supervisor_permissions,
+                    "hierarchy_level": 2,
+                    "user_type_restriction": UserType.LOCATION_USER,
+                    "scope_type": "location",
+                    "is_system_role": True
+                },
+                {
+                    "name": "examiner",
+                    "display_name": "Examiner",
+                    "description": "License examiner - can authorize applications and generate licenses",
+                    "permissions": examiner_permissions,
                     "hierarchy_level": 2,
                     "user_type_restriction": UserType.LOCATION_USER,
                     "scope_type": "location",
@@ -673,6 +691,18 @@ async def initialize_users():
                     "department": "Card Production",
                     "user_type": UserType.LOCATION_USER,
                     "roles": ["printer"]
+                },
+                {
+                    "username": "examiner1",
+                    "email": "examiner1@madagascar-license.gov.mg", 
+                    "password": "Examiner123!",
+                    "first_name": "Sarah",
+                    "last_name": "Rasoarivelo",
+                    "madagascar_id_number": "CIN789123456",
+                    "employee_id": "EXM001",
+                    "department": "License Authorization",
+                    "user_type": UserType.LOCATION_USER,
+                    "roles": ["examiner"]
                 }
             ]
             
@@ -726,7 +756,8 @@ async def initialize_users():
                 "test_users": [
                     {"username": "clerk1", "password": "Clerk123!", "permissions": "person management + license processing"},
                     {"username": "supervisor1", "password": "Supervisor123!", "permissions": "all clerk permissions + deletions"},
-                    {"username": "printer1", "password": "Printer123!", "permissions": "printing operations only"}
+                    {"username": "printer1", "password": "Printer123!", "permissions": "printing operations only"},
+                    {"username": "examiner1", "password": "Examiner123!", "permissions": "application authorization + license generation"}
                 ],
                 "created_users": created_users,
                 "permissions_created": len(permissions_data),

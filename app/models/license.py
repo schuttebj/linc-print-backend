@@ -3,7 +3,7 @@ License Management Models for Madagascar License System
 Implements issued licenses separate from applications with proper number generation and card tracking
 
 Features:
-- License number generation: {ProvinceCode}{LocationNumber}{8SequentialDigits}{CheckDigit}
+- License number generation: {LocationCode}{8SequentialDigits}{CheckDigit}
 - License statuses: ACTIVE, SUSPENDED, CANCELLED
 - Card tracking as separate entities with expiry dates
 - Restriction management per license
@@ -54,7 +54,7 @@ class License(BaseModel):
     __tablename__ = "licenses"
 
     # Core license information
-    license_number = Column(String(15), nullable=False, unique=True, index=True, comment="Generated license number: {Province}{Location}{8Sequential}{CheckDigit}")
+    license_number = Column(String(15), nullable=False, unique=True, index=True, comment="Generated license number: {LocationCode}{8Sequential}{CheckDigit}")
     
     # Person and application links
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="License holder")
@@ -173,21 +173,18 @@ class License(BaseModel):
     def generate_license_number(location_code: str, sequence_number: int) -> str:
         """
         Generate license number with check digit
-        Format: {ProvinceCode}{LocationNumber}{8SequentialDigits}{CheckDigit}
-        Example: T01000001231 (T01 + 00000123 + 1)
+        Format: {LocationCode}{8SequentialDigits}{CheckDigit}
+        Example: A03123456789 (A03 + 12345678 + 9)
         """
-        # Extract province code and location number from location code (e.g., T01)
-        if len(location_code) < 3:
-            raise ValueError(f"Invalid location code format: {location_code}")
-        
-        province_code = location_code[0]
-        location_number = location_code[1:]
+        # Validate location code format (e.g., A03)
+        if len(location_code) != 3:
+            raise ValueError(f"Invalid location code format: {location_code}. Expected format: A03")
         
         # Format sequence number as 8 digits
         sequence_str = f"{sequence_number:08d}"
         
         # Combine without check digit
-        base_number = f"{province_code}{location_number}{sequence_str}"
+        base_number = f"{location_code}{sequence_str}"
         
         # Calculate check digit using Luhn algorithm (similar to SA ID)
         check_digit = License._calculate_check_digit(base_number)
@@ -220,6 +217,11 @@ class License(BaseModel):
     def validate_license_number(license_number: str) -> bool:
         """Validate license number format and check digit"""
         if len(license_number) != 12:
+            return False
+        
+        # Validate location code format (first 3 characters)
+        location_code = license_number[:3]
+        if not (location_code[0].isalpha() and location_code[1:].isdigit()):
             return False
         
         # Extract components

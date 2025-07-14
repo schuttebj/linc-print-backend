@@ -466,8 +466,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             is_valid = License.validate_license_number(license_number)
             
             if is_valid and len(license_number) == 12:
-                province_code = license_number[0]
-                location_code = license_number[1:3]
+                location_code = license_number[:3]
                 sequence_str = license_number[3:11]
                 check_digit = int(license_number[11])
                 
@@ -475,7 +474,6 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                     "license_number": license_number,
                     "is_valid": True,
                     "error_message": None,
-                    "province_code": province_code,
                     "location_code": location_code,
                     "sequence_number": int(sequence_str),
                     "check_digit": check_digit
@@ -485,7 +483,6 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                     "license_number": license_number,
                     "is_valid": False,
                     "error_message": "Invalid license number format or check digit",
-                    "province_code": None,
                     "location_code": None,
                     "sequence_number": None,
                     "check_digit": None
@@ -496,7 +493,6 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                 "license_number": license_number,
                 "is_valid": False,
                 "error_message": str(e),
-                "province_code": None,
                 "location_code": None,
                 "sequence_number": None,
                 "check_digit": None

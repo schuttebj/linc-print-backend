@@ -57,8 +57,9 @@ class RoleHierarchy(PythonEnum):
     Higher numbers can create lower numbered roles
     """
     SYSTEM_ADMIN = 4        # Technical system administrator (can create all roles)
-    NATIONAL_ADMIN = 3      # National administrator (can create Office Supervisor, Clerk)
+    NATIONAL_ADMIN = 3      # National administrator (can create Office Supervisor, Clerk, Examiner)
     OFFICE_SUPERVISOR = 2   # Office supervisor (can create Clerk only)
+    EXAMINER = 2           # License examiner (can authorize applications and create licenses)
     CLERK = 1              # Cannot create other users
 
 
@@ -356,6 +357,7 @@ ROLE_HIERARCHY_DISPLAY_NAMES = {
     RoleHierarchy.SYSTEM_ADMIN: "SYSTEM ADMINISTRATOR",
     RoleHierarchy.NATIONAL_ADMIN: "NATIONAL ADMINISTRATOR",
     RoleHierarchy.OFFICE_SUPERVISOR: "OFFICE SUPERVISOR", 
+    RoleHierarchy.EXAMINER: "LICENSE EXAMINER",
     RoleHierarchy.CLERK: "CLERK",
 }
 
