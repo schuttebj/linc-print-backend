@@ -1427,7 +1427,7 @@ async def reset_database():
         
         logger.warning("Resetting entire database - all data will be lost")
         
-        # Drop and recreate all tables
+        # Step 1: Drop and recreate all tables
         drop_tables()
         create_tables()
         
@@ -1444,17 +1444,58 @@ async def reset_database():
         finally:
             db.close()
         
+        # Step 2: Initialize all data automatically
+        logger.info("Initializing users, roles, and permissions...")
+        users_result = await initialize_users()
+        if users_result.get("status") != "success":
+            raise Exception(f"Failed to initialize users: {users_result.get('message', 'Unknown error')}")
+        
+        logger.info("Initializing locations...")
+        locations_result = await initialize_locations()
+        if locations_result.get("status") != "success":
+            raise Exception(f"Failed to initialize locations: {locations_result.get('message', 'Unknown error')}")
+        
+        logger.info("Initializing location users...")
+        location_users_result = await initialize_location_users()
+        if location_users_result.get("status") != "success":
+            raise Exception(f"Failed to initialize location users: {location_users_result.get('message', 'Unknown error')}")
+        
+        logger.info("Initializing fee structures...")
+        fee_structures_result = await initialize_fee_structures()
+        if fee_structures_result.get("status") != "success":
+            raise Exception(f"Failed to initialize fee structures: {fee_structures_result.get('message', 'Unknown error')}")
+        
         return {
             "status": "success",
-            "message": "Database reset completed successfully",
+            "message": "Complete database reset and initialization successful",
             "warning": "All previous data has been permanently deleted",
-            "timestamp": time.time(),
-            "next_steps": [
-                "Initialize users: POST /admin/init-users",
-                "Initialize locations: POST /admin/init-locations", 
-                "Initialize location users: POST /admin/init-location-users",
-                "Initialize fee structures: POST /admin/init-fee-structures"
-            ]
+            "steps_completed": [
+                "Tables dropped and recreated",
+                "Base users and roles initialized (including EXAMINER role)",
+                "Madagascar locations initialized",
+                "Location-based users created",
+                "Fee structures initialized"
+            ],
+            "summary": {
+                "enum_values_created": len(enum_values),
+                "permissions_created": users_result.get("permissions_created", 0),
+                "roles_created": users_result.get("roles_created", 0),
+                "locations_created": locations_result.get("locations_created", 0),
+                "location_users_created": location_users_result.get("users_created", 0),
+                "fee_structures_created": fee_structures_result.get("total_created", 0)
+            },
+            "admin_credentials": {
+                "username": "admin",
+                "password": "Admin123",
+                "email": "admin@madagascar-license.gov.mg"
+            },
+            "test_users": [
+                {"username": "clerk1", "password": "Clerk123!", "permissions": "person management + license processing"},
+                {"username": "supervisor1", "password": "Supervisor123!", "permissions": "all clerk permissions + deletions"},
+                {"username": "printer1", "password": "Printer123!", "permissions": "printing operations only"},
+                {"username": "examiner1", "password": "Examiner123!", "permissions": "application authorization + license generation"}
+            ],
+            "timestamp": time.time()
         }
     except Exception as e:
         logger.error(f"Failed to reset database: {e}")
