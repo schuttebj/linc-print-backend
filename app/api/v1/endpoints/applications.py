@@ -420,7 +420,241 @@ def update_application_status(
         notes=notes
     )
     
+    # Auto-generate license when moving to APPROVED status (for capture applications)
+    if (new_status == ApplicationStatus.APPROVED and 
+        application.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]):
+        
+        try:
+            # Check if license doesn't already exist
+            from app.crud.crud_license import crud_license
+            existing_license = crud_license.get_by_application_id(db, application_id=application_id)
+            
+            if not existing_license:
+                # Generate license automatically
+                license = _generate_license_from_application_status(db, updated_application, current_user)
+                logger.info(f"Auto-generated license {license.license_number} for application {application_id}")
+        except Exception as e:
+            # Log error but don't fail status update
+            logger.error(f"Failed to auto-generate license for application {application_id}: {str(e)}")
+    
     return updated_application
+
+
+@router.post("/{application_id}/submit-async", response_model=Dict[str, Any])
+def submit_application_async(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    reason: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Submit application with async license generation
+    
+    Optimized endpoint for frontend:
+    - Immediately changes status to SUBMITTED
+    - Returns success response quickly
+    - Triggers license generation in background (when moving to APPROVED)
+    - Frontend doesn't wait for complete processing
+    """
+    if not current_user.has_permission("applications.change_status"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to submit application"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to submit this application"
+        )
+    
+    # Validate current status allows submission
+    if application.status not in [ApplicationStatus.DRAFT, ApplicationStatus.ON_HOLD]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application cannot be submitted from status {application.status}"
+        )
+    
+    # Update to SUBMITTED status
+    updated_application = crud_application.update_status(
+        db=db,
+        application_id=application_id,
+        new_status=ApplicationStatus.SUBMITTED,
+        changed_by=current_user.id,
+        reason=reason or "Application submitted for processing",
+        notes=notes
+    )
+    
+    return {
+        "status": "success",
+        "message": "Application submitted successfully",
+        "application_id": str(application_id),
+        "application_number": updated_application.application_number,
+        "current_status": updated_application.status.value,
+        "submitted_at": updated_application.submitted_date.isoformat() if updated_application.submitted_date else None,
+        "processing_note": "Application is being processed. License will be generated automatically upon approval."
+    }
+
+
+@router.post("/{application_id}/approve-and-generate-license", response_model=Dict[str, Any])
+def approve_and_generate_license(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    reason: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Approve application and generate license in one operation
+    
+    Optimized for examiner workflow:
+    - Validates application can be approved
+    - Moves status to APPROVED
+    - Generates license immediately
+    - Returns both application and license info
+    """
+    if not current_user.has_permission("applications.authorize"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to approve application"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to approve this application"
+        )
+    
+    # Validate current status allows approval
+    if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.PRACTICAL_PASSED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application cannot be approved from status {application.status}"
+        )
+    
+    # Update to APPROVED status
+    updated_application = crud_application.update_status(
+        db=db,
+        application_id=application_id,
+        new_status=ApplicationStatus.APPROVED,
+        changed_by=current_user.id,
+        reason=reason or "Application approved by examiner",
+        notes=notes
+    )
+    
+    # Generate license immediately
+    license = None
+    license_error = None
+    
+    try:
+        # Check if license doesn't already exist
+        from app.crud.crud_license import crud_license
+        existing_license = crud_license.get_by_application_id(db, application_id=application_id)
+        
+        if existing_license:
+            license = existing_license
+        else:
+            license = _generate_license_from_application_status(db, updated_application, current_user)
+            
+    except Exception as e:
+        license_error = str(e)
+        logger.error(f"Failed to generate license for application {application_id}: {license_error}")
+    
+    return {
+        "status": "success",
+        "message": "Application approved successfully",
+        "application": {
+            "id": str(updated_application.id),
+            "number": updated_application.application_number,
+            "status": updated_application.status.value,
+            "person_id": str(updated_application.person_id),
+            "license_category": updated_application.license_category.value
+        },
+        "license": {
+            "id": str(license.id) if license else None,
+            "number": license.license_number if license else None,
+            "status": license.status.value if license else None,
+            "issue_date": license.issue_date.isoformat() if license else None,
+            "category": license.category.value if license else None
+        } if license else None,
+        "license_generation_error": license_error,
+        "next_steps": [
+            "License has been generated" if license else "License generation failed - check logs",
+            "Application can now be moved to COMPLETED status",
+            "Card production can be initiated"
+        ]
+    }
+
+
+@router.get("/{application_id}/license", response_model=Dict[str, Any])
+def get_application_license(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get license generated from application
+    
+    Quick check endpoint to see if license was generated
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view application"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this application"
+        )
+    
+    # Get license if it exists
+    from app.crud.crud_license import crud_license
+    license = crud_license.get_by_application_id(db, application_id=application_id)
+    
+    return {
+        "application_id": str(application_id),
+        "application_number": application.application_number,
+        "application_status": application.status.value,
+        "license_generated": license is not None,
+        "license": {
+            "id": str(license.id),
+            "number": license.license_number,
+            "status": license.status.value,
+            "issue_date": license.issue_date.isoformat(),
+            "category": license.category.value,
+            "restrictions": license.restrictions
+        } if license else None
+    }
 
 
 @router.get("/{application_id}/fees", response_model=List[ApplicationFee])
@@ -1444,6 +1678,47 @@ def _generate_license_from_authorization(db: Session, application: Application, 
         issuing_location_id=application.location_id,
         issued_by_user_id=authorization.examiner_id,
         restrictions=authorization.applied_restrictions or []
+    )
+    
+    db.add(license)
+    db.commit()
+    db.refresh(license)
+    
+    return license
+
+
+def _generate_license_from_application_status(db: Session, application: Application, current_user: User):
+    """
+    Generate a license from an application status update (when moving to APPROVED)
+    Used for status-based license generation without authorization data
+    """
+    from app.models.license import License, LicenseSequenceCounter
+    from app.models.license import LicenseStatus
+    from app.models.user import Location
+    
+    # Get location for license number generation
+    location = db.query(Location).filter(Location.id == application.location_id).first()
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Location {application.location_id} not found"
+        )
+    
+    # Generate license number using proper sequence counter
+    sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(current_user.id))
+    license_number = License.generate_license_number(location.code, sequence_number)
+    
+    # Create license with minimal restrictions (can be updated later)
+    license = License(
+        person_id=application.person_id,
+        created_from_application_id=application.id,
+        category=application.license_category,
+        license_number=license_number,
+        status=LicenseStatus.ACTIVE,
+        issue_date=datetime.utcnow(),
+        issuing_location_id=application.location_id,
+        issued_by_user_id=current_user.id,
+        restrictions=[]  # Empty restrictions - can be updated via authorization later
     )
     
     db.add(license)

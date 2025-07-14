@@ -553,7 +553,7 @@ async def initialize_users():
                     "display_name": "Examiner",
                     "description": "License examiner - can authorize applications and generate licenses",
                     "permissions": examiner_permissions,
-                    "hierarchy_level": 2,
+                    "hierarchy_level": 1,
                     "user_type_restriction": UserType.LOCATION_USER,
                     "scope_type": "location",
                     "is_system_role": True
