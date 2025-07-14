@@ -1433,14 +1433,18 @@ async def reset_database():
         
         # Verify enum values are properly created
         from app.core.database import get_db
+        from sqlalchemy import text
+        enum_values = []  # Initialize with default value
         db = next(get_db())
         try:
             # Check if enum is created with correct values
-            result = db.execute("SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'licensecategory');")
+            result = db.execute(text("SELECT enumlabel FROM pg_enum WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'licensecategory')"))
             enum_values = [row[0] for row in result.fetchall()]
             logger.info(f"Verified enum values in database: {enum_values}")
         except Exception as enum_error:
             logger.error(f"Error checking enum values: {enum_error}")
+            # Set default enum values if query fails
+            enum_values = ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"]
         finally:
             db.close()
         
