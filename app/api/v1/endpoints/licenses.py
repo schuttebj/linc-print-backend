@@ -309,7 +309,11 @@ async def get_license(
         person_name=person_name,
         person_surname=person_surname,
         issuing_location_name=issuing_location_name,
-        issuing_location_code=issuing_location_code
+        issuing_location_code=issuing_location_code,
+        # Add compliance fields
+        sadc_compliance_verified=license_obj.sadc_compliance_verified,
+        international_validity=license_obj.international_validity,
+        vienna_convention_compliant=license_obj.vienna_convention_compliant
     )
     
     return response_data

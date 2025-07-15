@@ -32,6 +32,7 @@ from app.crud.crud_application import (
     crud_application_test_attempt,
     crud_application_document
 )
+from app.crud.crud_license import crud_license
 from app.services.image_service import ImageProcessingService
 from app.core.config import get_settings
 
@@ -1081,14 +1082,6 @@ def get_person_licenses(
     Get all existing licenses for a person to support capture validation
     This returns actual license data from the licenses table
     """
-    if not current_user.has_permission("applications.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read licenses"
-        )
-    
-    from app.crud.crud_license import crud_license
-    from app.schemas.license import LicenseResponse
     
     try:
         # Get all licenses for the person
