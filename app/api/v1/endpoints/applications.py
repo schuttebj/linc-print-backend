@@ -268,6 +268,44 @@ def search_applications(
     return applications
 
 
+@router.get("/pending-authorization", response_model=List[ApplicationSchema])
+def get_applications_pending_authorization(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    location_id: Optional[uuid.UUID] = None
+) -> List[ApplicationSchema]:
+    """
+    Get applications that are pending authorization by examiners
+    
+    Requires: applications.authorize permission or EXAMINER role
+    """
+    # Check if user has authorization permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view applications pending authorization"
+        )
+    
+    # Apply location filtering for location users
+    if current_user.user_type.value == "LOCATION_USER":
+        location_id = current_user.primary_location_id
+    
+    # Get applications with PRACTICAL_PASSED status (ready for authorization)
+    search_params = ApplicationSearch()
+    search_params.status = ApplicationStatus.PRACTICAL_PASSED
+    if location_id:
+        search_params.location_id = location_id
+    
+    applications = crud_application.search_applications(
+        db=db, search_params=search_params, skip=skip, limit=limit
+    )
+    
+    return applications
+
+
 @router.get("/{application_id}", response_model=ApplicationWithDetails)
 def get_application(
     application_id: uuid.UUID,
@@ -1378,43 +1416,6 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
 # ====================
 # AUTHORIZATION ENDPOINTS
 # ====================
-
-@router.get("/pending-authorization", response_model=List[ApplicationSchema])
-def get_applications_pending_authorization(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    location_id: Optional[uuid.UUID] = None
-) -> List[ApplicationSchema]:
-    """
-    Get applications that are pending authorization by examiners
-    
-    Requires: applications.authorize permission or EXAMINER role
-    """
-    # Check if user has authorization permissions
-    if not (current_user.has_permission("applications.authorize") or 
-            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to view applications pending authorization"
-        )
-    
-    # Apply location filtering for location users
-    if current_user.user_type.value == "LOCATION_USER":
-        location_id = current_user.primary_location_id
-    
-    # Get applications with PRACTICAL_PASSED status (ready for authorization)
-    search_params = ApplicationSearch()
-    search_params.status = ApplicationStatus.PRACTICAL_PASSED
-    if location_id:
-        search_params.location_id = location_id
-    
-    applications = crud_application.search_applications(
-        db=db, search_params=search_params, skip=skip, limit=limit
-    )
-    
-    return applications
 
 
 @router.get("/{application_id}/authorization")
