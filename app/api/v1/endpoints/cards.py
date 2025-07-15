@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
-from app.api.v1.endpoints.auth import get_current_user, require_permission
+from app.api.v1.endpoints.auth import get_current_user
 from app.crud.crud_card import crud_card, crud_card_production_batch
 from app.models.user import User
 from app.schemas.card import (
@@ -22,6 +22,25 @@ from app.schemas.card import (
 )
 
 router = APIRouter()
+
+
+def check_permission(user: User, permission: str) -> bool:
+    """Check if user has specific permission"""
+    if user.is_superuser:
+        return True
+    return user.has_permission(permission)
+
+
+def require_permission(permission: str):
+    """Decorator to require specific permission"""
+    def decorator(current_user: User = Depends(get_current_user)):
+        if not check_permission(current_user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission}"
+            )
+        return current_user
+    return decorator
 
 
 # Card Creation Endpoints
