@@ -224,6 +224,33 @@ class LicenseResponse(BaseModel):
     professional_permit_categories: List[str]
     professional_permit_expiry: Optional[datetime]
     
+    @validator('restrictions', pre=True)
+    def validate_restrictions(cls, v):
+        """Convert None to empty list for restrictions"""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return []
+    
+    @validator('medical_restrictions', pre=True)
+    def validate_medical_restrictions(cls, v):
+        """Convert None to empty list for medical restrictions"""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return []
+    
+    @validator('professional_permit_categories', pre=True)
+    def validate_professional_permit_categories(cls, v):
+        """Convert None to empty list for professional permit categories"""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        return []
+    
     # Status information
     status_changed_date: Optional[datetime]
     suspension_reason: Optional[str]
