@@ -11,14 +11,14 @@ from sqlalchemy import and_, or_, desc, func, text
 from fastapi import HTTPException, status
 
 from app.crud.base import CRUDBase
-from app.models.license import License, LicenseCard, LicenseStatusHistory, LicenseSequenceCounter, LicenseStatus, CardStatus
+from app.models.license import License, LicenseStatusHistory, LicenseSequenceCounter, LicenseStatus
 from app.models.application import Application
 from app.models.person import Person
 from app.models.user import User, Location
 from app.schemas.license import (
     LicenseCreateFromApplication, LicenseCreate, LicenseStatusUpdate,
     LicenseRestrictionsUpdate, LicenseProfessionalPermitUpdate,
-    LicenseSearchFilters, CardCreate, CardStatusUpdate
+    LicenseSearchFilters
 )
 
 
@@ -34,9 +34,9 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
     ) -> License:
         """
         Create a license from a completed application
-        This is the primary method for license creation
+        Note: Card ordering is now a separate manual process
         """
-        # Get the application and validate it exists and is completed
+        # Get application
         application = db.query(Application).filter(Application.id == obj_in.application_id).first()
         if not application:
             raise HTTPException(
@@ -44,43 +44,21 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                 detail=f"Application {obj_in.application_id} not found"
             )
         
-        # Validate application is in appropriate status for license creation
-        valid_statuses = ["APPROVED", "COMPLETED", "SENT_TO_PRINTER"]
-        if application.status.value not in valid_statuses:
+        # Validate application status
+        if application.status != "APPROVED":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Application must be approved/completed to create license. Current status: {application.status}"
+                detail=f"Application must be approved before license creation. Current status: {application.status}"
             )
         
-        # Check if license already exists for this application
-        existing_license = self.get_by_application_id(db, application_id=obj_in.application_id)
-        if existing_license:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"License already exists for application {obj_in.application_id}"
-            )
+        # Get next license number
+        sequence = LicenseSequenceCounter.get_next_sequence(db, current_user.id)
+        license_number = License.generate_license_number(
+            application.issuing_location.code, 
+            sequence
+        )
         
-        # Get person from application
-        person = db.query(Person).filter(Person.id == application.person_id).first()
-        if not person:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Person {application.person_id} not found"
-            )
-        
-        # Get location for license number generation
-        location = db.query(Location).filter(Location.id == application.location_id).first()
-        if not location:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Location {application.location_id} not found"
-            )
-        
-        # Generate license number
-        sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(current_user.id))
-        license_number = License.generate_license_number(location.code, sequence_number)
-        
-        # Prepare license data
+        # Create license
         license_data = {
             "license_number": license_number,
             "person_id": application.person_id,
@@ -88,25 +66,28 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "category": obj_in.license_category,
             "status": LicenseStatus.ACTIVE,
             "issue_date": datetime.utcnow(),
-            "issuing_location_id": application.location_id,
+            "issuing_location_id": application.issuing_location_id,
             "issued_by_user_id": current_user.id,
-            "restrictions": obj_in.restrictions or [],
-            "medical_restrictions": obj_in.medical_restrictions or [],
+            "restrictions": obj_in.restrictions,
+            "medical_restrictions": obj_in.medical_restrictions,
             "has_professional_permit": obj_in.has_professional_permit,
-            "professional_permit_categories": obj_in.professional_permit_categories or [],
+            "professional_permit_categories": obj_in.professional_permit_categories,
             "professional_permit_expiry": obj_in.professional_permit_expiry,
             "captured_from_license_number": obj_in.captured_from_license_number,
             "sadc_compliance_verified": True,
             "international_validity": True,
-            "vienna_convention_compliant": True
+            "vienna_convention_compliant": True,
+            # Card ordering tracking
+            "card_ordered": obj_in.order_card_immediately,
+            "card_order_date": datetime.utcnow() if obj_in.order_card_immediately else None,
+            "card_order_reference": obj_in.card_order_reference if obj_in.order_card_immediately else None
         }
         
-        # Create license
         db_license = License(**license_data)
         db.add(db_license)
-        db.flush()  # Get the ID for relationships
+        db.flush()  # Get the ID
         
-        # Create initial status history
+        # Create status history
         status_history = LicenseStatusHistory(
             license_id=db_license.id,
             from_status=None,
@@ -119,27 +100,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         )
         db.add(status_history)
         
-        # Create card if requested
-        if obj_in.order_card_immediately:
-            card_expiry = datetime.utcnow() + timedelta(days=obj_in.card_expiry_years * 365)
-            card_number = LicenseCard.generate_card_number(license_number, 1)
-            
-            card_data = {
-                "card_number": card_number,
-                "license_id": db_license.id,
-                "status": CardStatus.PENDING_PRODUCTION,
-                "card_type": "STANDARD",
-                "issue_date": datetime.utcnow(),
-                "expiry_date": card_expiry,
-                "valid_from": datetime.utcnow(),
-                "ordered_date": datetime.utcnow(),
-                "card_template": "MADAGASCAR_STANDARD",
-                "iso_compliance_version": "18013-1:2018",
-                "is_current": True
-            }
-            
-            db_card = LicenseCard(**card_data)
-            db.add(db_card)
+        # Note: Card creation is now handled separately through the card ordering process
+        # If order_card_immediately is True, the calling code should create a card order
         
         db.commit()
         db.refresh(db_license)
@@ -153,30 +115,19 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         obj_in: LicenseCreate,
         current_user: User
     ) -> License:
-        """
-        Create a license manually (for admin/special cases)
-        """
-        # Validate person exists
-        person = db.query(Person).filter(Person.id == obj_in.person_id).first()
-        if not person:
+        """Create a license manually (administrative use)"""
+        # Get next license number
+        issuing_location = db.query(Location).filter(Location.id == obj_in.issuing_location_id).first()
+        if not issuing_location:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Person {obj_in.person_id} not found"
+                detail=f"Issuing location {obj_in.issuing_location_id} not found"
             )
         
-        # Validate location exists
-        location = db.query(Location).filter(Location.id == obj_in.issuing_location_id).first()
-        if not location:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Location {obj_in.issuing_location_id} not found"
-            )
+        sequence = LicenseSequenceCounter.get_next_sequence(db, current_user.id)
+        license_number = License.generate_license_number(issuing_location.code, sequence)
         
-        # Generate license number
-        sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(current_user.id))
-        license_number = License.generate_license_number(location.code, sequence_number)
-        
-        # Prepare license data
+        # Create license
         license_data = {
             "license_number": license_number,
             "person_id": obj_in.person_id,
@@ -185,23 +136,27 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "issue_date": datetime.utcnow(),
             "issuing_location_id": obj_in.issuing_location_id,
             "issued_by_user_id": current_user.id,
-            "restrictions": obj_in.restrictions or [],
-            "medical_restrictions": obj_in.medical_restrictions or [],
+            "restrictions": obj_in.restrictions,
+            "medical_restrictions": obj_in.medical_restrictions,
             "has_professional_permit": obj_in.has_professional_permit,
-            "professional_permit_categories": obj_in.professional_permit_categories or [],
+            "professional_permit_categories": obj_in.professional_permit_categories,
             "professional_permit_expiry": obj_in.professional_permit_expiry,
+            "previous_license_id": obj_in.previous_license_id,
+            "is_upgrade": obj_in.is_upgrade,
+            "upgrade_from_category": obj_in.upgrade_from_category,
+            "legacy_license_number": obj_in.legacy_license_number,
             "captured_from_license_number": obj_in.captured_from_license_number,
             "sadc_compliance_verified": True,
             "international_validity": True,
-            "vienna_convention_compliant": True
+            "vienna_convention_compliant": True,
+            "card_ordered": False  # Manual card ordering required
         }
         
-        # Create license
         db_license = License(**license_data)
         db.add(db_license)
         db.flush()
         
-        # Create initial status history
+        # Create status history
         status_history = LicenseStatusHistory(
             license_id=db_license.id,
             from_status=None,
@@ -209,6 +164,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             changed_by=current_user.id,
             changed_at=datetime.utcnow(),
             reason="Manual license creation",
+            notes="License created manually by administrator",
             system_initiated=False
         )
         db.add(status_history)
@@ -218,49 +174,50 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         
         return db_license
 
-    def get_by_license_number(self, db: Session, *, license_number: str) -> Optional[License]:
-        """Get license by license number"""
-        return db.query(License).filter(License.license_number == license_number.upper()).first()
+    def get_with_details(self, db: Session, *, license_id: UUID) -> Optional[License]:
+        """Get license with all related data loaded"""
+        return db.query(License).options(
+            selectinload(License.person),
+            selectinload(License.issuing_location),
+            selectinload(License.issued_by_user),
+            selectinload(License.cards),
+            selectinload(License.status_history).selectinload(LicenseStatusHistory.changed_by_user),
+            selectinload(License.previous_license),
+            selectinload(License.created_from_application)
+        ).filter(License.id == license_id).first()
 
-    def get_by_application_id(self, db: Session, *, application_id: UUID) -> Optional[License]:
-        """Get license by application ID"""
-        return db.query(License).filter(License.created_from_application_id == application_id).first()
+    def get_by_number(self, db: Session, *, license_number: str) -> Optional[License]:
+        """Get license by license number"""
+        return db.query(License).filter(License.license_number == license_number).first()
 
     def get_by_person_id(
-        self,
-        db: Session,
-        *,
-        person_id: UUID,
-        active_only: bool = False,
-        skip: int = 0,
+        self, 
+        db: Session, 
+        *, 
+        person_id: UUID, 
+        skip: int = 0, 
         limit: int = 100
     ) -> List[License]:
         """Get all licenses for a person"""
-        query = db.query(License).filter(License.person_id == person_id)
-        
-        if active_only:
-            query = query.filter(License.status == LicenseStatus.ACTIVE)
-        
-        return query.order_by(desc(License.issue_date)).offset(skip).limit(limit).all()
+        return db.query(License).filter(
+            License.person_id == person_id
+        ).order_by(desc(License.issue_date)).offset(skip).limit(limit).all()
 
     def search_licenses(
-        self,
-        db: Session,
-        *,
+        self, 
+        db: Session, 
+        *, 
         filters: LicenseSearchFilters
     ) -> Tuple[List[License], int]:
-        """Search licenses with filters and pagination"""
+        """Search licenses with comprehensive filtering"""
         query = db.query(License)
         
-        # Apply filters
-        if filters.license_number:
-            query = query.filter(License.license_number.ilike(f"%{filters.license_number}%"))
-        
+        # Basic filters
         if filters.person_id:
             query = query.filter(License.person_id == filters.person_id)
         
-        if filters.category:
-            query = query.filter(License.category == filters.category)
+        if filters.license_category:
+            query = query.filter(License.category == filters.license_category)
         
         if filters.status:
             query = query.filter(License.status == filters.status)
@@ -268,14 +225,52 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         if filters.issuing_location_id:
             query = query.filter(License.issuing_location_id == filters.issuing_location_id)
         
+        # Date filters
         if filters.issued_after:
-            query = query.filter(func.date(License.issue_date) >= filters.issued_after)
+            query = query.filter(License.issue_date >= filters.issued_after)
         
         if filters.issued_before:
-            query = query.filter(func.date(License.issue_date) <= filters.issued_before)
+            query = query.filter(License.issue_date <= filters.issued_before)
         
+        # Card status filters
+        if filters.has_card is not None:
+            if filters.has_card:
+                # Has at least one active card association
+                query = query.join(License.cards).filter(
+                    and_(License.cards.any(), License.cards.any(lambda c: c.is_active))
+                )
+            else:
+                # No active card associations
+                query = query.filter(~License.cards.any(lambda c: c.is_active))
+        
+        if filters.card_ordered is not None:
+            query = query.filter(License.card_ordered == filters.card_ordered)
+        
+        if filters.needs_card:
+            # Active licenses without cards that haven't been ordered
+            query = query.filter(
+                and_(
+                    License.status == LicenseStatus.ACTIVE,
+                    License.card_ordered == False,
+                    ~License.cards.any(lambda c: c.is_active)
+                )
+            )
+        
+        # Professional permit filters
         if filters.has_professional_permit is not None:
             query = query.filter(License.has_professional_permit == filters.has_professional_permit)
+        
+        # Search terms
+        if filters.license_number:
+            query = query.filter(License.license_number.ilike(f"%{filters.license_number}%"))
+        
+        if filters.person_name:
+            query = query.join(License.person).filter(
+                or_(
+                    Person.first_name.ilike(f"%{filters.person_name}%"),
+                    Person.surname.ilike(f"%{filters.person_name}%")
+                )
+            )
         
         # Get total count
         total = query.count()
@@ -295,7 +290,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         status_update: LicenseStatusUpdate,
         current_user: User
     ) -> License:
-        """Update license status with history tracking"""
+        """Update license status with proper audit trail"""
         license_obj = self.get(db, id=license_id)
         if not license_obj:
             raise HTTPException(
@@ -305,23 +300,21 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         
         old_status = license_obj.status
         
-        # Update license
+        # Update license status
         license_obj.status = status_update.status
         license_obj.status_changed_date = datetime.utcnow()
         license_obj.status_changed_by = current_user.id
         
-        # Handle suspension
+        # Handle suspension specific fields
         if status_update.status == LicenseStatus.SUSPENDED:
-            license_obj.suspension_reason = status_update.reason
             license_obj.suspension_start_date = status_update.suspension_start_date or datetime.utcnow()
             license_obj.suspension_end_date = status_update.suspension_end_date
-        
-        # Handle cancellation
-        if status_update.status == LicenseStatus.CANCELLED:
-            license_obj.cancellation_reason = status_update.reason
+            license_obj.suspension_reason = status_update.reason
+        elif status_update.status == LicenseStatus.CANCELLED:
             license_obj.cancellation_date = datetime.utcnow()
+            license_obj.cancellation_reason = status_update.reason
         
-        # Create status history record
+        # Create status history
         status_history = LicenseStatusHistory(
             license_id=license_id,
             from_status=old_status,
@@ -357,9 +350,23 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                 detail=f"License {license_id} not found"
             )
         
+        # Update restrictions
         license_obj.restrictions = restrictions_update.restrictions
-        license_obj.medical_restrictions = restrictions_update.medical_restrictions or []
+        license_obj.medical_restrictions = restrictions_update.medical_restrictions
         license_obj.updated_at = datetime.utcnow()
+        
+        # Create audit trail in status history
+        status_history = LicenseStatusHistory(
+            license_id=license_id,
+            from_status=license_obj.status,
+            to_status=license_obj.status,
+            changed_by=current_user.id,
+            changed_at=datetime.utcnow(),
+            reason=restrictions_update.reason,
+            notes=f"Restrictions updated: {restrictions_update.notes}",
+            system_initiated=False
+        )
+        db.add(status_history)
         
         db.commit()
         db.refresh(license_obj)
@@ -382,68 +389,82 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                 detail=f"License {license_id} not found"
             )
         
+        # Update professional permit
         license_obj.has_professional_permit = permit_update.has_professional_permit
         license_obj.professional_permit_categories = permit_update.professional_permit_categories
         license_obj.professional_permit_expiry = permit_update.professional_permit_expiry
         license_obj.updated_at = datetime.utcnow()
+        
+        # Create audit trail
+        status_history = LicenseStatusHistory(
+            license_id=license_id,
+            from_status=license_obj.status,
+            to_status=license_obj.status,
+            changed_by=current_user.id,
+            changed_at=datetime.utcnow(),
+            reason=permit_update.reason,
+            notes=f"Professional permit updated: {permit_update.notes}",
+            system_initiated=False
+        )
+        db.add(status_history)
         
         db.commit()
         db.refresh(license_obj)
         
         return license_obj
 
-    def get_with_details(self, db: Session, *, license_id: UUID) -> Optional[License]:
-        """Get license with all related data loaded"""
-        return db.query(License).options(
-            selectinload(License.cards),
-            selectinload(License.status_history),
-            selectinload(License.person),
-            selectinload(License.issuing_location),
-            selectinload(License.issued_by_user)
-        ).filter(License.id == license_id).first()
-
     def get_statistics(self, db: Session) -> Dict[str, Any]:
         """Get license statistics"""
-        # Basic counts
         total_licenses = db.query(License).count()
         active_licenses = db.query(License).filter(License.status == LicenseStatus.ACTIVE).count()
         suspended_licenses = db.query(License).filter(License.status == LicenseStatus.SUSPENDED).count()
         cancelled_licenses = db.query(License).filter(License.status == LicenseStatus.CANCELLED).count()
         
-        # By category
-        category_stats = db.query(
-            License.category,
-            func.count(License.id)
-        ).group_by(License.category).all()
-        
-        by_category = {cat.value: count for cat, count in category_stats}
-        
-        # By location
-        location_stats = db.query(
-            Location.name,
-            func.count(License.id)
-        ).join(Location, License.issuing_location_id == Location.id).group_by(Location.name).all()
-        
-        by_location = {name: count for name, count in location_stats}
-        
         # Recent activity
-        this_month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        this_year_start = datetime.utcnow().replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        today = datetime.utcnow().date()
+        week_ago = today - timedelta(days=7)
+        month_ago = today - timedelta(days=30)
         
-        issued_this_month = db.query(License).filter(License.issue_date >= this_month_start).count()
-        issued_this_year = db.query(License).filter(License.issue_date >= this_year_start).count()
-        
-        # Card statistics
-        cards_pending_collection = db.query(LicenseCard).filter(
-            LicenseCard.status == CardStatus.READY_FOR_COLLECTION
+        licenses_issued_today = db.query(License).filter(
+            func.date(License.issue_date) == today
         ).count()
         
-        expiry_threshold = datetime.utcnow() + timedelta(days=90)
-        cards_near_expiry = db.query(LicenseCard).filter(
+        licenses_issued_this_week = db.query(License).filter(
+            License.issue_date >= week_ago
+        ).count()
+        
+        licenses_issued_this_month = db.query(License).filter(
+            License.issue_date >= month_ago
+        ).count()
+        
+        # Card statistics - now using new card system
+        from app.models.card import Card
+        licenses_with_cards = db.query(License).join(License.cards).filter(
+            Card.is_active == True
+        ).count()
+        
+        licenses_without_cards = total_licenses - licenses_with_cards
+        
+        licenses_needing_card_orders = db.query(License).filter(
             and_(
-                LicenseCard.is_current == True,
-                LicenseCard.expiry_date <= expiry_threshold,
-                LicenseCard.expiry_date > datetime.utcnow()
+                License.status == LicenseStatus.ACTIVE,
+                License.card_ordered == False,
+                ~License.cards.any()
+            )
+        ).count()
+        
+        # Professional permits
+        licenses_with_professional_permits = db.query(License).filter(
+            License.has_professional_permit == True
+        ).count()
+        
+        # Professional permits expiring soon (within 90 days)
+        expiry_threshold = datetime.utcnow() + timedelta(days=90)
+        professional_permits_expiring_soon = db.query(License).filter(
+            and_(
+                License.has_professional_permit == True,
+                License.professional_permit_expiry <= expiry_threshold,
+                License.professional_permit_expiry > datetime.utcnow()
             )
         ).count()
         
@@ -452,164 +473,54 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "active_licenses": active_licenses,
             "suspended_licenses": suspended_licenses,
             "cancelled_licenses": cancelled_licenses,
-            "by_category": by_category,
-            "by_location": by_location,
-            "issued_this_month": issued_this_month,
-            "issued_this_year": issued_this_year,
-            "cards_pending_collection": cards_pending_collection,
-            "cards_near_expiry": cards_near_expiry
+            "licenses_with_cards": licenses_with_cards,
+            "licenses_without_cards": licenses_without_cards,
+            "licenses_needing_card_orders": licenses_needing_card_orders,
+            "licenses_issued_today": licenses_issued_today,
+            "licenses_issued_this_week": licenses_issued_this_week,
+            "licenses_issued_this_month": licenses_issued_this_month,
+            "licenses_with_professional_permits": licenses_with_professional_permits,
+            "professional_permits_expiring_soon": professional_permits_expiring_soon
         }
 
     def validate_license_number(self, license_number: str) -> Dict[str, Any]:
-        """Validate license number format and return breakdown"""
+        """Validate license number format and check digit"""
         try:
+            # Validate using License model method
             is_valid = License.validate_license_number(license_number)
             
-            if is_valid and len(license_number) == 12:
-                location_code = license_number[:3]
-                sequence_str = license_number[3:11]
-                check_digit = int(license_number[11])
-                
-                return {
-                    "license_number": license_number,
-                    "is_valid": True,
-                    "error_message": None,
-                    "location_code": location_code,
-                    "sequence_number": int(sequence_str),
-                    "check_digit": check_digit
-                }
-            else:
+            if not is_valid:
                 return {
                     "license_number": license_number,
                     "is_valid": False,
-                    "error_message": "Invalid license number format or check digit",
-                    "location_code": None,
-                    "sequence_number": None,
-                    "check_digit": None
+                    "check_digit_valid": False,
+                    "format_valid": False,
+                    "exists": False,
+                    "error_message": "Invalid license number format or check digit"
                 }
-        
+            
+            # Check if license exists in database
+            existing_license = self.get_by_number(db=db, license_number=license_number)
+            
+            return {
+                "license_number": license_number,
+                "is_valid": True,
+                "check_digit_valid": True,
+                "format_valid": True,
+                "exists": existing_license is not None,
+                "license_id": existing_license.id if existing_license else None
+            }
+            
         except Exception as e:
             return {
                 "license_number": license_number,
                 "is_valid": False,
-                "error_message": str(e),
-                "location_code": None,
-                "sequence_number": None,
-                "check_digit": None
+                "check_digit_valid": False,
+                "format_valid": False,
+                "exists": False,
+                "error_message": str(e)
             }
 
 
-class CRUDLicenseCard(CRUDBase[LicenseCard, CardCreate, dict]):
-    """CRUD operations for License Card model"""
-
-    def create_card(
-        self,
-        db: Session,
-        *,
-        obj_in: CardCreate,
-        current_user: User
-    ) -> LicenseCard:
-        """Create a new card for existing license"""
-        # Get license
-        license_obj = db.query(License).filter(License.id == obj_in.license_id).first()
-        if not license_obj:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"License {obj_in.license_id} not found"
-            )
-        
-        # Mark previous cards as not current
-        db.query(LicenseCard).filter(
-            and_(
-                LicenseCard.license_id == obj_in.license_id,
-                LicenseCard.is_current == True
-            )
-        ).update({"is_current": False})
-        
-        # Get next card sequence
-        existing_cards = db.query(LicenseCard).filter(LicenseCard.license_id == obj_in.license_id).count()
-        card_sequence = existing_cards + 1
-        
-        # Generate card number
-        card_number = LicenseCard.generate_card_number(license_obj.license_number, card_sequence)
-        
-        # Calculate expiry date
-        expiry_date = datetime.utcnow() + timedelta(days=obj_in.expiry_years * 365)
-        
-        # Create card
-        card_data = {
-            "card_number": card_number,
-            "license_id": obj_in.license_id,
-            "status": CardStatus.PENDING_PRODUCTION,
-            "card_type": obj_in.card_type,
-            "issue_date": datetime.utcnow(),
-            "expiry_date": expiry_date,
-            "valid_from": datetime.utcnow(),
-            "ordered_date": datetime.utcnow(),
-            "card_template": "MADAGASCAR_STANDARD",
-            "iso_compliance_version": "18013-1:2018",
-            "is_current": True,
-            "replacement_reason": obj_in.replacement_reason
-        }
-        
-        db_card = LicenseCard(**card_data)
-        db.add(db_card)
-        db.commit()
-        db.refresh(db_card)
-        
-        return db_card
-
-    def update_card_status(
-        self,
-        db: Session,
-        *,
-        card_id: UUID,
-        status_update: CardStatusUpdate,
-        current_user: User
-    ) -> LicenseCard:
-        """Update card status"""
-        card = self.get(db, id=card_id)
-        if not card:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Card {card_id} not found"
-            )
-        
-        # Update status and related fields
-        card.status = status_update.status
-        
-        if status_update.status == CardStatus.READY_FOR_COLLECTION:
-            card.ready_for_collection_date = datetime.utcnow()
-        elif status_update.status == CardStatus.COLLECTED:
-            card.collected_date = datetime.utcnow()
-            card.collected_by_user_id = current_user.id
-            card.collection_reference = status_update.collection_reference
-        elif status_update.status == CardStatus.IN_PRODUCTION:
-            card.production_started = datetime.utcnow()
-        
-        card.updated_at = datetime.utcnow()
-        
-        db.commit()
-        db.refresh(card)
-        
-        return card
-
-    def get_cards_for_license(self, db: Session, *, license_id: UUID) -> List[LicenseCard]:
-        """Get all cards for a license"""
-        return db.query(LicenseCard).filter(
-            LicenseCard.license_id == license_id
-        ).order_by(desc(LicenseCard.issue_date)).all()
-
-    def get_current_card(self, db: Session, *, license_id: UUID) -> Optional[LicenseCard]:
-        """Get current active card for a license"""
-        return db.query(LicenseCard).filter(
-            and_(
-                LicenseCard.license_id == license_id,
-                LicenseCard.is_current == True
-            )
-        ).first()
-
-
-# Create instances
-crud_license = CRUDLicense(License)
-crud_license_card = CRUDLicenseCard(LicenseCard) 
+# Create instance
+crud_license = CRUDLicense(License) 

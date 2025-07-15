@@ -10,7 +10,10 @@ from app.models.application import (
     ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure
 )
 from app.models.license import (
-    License, LicenseCard, LicenseStatusHistory, LicenseSequenceCounter
+    License, LicenseStatusHistory, LicenseSequenceCounter
+)
+from app.models.card import (
+    Card, CardStatusHistory, CardProductionBatch
 )
 from app.models.enums import (
     UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus

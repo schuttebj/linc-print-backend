@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
-from app.crud.crud_license import crud_license, crud_license_card
+from app.crud.crud_license import crud_license
+from app.crud.crud_application import crud_application
 from app.models.user import User
 from app.schemas.license import (
     LicenseCreateFromApplication, LicenseCreate, LicenseStatusUpdate,
     LicenseRestrictionsUpdate, LicenseProfessionalPermitUpdate,
-    LicenseSearchFilters, CardCreate, CardStatusUpdate,
+    LicenseSearchFilters,
     LicenseResponse, LicenseDetailResponse, LicenseListResponse,
-    LicenseCardResponse, LicenseStatusHistoryResponse, PersonLicensesSummary, LicenseNumberValidationResponse,
+    LicenseStatusHistoryResponse, PersonLicensesSummary, LicenseNumberValidationResponse,
     LicenseStatistics, BulkLicenseStatusUpdate, BulkOperationResponse,
     AuthorizationData, AvailableRestrictionsResponse, RestrictionDetail
 )
@@ -177,7 +178,6 @@ async def create_license_from_authorized_application(
         
         # Update application status to completed
         try:
-            from app.crud.crud_application import crud_application
             crud_application.update_status(
                 db=db,
                 application_id=application_id,
@@ -290,10 +290,11 @@ async def get_license(
         issuing_location_name = license_obj.issuing_location.name
         issuing_location_code = license_obj.issuing_location.code
     
-    # Convert cards
+    # Convert cards - TODO: Implement when card CRUD is ready
     cards = []
-    if license_obj.cards:
-        cards = [LicenseCardResponse.from_orm(card) for card in license_obj.cards]
+    # Note: Temporarily disabled until new card system is fully implemented
+    # if license_obj.cards:
+    #     cards = [LicenseCardInfo.from_orm(card) for card in license_obj.cards]
     
     # Convert status history
     status_history = []
@@ -497,76 +498,8 @@ async def update_professional_permit(
     return LicenseResponse.from_orm(license_obj)
 
 
-# Card Management Endpoints
-@router.post("/cards", response_model=LicenseCardResponse, summary="Create New Card")
-async def create_card(
-    card_in: CardCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("cards.create"))
-):
-    """
-    Create a new card for an existing license
-    
-    Used for replacements, duplicates, or initial card ordering.
-    """
-    card_obj = crud_license_card.create_card(
-        db=db,
-        obj_in=card_in,
-        current_user=current_user
-    )
-    
-    return LicenseCardResponse.from_orm(card_obj)
-
-
-@router.put("/cards/{card_id}/status", response_model=LicenseCardResponse, summary="Update Card Status")
-async def update_card_status(
-    card_id: UUID = Path(..., description="Card ID"),
-    status_update: CardStatusUpdate = ...,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("cards.update"))
-):
-    """
-    Update card status through production and collection workflow
-    """
-    card_obj = crud_license_card.update_card_status(
-        db=db,
-        card_id=card_id,
-        status_update=status_update,
-        current_user=current_user
-    )
-    
-    return LicenseCardResponse.from_orm(card_obj)
-
-
-@router.get("/{license_id}/cards", response_model=List[LicenseCardResponse], summary="Get License Cards")
-async def get_license_cards(
-    license_id: UUID = Path(..., description="License ID"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("licenses.read"))
-):
-    """
-    Get all cards for a license (including historical cards)
-    """
-    cards = crud_license_card.get_cards_for_license(db=db, license_id=license_id)
-    
-    return [LicenseCardResponse.from_orm(card) for card in cards]
-
-
-@router.get("/{license_id}/cards/current", response_model=Optional[LicenseCardResponse], summary="Get Current Card")
-async def get_current_card(
-    license_id: UUID = Path(..., description="License ID"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("licenses.read"))
-):
-    """
-    Get the current active card for a license
-    """
-    card = crud_license_card.get_current_card(db=db, license_id=license_id)
-    
-    if not card:
-        return None
-    
-    return LicenseCardResponse.from_orm(card)
+# NOTE: Card management endpoints are now handled by the dedicated /api/v1/cards/ router
+# This provides better separation of concerns and supports the new independent card system
 
 
 # Utility Endpoints
