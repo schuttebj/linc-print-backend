@@ -50,4 +50,37 @@ def create_tables():
 def drop_tables():
     """Drop all database tables (use with caution!)"""
     from app.models.base import Base
-    Base.metadata.drop_all(bind=engine) 
+    from sqlalchemy import text
+    
+    # First try the normal approach
+    try:
+        Base.metadata.drop_all(bind=engine)
+    except Exception as e:
+        # If it fails due to foreign key constraints, use CASCADE
+        print(f"Normal drop failed: {e}")
+        print("Using CASCADE drop to handle foreign key constraints...")
+        
+        with engine.connect() as conn:
+            # Get all table names
+            result = conn.execute(text("""
+                SELECT tablename FROM pg_tables 
+                WHERE schemaname = 'public'
+                AND tablename NOT LIKE 'pg_%'
+                AND tablename NOT LIKE 'information_schema%'
+            """))
+            
+            tables = [row[0] for row in result.fetchall()]
+            
+            if tables:
+                # Drop all tables with CASCADE
+                tables_str = ", ".join(tables)
+                conn.execute(text(f"DROP TABLE IF EXISTS {tables_str} CASCADE"))
+                
+                # Also drop any remaining sequences and types
+                conn.execute(text("DROP TYPE IF EXISTS licensecategory CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS applicationstatus CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS userstatus CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS madagascaridtype CASCADE"))
+                
+                conn.commit()
+                print(f"Successfully dropped {len(tables)} tables with CASCADE") 
