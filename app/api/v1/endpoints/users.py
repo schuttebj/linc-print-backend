@@ -165,6 +165,50 @@ async def get_user(
     return UserResponse.from_orm(user)
 
 
+@router.get("/{user_id}/permission-overrides", summary="Get User Permission Overrides")
+async def get_user_permission_overrides(
+    user_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_permission("users.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get permission overrides for a specific user
+    """
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Get permission overrides
+    from app.models.user import UserPermissionOverride
+    overrides = db.query(UserPermissionOverride).options(
+        joinedload(UserPermissionOverride.permission)
+    ).filter(
+        UserPermissionOverride.user_id == user_id
+    ).all()
+    
+    # Convert to dictionary format
+    permission_overrides = {}
+    for override in overrides:
+        if override.permission and not override.is_expired:
+            permission_overrides[override.permission.name] = override.granted
+    
+    # Log access
+    log_user_action(
+        db, current_user, "user_permission_overrides_accessed", request,
+        details={"accessed_user_id": str(user_id), "overrides_count": len(permission_overrides)}
+    )
+    
+    return {
+        "user_id": user_id,
+        "overrides": permission_overrides
+    }
+
+
 @router.post("/", response_model=UserResponse, summary="Create User")
 async def create_user(
     user_data: UserCreate,
