@@ -85,6 +85,66 @@ async def create_card_from_application(
         )
 
 
+@router.post("/test", response_model=CardResponse, summary="Create Test Card for License")
+async def create_test_card(
+    request: dict,  # Simple request with license_id
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.create"))
+):
+    """
+    Create a test card for a license (for testing purposes)
+    
+    This endpoint creates a simple card containing a single license
+    for testing the card system functionality.
+    """
+    try:
+        license_id = request.get("license_id")
+        if not license_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="license_id is required"
+            )
+        
+        # Get the license to extract person and location info
+        from app.crud.crud_license import license as crud_license
+        license_obj = crud_license.get(db, id=license_id)
+        if not license_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="License not found"
+            )
+        
+        # Create card data
+        card_data = CardCreate(
+            person_id=license_obj.person_id,
+            license_ids=[license_id],
+            card_type="STANDARD",
+            valid_for_years=5,
+            production_location_id=license_obj.issuing_location_id,
+            collection_location_id=license_obj.issuing_location_id,
+            primary_license_id=license_id,
+            production_notes="Test card creation"
+        )
+        
+        # Create the card
+        card = crud_card.create_with_licenses(
+            db=db, 
+            obj_in=card_data, 
+            current_user=current_user
+        )
+        
+        return CardResponse.from_orm(card)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating test card: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create test card: {str(e)}"
+        )
+
+
 @router.post("/temporary", response_model=CardResponse, summary="Create Temporary Card")
 async def create_temporary_card(
     temp_card_in: TemporaryCardCreate,

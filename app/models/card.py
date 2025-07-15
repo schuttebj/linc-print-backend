@@ -16,6 +16,72 @@ from enum import Enum
 from app.models.base import BaseModel
 
 
+class CardNumberGenerator:
+    """Card number generation and validation utilities"""
+    
+    @staticmethod
+    def calculate_checksum(base_number: str) -> int:
+        """
+        Calculate checksum using Luhn algorithm (modulo 10)
+        Used for card number validation
+        """
+        digits = [int(d) for d in base_number if d.isdigit()]
+        checksum = 0
+        
+        # Double every second digit from right to left
+        for i, digit in enumerate(reversed(digits)):
+            if i % 2 == 1:  # Every second digit
+                digit *= 2
+                if digit > 9:
+                    digit = digit // 10 + digit % 10
+            checksum += digit
+        
+        # Return the amount needed to make checksum divisible by 10
+        return (10 - (checksum % 10)) % 10
+    
+    @staticmethod
+    def validate_card_number(card_number: str) -> bool:
+        """
+        Validate card number checksum
+        Returns True if card number is valid
+        """
+        if not card_number or len(card_number) < 4:
+            return False
+        
+        # Extract base number and checksum
+        base_number = card_number[:-1]
+        expected_checksum = int(card_number[-1])
+        
+        # Calculate and compare checksum
+        actual_checksum = CardNumberGenerator.calculate_checksum(base_number)
+        return actual_checksum == expected_checksum
+
+    @staticmethod
+    def get_next_sequence_number(db: Session, location_code: str) -> int:
+        """
+        Get next sequence number for a location
+        Thread-safe method to increment and return next sequence
+        """
+        # Get or create the counter record for this location
+        counter = db.query(CardSequenceCounter).filter(
+            CardSequenceCounter.location_code == location_code
+        ).first()
+        
+        if not counter:
+            counter = CardSequenceCounter(
+                location_code=location_code,
+                current_sequence=0
+            )
+            db.add(counter)
+            db.flush()
+        
+        # Increment and save
+        counter.current_sequence += 1
+        db.commit()
+        
+        return counter.current_sequence
+
+
 class CardType(str, Enum):
     """Card type enumeration"""
     STANDARD = "STANDARD"           # Regular plastic card
@@ -214,19 +280,29 @@ class Card(BaseModel):
         self.cancellation_reason = reason
 
     @staticmethod
-    def generate_card_number(person_id: UUID, card_sequence: int = 1, card_type: CardType = CardType.STANDARD) -> str:
+    def generate_card_number(location_code: str, sequence_number: int, card_type: CardType = CardType.STANDARD) -> str:
         """
-        Generate card number
-        Format: 
-        - Standard cards: {PersonIDLast8}{CardSequence:02d}
-        - Temporary cards: T{PersonIDLast8}{CardSequence:02d}
-        """
-        person_id_str = str(person_id).replace('-', '')[-8:]  # Last 8 chars of person ID
+        Generate card number using Madagascar format:
+        Format: {LocationCode}{8-digit-sequence}{checksum}
+        Example: T0100000123 (T01 = location, 00000012 = sequence, 3 = checksum)
         
+        For temporary cards, prefix with 'T': TT0100000123
+        """
+        # Ensure location code is properly formatted (e.g., T01, F01, etc.)
+        if len(location_code) == 1:
+            location_code = f"{location_code}01"  # Default to office 01
+        
+        # Format 8-digit sequence number (zero-padded)
+        sequence_str = f"{sequence_number:08d}"
+        
+        # Calculate checksum (simple modulo 10 algorithm)
+        checksum = CardNumberGenerator.calculate_checksum(location_code + sequence_str)
+        
+        # Construct final card number
         if card_type == CardType.TEMPORARY:
-            return f"T{person_id_str}{card_sequence:02d}"
+            return f"T{location_code}{sequence_str}{checksum}"
         else:
-            return f"{person_id_str}{card_sequence:02d}"
+            return f"{location_code}{sequence_str}{checksum}"
 
     @staticmethod
     def create_temporary_card(person_id: UUID, licenses: List['License'], valid_days: int = 90) -> 'Card':
@@ -314,4 +390,23 @@ class CardProductionBatch(BaseModel):
     production_location = relationship("Location")
     
     def __repr__(self):
-        return f"<CardProductionBatch(id='{self.batch_id}', size={self.batch_size}, status='{self.status}')>" 
+        return f"<CardProductionBatch(id='{self.batch_id}', size={self.batch_size}, status='{self.status}')>"
+
+
+class CardSequenceCounter(BaseModel):
+    """
+    Sequence counter for card number generation by location
+    Ensures unique sequential numbers for each location
+    """
+    __tablename__ = "card_sequence_counters"
+
+    location_code = Column(String(10), nullable=False, unique=True, index=True, comment="Location code (T01, F01, etc.)")
+    current_sequence = Column(Integer, nullable=False, default=0, comment="Current sequence number for this location")
+    last_updated = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), comment="Last update timestamp")
+    updated_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who last updated counter")
+    
+    # Relationships
+    updated_by_user = relationship("User", foreign_keys=[updated_by])
+    
+    def __repr__(self):
+        return f"<CardSequenceCounter(location='{self.location_code}', sequence={self.current_sequence})>" 
