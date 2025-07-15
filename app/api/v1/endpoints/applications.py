@@ -1085,7 +1085,7 @@ def get_person_licenses(
     
     try:
         # Get all licenses for the person
-        licenses = crud_license.get_by_person_id(db=db, person_id=person_id, skip=0, limit=1000)
+        licenses = crud_license.get_by_person_id(db=db, person_id=person_id, skip=0, limit=1000, active_only=False)
         
         # Convert to system license format for frontend compatibility
         system_licenses = []

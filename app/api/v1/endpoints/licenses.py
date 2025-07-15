@@ -351,7 +351,7 @@ async def get_person_licenses_summary(
     """
     Get summary of all licenses for a person
     """
-    licenses = crud_license.get_by_person_id(db=db, person_id=person_id, limit=1000)
+    licenses = crud_license.get_by_person_id(db=db, person_id=person_id, limit=1000, active_only=False)
     
     if not licenses:
         raise HTTPException(

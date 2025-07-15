@@ -174,12 +174,16 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         *, 
         person_id: UUID, 
         skip: int = 0, 
-        limit: int = 100
+        limit: int = 100,
+        active_only: bool = False
     ) -> List[License]:
         """Get all licenses for a person"""
-        return db.query(License).filter(
-            License.person_id == person_id
-        ).order_by(desc(License.issue_date)).offset(skip).limit(limit).all()
+        query = db.query(License).filter(License.person_id == person_id)
+        
+        if active_only:
+            query = query.filter(License.is_active == True)
+            
+        return query.order_by(desc(License.issue_date)).offset(skip).limit(limit).all()
 
     def search_licenses(
         self, 
