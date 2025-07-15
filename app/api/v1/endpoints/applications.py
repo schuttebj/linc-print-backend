@@ -470,7 +470,7 @@ def update_application_status(
             if not existing_license:
                 # Generate license automatically
                 license = _generate_license_from_application_status(db, updated_application, current_user)
-                logger.info(f"Auto-generated license {license.license_number} for application {application_id}")
+                logger.info(f"Auto-generated license {license.id} for application {application_id}")
         except Exception as e:
             # Log error but don't fail status update
             logger.error(f"Failed to auto-generate license for application {application_id}: {str(e)}")
@@ -629,7 +629,6 @@ def approve_and_generate_license(
         },
         "license": {
             "id": str(license.id) if license else None,
-            "number": license.license_number if license else None,
             "status": license.status.value if license else None,
             "issue_date": license.issue_date.isoformat() if license else None,
             "category": license.category.value if license else None
@@ -686,7 +685,6 @@ def get_application_license(
         "license_generated": license is not None,
         "license": {
             "id": str(license.id),
-            "number": license.license_number,
             "status": license.status.value,
             "issue_date": license.issue_date.isoformat(),
             "category": license.category.value,
@@ -1652,8 +1650,7 @@ def _generate_license_from_authorization(db: Session, application: Application, 
     """
     Generate a license from an authorized application
     """
-    from app.models.license import License, LicenseSequenceCounter
-    from app.models.license import LicenseStatus
+    from app.models.license import License, LicenseStatus
     from app.models.user import Location
     
     # Get location for license number generation
@@ -1664,16 +1661,11 @@ def _generate_license_from_authorization(db: Session, application: Application, 
             detail=f"Location {application.location_id} not found"
         )
     
-    # Generate license number using proper sequence counter
-    sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(authorization.examiner_id))
-    license_number = License.generate_license_number(location.code, sequence_number)
-    
     # Create license
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
         category=application.license_category,
-        license_number=license_number,
         status=LicenseStatus.ACTIVE,
         issue_date=datetime.utcnow(),
         issuing_location_id=application.location_id,
@@ -1693,8 +1685,7 @@ def _generate_license_from_application_status(db: Session, application: Applicat
     Generate a license from an application status update (when moving to APPROVED)
     Used for status-based license generation without authorization data
     """
-    from app.models.license import License, LicenseSequenceCounter
-    from app.models.license import LicenseStatus
+    from app.models.license import License, LicenseStatus
     from app.models.user import Location
     
     # Get location for license number generation
@@ -1705,16 +1696,11 @@ def _generate_license_from_application_status(db: Session, application: Applicat
             detail=f"Location {application.location_id} not found"
         )
     
-    # Generate license number using proper sequence counter
-    sequence_number = LicenseSequenceCounter.get_next_sequence(db, user_id=str(current_user.id))
-    license_number = License.generate_license_number(location.code, sequence_number)
-    
     # Create license with minimal restrictions (can be updated later)
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
         category=application.license_category,
-        license_number=license_number,
         status=LicenseStatus.ACTIVE,
         issue_date=datetime.utcnow(),
         issuing_location_id=application.location_id,

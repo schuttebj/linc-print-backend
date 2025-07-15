@@ -41,8 +41,7 @@ class License(BaseModel):
     """
     __tablename__ = "licenses"
 
-    # Core license information
-    license_number = Column(String(15), nullable=False, unique=True, index=True, comment="Generated license number: {LocationCode}{8Sequential}{CheckDigit}")
+    # Core license information (ID is the UUID primary key)
     
     # Person and application links
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="License holder")
@@ -124,7 +123,7 @@ class License(BaseModel):
     status_history = relationship("LicenseStatusHistory", back_populates="license", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<License(number='{self.license_number}', category='{self.category}', status='{self.status}')>"
+        return f"<License(id='{self.id}', category='{self.category}', status='{self.status}')>"
 
     @property
     def is_active(self) -> bool:
@@ -210,88 +209,11 @@ class License(BaseModel):
         """Check if this license can be added to a card"""
         return self.is_active and not self.current_card
 
-    @staticmethod
-    def generate_license_number(location_code: str, sequence_number: int) -> str:
-        """
-        Generate license number with check digit
-        Format: {LocationCode}{8SequentialDigits}{CheckDigit}
-        Example: A03123456789 (A03 + 12345678 + 9)
-        """
-        # Validate location code format (e.g., A03)
-        if len(location_code) != 3:
-            raise ValueError(f"Invalid location code format: {location_code}. Expected format: A03")
-        
-        # Format sequence number as 8 digits
-        sequence_str = f"{sequence_number:08d}"
-        
-        # Combine without check digit
-        base_number = f"{location_code}{sequence_str}"
-        
-        # Calculate check digit using Luhn algorithm (similar to SA ID)
-        check_digit = License._calculate_check_digit(base_number)
-        
-        return f"{base_number}{check_digit}"
 
-    @staticmethod
-    def _calculate_check_digit(number_string: str) -> int:
-        """
-        Calculate check digit using modified Luhn algorithm
-        Handles alphanumeric characters (A=10, B=11, etc.)
-        """
-        # Convert to list of integers, handling both letters and numbers
-        digits = []
-        for char in number_string:
-            if char.isdigit():
-                digits.append(int(char))
-            elif char.isalpha():
-                # Convert letters to numbers: A=10, B=11, ..., Z=35
-                digits.append(ord(char.upper()) - ord('A') + 10)
-            else:
-                raise ValueError(f"Invalid character in license number: {char}")
-        
-        # Double every second digit from right to left
-        for i in range(len(digits) - 2, -1, -2):
-            doubled = digits[i] * 2
-            if doubled > 9:
-                doubled = doubled // 10 + doubled % 10
-            digits[i] = doubled
-        
-        # Sum all digits
-        total = sum(digits)
-        
-        # Check digit makes total divisible by 10
-        return (10 - (total % 10)) % 10
 
-    @staticmethod
-    def validate_license_number(license_number: str) -> bool:
-        """Validate license number format and check digit"""
-        if len(license_number) != 12:
-            return False
-        
-        # Validate location code format (first 3 characters)
-        location_code = license_number[:3]
-        if not (location_code[0].isalpha() and location_code[1:].isdigit()):
-            return False
-        
-        # Validate sequence part (characters 4-11) are digits
-        sequence_part = license_number[3:11]
-        if not sequence_part.isdigit():
-            return False
-        
-        # Validate check digit is a single digit
-        if not license_number[-1].isdigit():
-            return False
-        
-        # Extract components
-        base_number = license_number[:-1]
-        check_digit = int(license_number[-1])
-        
-        # Verify check digit
-        try:
-            calculated_check_digit = License._calculate_check_digit(base_number)
-            return check_digit == calculated_check_digit
-        except ValueError:
-            return False
+
+
+
 
 
 class LicenseStatusHistory(BaseModel):
@@ -322,42 +244,3 @@ class LicenseStatusHistory(BaseModel):
     def __repr__(self):
         return f"<LicenseStatusHistory(license_id={self.license_id}, from='{self.from_status}', to='{self.to_status}')>"
 
-
-class LicenseSequenceCounter(BaseModel):
-    """
-    Global sequence counter for license number generation
-    Ensures unique sequential numbers across all locations
-    """
-    __tablename__ = "license_sequence_counter"
-
-    # Single row table with ID=1
-    id = Column(Integer, primary_key=True, default=1, comment="Always 1 for singleton pattern")
-    current_sequence = Column(Integer, nullable=False, default=0, comment="Current sequence number")
-    last_updated = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), comment="Last update timestamp")
-    updated_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who last updated counter")
-    
-    # Relationships
-    updated_by_user = relationship("User", foreign_keys=[updated_by])
-    
-    @classmethod
-    def get_next_sequence(cls, db, user_id: Optional[str] = None) -> int:
-        """
-        Get next sequence number atomically
-        Thread-safe method to increment and return next sequence
-        """
-        # Get or create the counter record
-        counter = db.query(cls).filter(cls.id == 1).first()
-        if not counter:
-            counter = cls(id=1, current_sequence=0, updated_by=user_id)
-            db.add(counter)
-            db.flush()
-        
-        # Increment and save
-        counter.current_sequence += 1
-        counter.updated_by = user_id
-        db.commit()
-        
-        return counter.current_sequence
-    
-    def __repr__(self):
-        return f"<LicenseSequenceCounter(current={self.current_sequence})>" 

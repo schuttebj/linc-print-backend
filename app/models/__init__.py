@@ -10,7 +10,7 @@ from app.models.application import (
     ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure
 )
 from app.models.license import (
-    License, LicenseStatusHistory, LicenseSequenceCounter
+    License, LicenseStatusHistory
 )
 from app.models.card import (
     Card, CardLicense, CardStatusHistory, CardProductionBatch, CardSequenceCounter

@@ -11,7 +11,7 @@ from sqlalchemy import and_, or_, desc, func, text
 from fastapi import HTTPException, status
 
 from app.crud.base import CRUDBase
-from app.models.license import License, LicenseStatusHistory, LicenseSequenceCounter, LicenseStatus
+from app.models.license import License, LicenseStatusHistory, LicenseStatus
 from app.models.application import Application
 from app.models.person import Person
 from app.models.user import User, Location
@@ -51,16 +51,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
                 detail=f"Application must be approved before license creation. Current status: {application.status}"
             )
         
-        # Get next license number
-        sequence = LicenseSequenceCounter.get_next_sequence(db, current_user.id)
-        license_number = License.generate_license_number(
-            application.issuing_location.code, 
-            sequence
-        )
-        
         # Create license
         license_data = {
-            "license_number": license_number,
             "person_id": application.person_id,
             "created_from_application_id": obj_in.application_id,
             "category": obj_in.license_category,
@@ -116,20 +108,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         current_user: User
     ) -> License:
         """Create a license manually (administrative use)"""
-        # Get next license number
-        issuing_location = db.query(Location).filter(Location.id == obj_in.issuing_location_id).first()
-        if not issuing_location:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Issuing location {obj_in.issuing_location_id} not found"
-            )
-        
-        sequence = LicenseSequenceCounter.get_next_sequence(db, current_user.id)
-        license_number = License.generate_license_number(issuing_location.code, sequence)
-        
         # Create license
         license_data = {
-            "license_number": license_number,
             "person_id": obj_in.person_id,
             "category": obj_in.license_category,
             "status": LicenseStatus.ACTIVE,
@@ -186,9 +166,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             selectinload(License.created_from_application)
         ).filter(License.id == license_id).first()
 
-    def get_by_number(self, db: Session, *, license_number: str) -> Optional[License]:
-        """Get license by license number"""
-        return db.query(License).filter(License.license_number == license_number).first()
+
 
     def get_by_person_id(
         self, 
@@ -261,9 +239,6 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             query = query.filter(License.has_professional_permit == filters.has_professional_permit)
         
         # Search terms
-        if filters.license_number:
-            query = query.filter(License.license_number.ilike(f"%{filters.license_number}%"))
-        
         if filters.person_name:
             query = query.join(License.person).filter(
                 or_(
@@ -483,43 +458,16 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "professional_permits_expiring_soon": professional_permits_expiring_soon
         }
 
-    def validate_license_number(self, license_number: str) -> Dict[str, Any]:
-        """Validate license number format and check digit"""
-        try:
-            # Validate using License model method
-            is_valid = License.validate_license_number(license_number)
-            
-            if not is_valid:
-                return {
-                    "license_number": license_number,
-                    "is_valid": False,
-                    "check_digit_valid": False,
-                    "format_valid": False,
-                    "exists": False,
-                    "error_message": "Invalid license number format or check digit"
-                }
-            
-            # Check if license exists in database
-            existing_license = self.get_by_number(db=db, license_number=license_number)
-            
-            return {
-                "license_number": license_number,
-                "is_valid": True,
-                "check_digit_valid": True,
-                "format_valid": True,
-                "exists": existing_license is not None,
-                "license_id": existing_license.id if existing_license else None
-            }
-            
-        except Exception as e:
-            return {
-                "license_number": license_number,
-                "is_valid": False,
-                "check_digit_valid": False,
-                "format_valid": False,
-                "exists": False,
-                "error_message": str(e)
-            }
+
+
+    def get_by_application_id(self, db: Session, *, application_id: UUID) -> Optional[License]:
+        """
+        Get license by application ID
+        
+        Returns the license that was created from a specific application,
+        or None if no license exists for that application.
+        """
+        return db.query(License).filter(License.created_from_application_id == application_id).first()
 
 
 # Create instance
