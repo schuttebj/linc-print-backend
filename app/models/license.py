@@ -1,11 +1,11 @@
 """
 License Management Models for Madagascar License System
-Implements issued licenses separate from applications with proper number generation and card tracking
+Implements issued licenses with independent card tracking
 
 Features:
 - License number generation: {LocationCode}{8SequentialDigits}{CheckDigit}
 - License statuses: ACTIVE, SUSPENDED, CANCELLED
-- Card tracking as separate entities with expiry dates
+- Independent card tracking with many-to-many relationship
 - Restriction management per license
 - History tracking for upgrades and changes
 - ISO 18013 and SADC compliance fields
@@ -32,24 +32,12 @@ class LicenseStatus(str, Enum):
     CANCELLED = "CANCELLED"     # Permanently cancelled/revoked
 
 
-class CardStatus(str, Enum):
-    """Card status enumeration"""
-    PENDING_PRODUCTION = "PENDING_PRODUCTION"   # Card ordered but not produced
-    IN_PRODUCTION = "IN_PRODUCTION"            # Being printed/manufactured
-    READY_FOR_COLLECTION = "READY_FOR_COLLECTION"  # Available for pickup
-    COLLECTED = "COLLECTED"                    # Card collected by holder
-    EXPIRED = "EXPIRED"                        # Card expired (needs renewal)
-    DAMAGED = "DAMAGED"                        # Card reported damaged
-    LOST = "LOST"                             # Card reported lost
-    STOLEN = "STOLEN"                         # Card reported stolen
-
-
 class License(BaseModel):
     """
     Madagascar Driver's License entity
     
     Represents an issued license that is valid for life unless suspended/cancelled.
-    Cards expire and need renewal, but licenses remain valid.
+    Cards are separate entities that can contain multiple licenses.
     """
     __tablename__ = "licenses"
 
@@ -111,6 +99,11 @@ class License(BaseModel):
     legacy_license_number = Column(String(20), nullable=True, comment="Legacy license number (for imports)")
     captured_from_license_number = Column(String(20), nullable=True, comment="Original license number if captured")
     
+    # Card relationship tracking
+    card_ordered = Column(Boolean, nullable=False, default=False, comment="Has a card been ordered for this license")
+    card_order_date = Column(DateTime, nullable=True, comment="Date card was ordered")
+    card_order_reference = Column(String(50), nullable=True, comment="Card order reference number")
+    
     # Relationships
     person = relationship("Person", foreign_keys=[person_id])
     created_from_application = relationship("Application", foreign_keys=[created_from_application_id])
@@ -119,8 +112,10 @@ class License(BaseModel):
     status_changed_by_user = relationship("User", foreign_keys=[status_changed_by])
     previous_license = relationship("License", remote_side="License.id", foreign_keys=[previous_license_id])
     
+    # Many-to-many relationship with cards through association table
+    cards = relationship("Card", secondary="card_licenses", back_populates="licenses")
+    
     # Related entities
-    cards = relationship("LicenseCard", back_populates="license", cascade="all, delete-orphan")
     status_history = relationship("LicenseStatusHistory", back_populates="license", cascade="all, delete-orphan")
     
     def __repr__(self):
@@ -142,9 +137,24 @@ class License(BaseModel):
         return self.status == LicenseStatus.CANCELLED
 
     @property
-    def current_card(self) -> Optional['LicenseCard']:
-        """Get the current active card for this license"""
-        return next((card for card in self.cards if card.is_current), None)
+    def current_card(self) -> Optional['Card']:
+        """Get the current active card that contains this license"""
+        from app.models.card import Card, CardStatus
+        for card in self.cards:
+            if card.is_active and card.status not in [CardStatus.CANCELLED, CardStatus.EXPIRED]:
+                return card
+        return None
+
+    @property
+    def active_card(self) -> Optional['Card']:
+        """Get the active card for the person (may contain other licenses too)"""
+        from app.models.card import Card
+        if self.person:
+            # Get the person's active card
+            for card in self.person.cards if hasattr(self.person, 'cards') else []:
+                if card.is_active:
+                    return card
+        return None
 
     @property
     def restrictions_list(self) -> List[str]:
@@ -153,6 +163,24 @@ class License(BaseModel):
             return []
         if isinstance(self.restrictions, list):
             return self.restrictions
+        return []
+
+    @property
+    def medical_restrictions_list(self) -> List[str]:
+        """Get medical restrictions as a list"""
+        if not self.medical_restrictions:
+            return []
+        if isinstance(self.medical_restrictions, list):
+            return self.medical_restrictions
+        return []
+
+    @property
+    def professional_permit_categories_list(self) -> List[str]:
+        """Get professional permit categories as a list"""
+        if not self.professional_permit_categories:
+            return []
+        if isinstance(self.professional_permit_categories, list):
+            return self.professional_permit_categories
         return []
 
     def add_restriction(self, restriction: str) -> None:
@@ -168,6 +196,14 @@ class License(BaseModel):
         if restriction in current_restrictions:
             current_restrictions.remove(restriction)
             self.restrictions = current_restrictions
+
+    def needs_card(self) -> bool:
+        """Check if this license needs a card ordered"""
+        return not self.card_ordered and self.is_active
+
+    def can_be_added_to_card(self) -> bool:
+        """Check if this license can be added to a card"""
+        return self.is_active and not self.current_card
 
     @staticmethod
     def generate_license_number(location_code: str, sequence_number: int) -> str:
@@ -251,111 +287,6 @@ class License(BaseModel):
             return check_digit == calculated_check_digit
         except ValueError:
             return False
-
-
-class LicenseCard(BaseModel):
-    """
-    Physical license card entity with expiry dates
-    
-    Cards expire and need renewal, but licenses remain valid.
-    Multiple cards can exist for one license over time.
-    """
-    __tablename__ = "license_cards"
-
-    # Card identification
-    card_number = Column(String(20), nullable=False, unique=True, index=True, comment="Physical card number")
-    
-    # License relationship
-    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=False, index=True, comment="Associated license")
-    
-    # Card details
-    status = Column(SQLEnum(CardStatus), nullable=False, default=CardStatus.PENDING_PRODUCTION, comment="Current card status")
-    card_type = Column(String(20), nullable=False, default="STANDARD", comment="STANDARD, DUPLICATE, REPLACEMENT")
-    
-    # Validity dates
-    issue_date = Column(DateTime, nullable=False, default=func.now(), comment="Card issue date")
-    expiry_date = Column(DateTime, nullable=False, comment="Card expiry date (5 years from issue)")
-    valid_from = Column(DateTime, nullable=False, default=func.now(), comment="Card valid from date")
-    
-    # Card production
-    ordered_date = Column(DateTime, nullable=True, comment="Date card was ordered for production")
-    production_started = Column(DateTime, nullable=True, comment="Production start date")
-    production_completed = Column(DateTime, nullable=True, comment="Production completion date")
-    ready_for_collection_date = Column(DateTime, nullable=True, comment="Date card became ready for collection")
-    collected_date = Column(DateTime, nullable=True, comment="Date card was collected")
-    collected_by_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who processed collection")
-    
-    # Card specifications (ISO 18013 compliance)
-    card_template = Column(String(50), nullable=False, default="MADAGASCAR_STANDARD", comment="Card template used")
-    iso_compliance_version = Column(String(20), nullable=False, default="18013-1:2018", comment="ISO compliance version")
-    security_level = Column(String(20), nullable=False, default="STANDARD", comment="Security level")
-    
-    # Physical card data
-    front_image_path = Column(String(500), nullable=True, comment="Path to card front image")
-    back_image_path = Column(String(500), nullable=True, comment="Path to card back image")
-    barcode_image_path = Column(String(500), nullable=True, comment="Path to barcode image")
-    
-    # Production tracking
-    production_batch_id = Column(String(50), nullable=True, comment="Production batch identifier")
-    production_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Production location")
-    quality_check_passed = Column(Boolean, nullable=True, comment="Quality check status")
-    quality_check_date = Column(DateTime, nullable=True, comment="Quality check date")
-    quality_check_notes = Column(Text, nullable=True, comment="Quality check notes")
-    
-    # Collection information
-    collection_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Collection location")
-    collection_notice_sent = Column(Boolean, nullable=False, default=False, comment="Collection notice sent")
-    collection_notice_date = Column(DateTime, nullable=True, comment="Collection notice date")
-    collection_reference = Column(String(50), nullable=True, comment="Collection reference number")
-    
-    # Card status flags
-    is_current = Column(Boolean, nullable=False, default=True, comment="Is this the current card for the license")
-    is_expired = Column(Boolean, nullable=False, default=False, comment="Card has expired")
-    replacement_requested = Column(Boolean, nullable=False, default=False, comment="Replacement requested")
-    replacement_reason = Column(String(100), nullable=True, comment="Reason for replacement")
-    
-    # Relationships
-    license = relationship("License", back_populates="cards")
-    collected_by_user = relationship("User", foreign_keys=[collected_by_user_id])
-    production_location = relationship("Location", foreign_keys=[production_location_id])
-    collection_location = relationship("Location", foreign_keys=[collection_location_id])
-    
-    def __repr__(self):
-        return f"<LicenseCard(number='{self.card_number}', license_id={self.license_id}, status='{self.status}')>"
-
-    @property
-    def is_ready_for_collection(self) -> bool:
-        """Check if card is ready for collection"""
-        return self.status == CardStatus.READY_FOR_COLLECTION
-
-    @property
-    def is_collected(self) -> bool:
-        """Check if card has been collected"""
-        return self.status == CardStatus.COLLECTED
-
-    @property
-    def days_until_expiry(self) -> Optional[int]:
-        """Calculate days until card expires"""
-        if not self.expiry_date:
-            return None
-        
-        days = (self.expiry_date.date() - date.today()).days
-        return max(0, days)
-
-    @property
-    def is_near_expiry(self, warning_days: int = 90) -> bool:
-        """Check if card is near expiry (default 90 days)"""
-        days_left = self.days_until_expiry
-        return days_left is not None and days_left <= warning_days
-
-    @staticmethod
-    def generate_card_number(license_number: str, card_sequence: int = 1) -> str:
-        """
-        Generate card number based on license number and sequence
-        Format: {LicenseNumber}C{CardSequence}
-        Example: T01000001231C1 (first card), T01000001231C2 (replacement)
-        """
-        return f"{license_number}C{card_sequence}"
 
 
 class LicenseStatusHistory(BaseModel):
