@@ -160,7 +160,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             selectinload(License.person),
             selectinload(License.issuing_location),
             selectinload(License.issued_by_user),
-            selectinload(License.cards),
+            selectinload(License.card_licenses),  # Use card_licenses instead of cards property
             selectinload(License.status_history).selectinload(LicenseStatusHistory.changed_by_user),
             selectinload(License.previous_license),
             selectinload(License.created_from_application)
