@@ -121,21 +121,6 @@ class ProductionStatus(str, Enum):
     SHIPPED_TO_COLLECTION_POINT = "SHIPPED_TO_COLLECTION_POINT"
 
 
-# Association table for many-to-many relationship between cards and licenses
-card_licenses = Table(
-    'card_licenses',
-    BaseModel.metadata,
-    Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-    Column('card_id', UUID(as_uuid=True), ForeignKey('cards.id'), nullable=False),
-    Column('license_id', UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=False),
-    Column('created_at', DateTime, nullable=False, default=func.now()),
-    Column('is_primary', Boolean, nullable=False, default=False, comment="Primary license for this card"),
-    Column('added_by_user_id', UUID(as_uuid=True), ForeignKey('users.id'), nullable=True),
-    # Ensure unique card-license combinations
-    UniqueConstraint('card_id', 'license_id', name='uq_card_license')
-)
-
-
 class CardLicense(BaseModel):
     """
     Model for Card-License associations with additional metadata
@@ -143,8 +128,8 @@ class CardLicense(BaseModel):
     """
     __tablename__ = "card_licenses"
 
-    card_id = Column(UUID(as_uuid=True), ForeignKey('cards.id'), nullable=False)
-    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=False)
+    card_id = Column(UUID(as_uuid=True), ForeignKey('cards.id'), nullable=False, index=True)
+    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=False, index=True)
     is_primary = Column(Boolean, nullable=False, default=False, comment="Primary license for this card")
     added_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
     added_at = Column(DateTime, nullable=False, default=func.now())
@@ -153,6 +138,11 @@ class CardLicense(BaseModel):
     card = relationship("Card", back_populates="card_licenses")
     license = relationship("License", back_populates="card_licenses")
     added_by_user = relationship("User", foreign_keys=[added_by])
+    
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint('card_id', 'license_id', name='uq_card_license'),
+    )
 
 
 class Card(BaseModel):
@@ -227,9 +217,13 @@ class Card(BaseModel):
     cancelled_by_user = relationship("User", foreign_keys=[cancelled_by_user_id])
     replacement_card = relationship("Card", remote_side="Card.id", foreign_keys=[replacement_card_id])
     
-    # Many-to-many relationship with licenses
-    licenses = relationship("License", secondary=card_licenses, back_populates="cards")
+    # Many-to-many relationship with licenses through CardLicense association
     card_licenses = relationship("CardLicense", back_populates="card", cascade="all, delete-orphan")
+    
+    @property
+    def licenses(self):
+        """Get all licenses associated with this card"""
+        return [cl.license for cl in self.card_licenses]
     
     # Card history and status tracking
     status_history = relationship("CardStatusHistory", back_populates="card", cascade="all, delete-orphan")

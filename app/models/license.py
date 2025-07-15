@@ -112,9 +112,13 @@ class License(BaseModel):
     status_changed_by_user = relationship("User", foreign_keys=[status_changed_by])
     previous_license = relationship("License", remote_side="License.id", foreign_keys=[previous_license_id])
     
-    # Many-to-many relationship with cards through association table
-    cards = relationship("Card", secondary="card_licenses", back_populates="licenses")
+    # Many-to-many relationship with cards through CardLicense association
     card_licenses = relationship("CardLicense", back_populates="license", cascade="all, delete-orphan")
+    
+    @property
+    def cards(self):
+        """Get all cards associated with this license"""
+        return [cl.card for cl in self.card_licenses]
     
     # Related entities
     status_history = relationship("LicenseStatusHistory", back_populates="license", cascade="all, delete-orphan")

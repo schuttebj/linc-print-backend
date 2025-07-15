@@ -13,7 +13,7 @@ from app.models.license import (
     License, LicenseStatusHistory, LicenseSequenceCounter
 )
 from app.models.card import (
-    Card, CardStatusHistory, CardProductionBatch
+    Card, CardLicense, CardStatusHistory, CardProductionBatch, CardSequenceCounter
 )
 from app.models.enums import (
     UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus
