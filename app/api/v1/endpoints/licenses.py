@@ -29,7 +29,7 @@ from app.schemas.license import (
     LicenseRestrictionsUpdate, LicenseProfessionalPermitUpdate,
     LicenseSearchFilters, CardCreate, CardStatusUpdate,
     LicenseResponse, LicenseDetailResponse, LicenseListResponse,
-    LicenseCardResponse, PersonLicensesSummary, LicenseNumberValidationResponse,
+    LicenseCardResponse, LicenseStatusHistoryResponse, PersonLicensesSummary, LicenseNumberValidationResponse,
     LicenseStatistics, BulkLicenseStatusUpdate, BulkOperationResponse,
     AuthorizationData, AvailableRestrictionsResponse, RestrictionDetail
 )
@@ -272,18 +272,44 @@ async def get_license(
             detail=f"License {license_id} not found"
         )
     
-    # Enhance response with computed fields
-    response_data = LicenseDetailResponse.from_orm(license_obj)
+    # Build the response manually to handle all required fields
+    # Convert license to basic response first
+    base_license_data = LicenseResponse.from_orm(license_obj).dict()
     
-    # Add person name if available
+    # Add person information
+    person_name = None
+    person_surname = None
     if license_obj.person:
-        response_data.person_name = license_obj.person.first_name
-        response_data.person_surname = license_obj.person.surname
+        person_name = license_obj.person.first_name
+        person_surname = license_obj.person.surname
     
     # Add location information
+    issuing_location_name = None
+    issuing_location_code = None
     if license_obj.issuing_location:
-        response_data.issuing_location_name = license_obj.issuing_location.name
-        response_data.issuing_location_code = license_obj.issuing_location.code
+        issuing_location_name = license_obj.issuing_location.name
+        issuing_location_code = license_obj.issuing_location.code
+    
+    # Convert cards
+    cards = []
+    if license_obj.cards:
+        cards = [LicenseCardResponse.from_orm(card) for card in license_obj.cards]
+    
+    # Convert status history
+    status_history = []
+    if license_obj.status_history:
+        status_history = [LicenseStatusHistoryResponse.from_orm(history) for history in license_obj.status_history]
+    
+    # Build the detailed response
+    response_data = LicenseDetailResponse(
+        **base_license_data,
+        cards=cards,
+        status_history=status_history,
+        person_name=person_name,
+        person_surname=person_surname,
+        issuing_location_name=issuing_location_name,
+        issuing_location_code=issuing_location_code
+    )
     
     return response_data
 
