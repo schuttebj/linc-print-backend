@@ -174,6 +174,86 @@ async def create_temporary_card(
 
 
 # Card Query Endpoints
+@router.get("/search", response_model=CardListResponse, summary="Search Cards")
+async def search_cards(
+    # Pagination
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(50, ge=1, le=500, description="Page size"),
+    
+    # Basic filters
+    person_id: Optional[str] = Query(None, description="Filter by person"),
+    card_type: Optional[str] = Query(None, description="Filter by card type"),
+    status: Optional[List[str]] = Query(None, description="Filter by card status"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    is_temporary: Optional[bool] = Query(None, description="Filter temporary cards"),
+    
+    # Date filters
+    created_after: Optional[str] = Query(None, description="Created after date"),
+    created_before: Optional[str] = Query(None, description="Created before date"),
+    ordered_after: Optional[str] = Query(None, description="Ordered after date"),
+    ordered_before: Optional[str] = Query(None, description="Ordered before date"),
+    expires_before: Optional[str] = Query(None, description="Expires before date"),
+    
+    # Location filters
+    production_location_id: Optional[str] = Query(None, description="Filter by production location"),
+    collection_location_id: Optional[str] = Query(None, description="Filter by collection location"),
+    
+    # Search terms
+    card_number: Optional[str] = Query(None, description="Search by card number"),
+    person_name: Optional[str] = Query(None, description="Search by person name"),
+    collection_reference: Optional[str] = Query(None, description="Search by collection reference"),
+    
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.read"))
+):
+    """
+    Search cards with various filters and pagination
+    """
+    try:
+        # Create search filters object
+        filters = CardSearchFilters(
+            page=page,
+            size=size,
+            person_id=person_id,
+            card_type=card_type,
+            status=status,
+            is_active=is_active,
+            is_temporary=is_temporary,
+            created_after=created_after,
+            created_before=created_before,
+            ordered_after=ordered_after,
+            ordered_before=ordered_before,
+            expires_before=expires_before,
+            production_location_id=production_location_id,
+            collection_location_id=collection_location_id,
+            card_number=card_number,
+            person_name=person_name,
+            collection_reference=collection_reference
+        )
+        
+        # Search cards using CRUD - for now return empty results
+        cards = []
+        total = 0
+        
+        # Calculate pagination info
+        pages = (total + size - 1) // size if total > 0 else 1
+        
+        return CardListResponse(
+            cards=cards,
+            total=total,
+            page=page,
+            size=size,
+            pages=pages
+        )
+    
+    except Exception as e:
+        logger.error(f"Error searching cards: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to search cards: {str(e)}"
+        )
+
+
 @router.get("/{card_id}", response_model=CardDetailResponse, summary="Get Card Details")
 async def get_card(
     card_id: UUID = Path(..., description="Card ID"),
