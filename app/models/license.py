@@ -114,6 +114,7 @@ class License(BaseModel):
     
     # Many-to-many relationship with cards through association table
     cards = relationship("Card", secondary="card_licenses", back_populates="licenses")
+    card_licenses = relationship("CardLicense", back_populates="license", cascade="all, delete-orphan")
     
     # Related entities
     status_history = relationship("LicenseStatusHistory", back_populates="license", cascade="all, delete-orphan")

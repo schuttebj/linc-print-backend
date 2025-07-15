@@ -136,6 +136,25 @@ card_licenses = Table(
 )
 
 
+class CardLicense(BaseModel):
+    """
+    Model for Card-License associations with additional metadata
+    Provides ORM interface for the card_licenses association table
+    """
+    __tablename__ = "card_licenses"
+
+    card_id = Column(UUID(as_uuid=True), ForeignKey('cards.id'), nullable=False)
+    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=False)
+    is_primary = Column(Boolean, nullable=False, default=False, comment="Primary license for this card")
+    added_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
+    added_at = Column(DateTime, nullable=False, default=func.now())
+
+    # Relationships
+    card = relationship("Card", back_populates="card_licenses")
+    license = relationship("License", back_populates="card_licenses")
+    added_by_user = relationship("User", foreign_keys=[added_by])
+
+
 class Card(BaseModel):
     """
     Independent Card entity for Madagascar License System
@@ -210,6 +229,7 @@ class Card(BaseModel):
     
     # Many-to-many relationship with licenses
     licenses = relationship("License", secondary=card_licenses, back_populates="cards")
+    card_licenses = relationship("CardLicense", back_populates="card", cascade="all, delete-orphan")
     
     # Card history and status tracking
     status_history = relationship("CardStatusHistory", back_populates="card", cascade="all, delete-orphan")
