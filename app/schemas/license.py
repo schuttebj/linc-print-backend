@@ -188,7 +188,6 @@ class LicenseSearchFilters(BaseModel):
     has_professional_permit: Optional[bool] = Field(None, description="Filter by professional permit")
     
     # Search terms
-    license_number: Optional[str] = Field(None, description="Search by license number")
     person_name: Optional[str] = Field(None, description="Search by person name")
 
 
@@ -196,7 +195,6 @@ class LicenseSearchFilters(BaseModel):
 class LicenseResponse(BaseModel):
     """Basic license response schema"""
     id: UUID
-    license_number: str
     person_id: UUID
     category: LicenseCategory
     status: LicenseStatus
@@ -264,6 +262,17 @@ class LicenseCardInfo(BaseModel):
         from_attributes = True
 
 
+class LicenseAssociationResponse(BaseModel):
+    """Response schema for license associations"""
+    license_id: UUID
+    category: LicenseCategory
+    is_primary: bool
+    added_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 class LicenseDetailResponse(LicenseResponse):
     """Detailed license response with related information"""
     # Person information
@@ -287,7 +296,7 @@ class LicenseDetailResponse(LicenseResponse):
     status_history: List['LicenseStatusHistoryResponse'] = Field(default_factory=list)
     
     # License chain information
-    previous_license_number: Optional[str] = Field(None, description="Previous license number if upgrade")
+    previous_license_number: Optional[str] = Field(None, description="Previous license UUID if upgrade")
     subsequent_licenses: List['LicenseResponse'] = Field(default_factory=list, description="Subsequent licenses (upgrades)")
     
     # Compliance information
@@ -338,7 +347,7 @@ class PersonLicensesSummary(BaseModel):
     
     # Latest license
     latest_license_date: datetime
-    latest_license_number: str
+    latest_license_id: UUID
     
     # Card status
     cards_ready_for_collection: int
@@ -348,15 +357,7 @@ class PersonLicensesSummary(BaseModel):
 
 
 # Validation and utility schemas
-class LicenseNumberValidationResponse(BaseModel):
-    """License number validation response"""
-    license_number: str
-    is_valid: bool
-    check_digit_valid: bool
-    format_valid: bool
-    exists: bool
-    license_id: Optional[UUID] = None
-    error_message: Optional[str] = None
+# License number validation removed - using UUID-only system
 
 
 class AuthorizationData(BaseModel):

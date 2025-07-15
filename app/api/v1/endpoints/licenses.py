@@ -30,7 +30,7 @@ from app.schemas.license import (
     LicenseRestrictionsUpdate, LicenseProfessionalPermitUpdate,
     LicenseSearchFilters,
     LicenseResponse, LicenseDetailResponse, LicenseListResponse,
-    LicenseStatusHistoryResponse, PersonLicensesSummary, LicenseNumberValidationResponse,
+    LicenseStatusHistoryResponse, PersonLicensesSummary,
     LicenseStatistics, BulkLicenseStatusUpdate, BulkOperationResponse,
     AuthorizationData, AvailableRestrictionsResponse, RestrictionDetail
 )
@@ -315,25 +315,6 @@ async def get_license(
     return response_data
 
 
-@router.get("/number/{license_number}", response_model=LicenseResponse, summary="Get License by Number")
-async def get_license_by_number(
-    license_number: str = Path(..., description="License number"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("licenses.read"))
-):
-    """
-    Get license by license number
-    """
-    license_obj = crud_license.get_by_license_number(db, license_number=license_number)
-    if not license_obj:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"License number {license_number} not found"
-        )
-    
-    return LicenseResponse.from_orm(license_obj)
-
-
 @router.get("/person/{person_id}", response_model=List[LicenseResponse], summary="Get Person's Licenses")
 async def get_person_licenses(
     person_id: UUID = Path(..., description="Person ID"),
@@ -406,7 +387,7 @@ async def get_person_licenses_summary(
         cancelled_licenses=cancelled_licenses,
         categories=categories,
         latest_license_date=latest_license.issue_date,
-        latest_license_number=latest_license.license_number,
+        latest_license_id=latest_license.id,
         cards_ready_for_collection=cards_ready_for_collection,
         cards_near_expiry=cards_near_expiry
     )
@@ -503,20 +484,6 @@ async def update_professional_permit(
 
 
 # Utility Endpoints
-@router.post("/validate-number", response_model=LicenseNumberValidationResponse, summary="Validate License Number")
-async def validate_license_number(
-    license_number: str = Query(..., description="License number to validate"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("licenses.read"))
-):
-    """
-    Validate license number format and check digit
-    """
-    validation_result = crud_license.validate_license_number(license_number)
-    
-    return LicenseNumberValidationResponse(**validation_result)
-
-
 @router.get("/statistics/overview", response_model=LicenseStatistics, summary="Get License Statistics")
 async def get_license_statistics(
     db: Session = Depends(get_db),

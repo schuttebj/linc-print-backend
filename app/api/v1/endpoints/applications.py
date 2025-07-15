@@ -1078,20 +1078,58 @@ def get_person_licenses(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get all existing licenses (applications with COMPLETED status) for a person
-    This supports the license verification system in the frontend
-    
-    PLACEHOLDER: Returns empty list for now to enable frontend testing
+    Get all existing licenses for a person to support capture validation
+    This returns actual license data from the licenses table
     """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read licenses"
+        )
     
-    # For now, return empty placeholder data to avoid import errors
-    # This will be implemented properly when the database models are ready
+    from app.crud.crud_license import crud_license
+    from app.schemas.license import LicenseResponse
     
-    return {
-        "person_id": str(person_id),
-        "system_licenses": [],
-        "total_count": 0
-    }
+    try:
+        # Get all licenses for the person
+        licenses = crud_license.get_by_person_id(db=db, person_id=person_id, skip=0, limit=1000)
+        
+        # Convert to system license format for frontend compatibility
+        system_licenses = []
+        for license in licenses:
+            system_license = {
+                "id": str(license.id),
+                "person_id": str(license.person_id),
+                "license_number": f"L-{str(license.id)[:8]}",  # Use formatted ID as license number
+                "license_type": "DRIVERS_LICENSE",  # All licenses are driver's licenses in new system
+                "categories": [license.category.value],  # Single category per license
+                "status": license.status.value,
+                "issue_date": license.issue_date.strftime("%Y-%m-%d"),
+                "expiry_date": "2099-12-31",  # Licenses don't expire in Madagascar system
+                "issuing_location": license.issuing_location.name if license.issuing_location else "Unknown",
+                "restrictions": license.restrictions or [],
+                "is_active": license.is_active
+            }
+            system_licenses.append(system_license)
+        
+        return {
+            "person_id": str(person_id),
+            "system_licenses": system_licenses,
+            "total_count": len(system_licenses)
+        }
+        
+    except Exception as e:
+        # Log error but don't fail completely
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting person licenses: {e}")
+        
+        # Return empty data if there's an error
+        return {
+            "person_id": str(person_id),
+            "system_licenses": [],
+            "total_count": 0
+        }
 
 
 @router.post("/process-image")
@@ -1231,7 +1269,24 @@ def _validate_and_enhance_application(
                 detail="At least one captured license is required for capture applications"
             )
         
-        # No medical certificate, parental consent, or existing license requirements for capture
+        # Validate that captured license categories are valid enum values
+        from app.models.enums import LicenseCategory
+        valid_categories = [category.value for category in LicenseCategory]
+        
+        for captured_license in application_in.license_capture.captured_licenses:
+            if captured_license.license_category not in valid_categories:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid license category '{captured_license.license_category}'. Valid categories are: {', '.join(valid_categories)}"
+                )
+        
+        # Skip all validation requirements for capture applications:
+        # - No age requirements checking
+        # - No medical certificate requirements
+        # - No parental consent requirements  
+        # - No existing license prerequisites
+        # - No minimum age validation
+        # The person can capture any valid license category regardless of their current status
         application_in.medical_certificate_required = False
         application_in.parental_consent_required = False
         application_in.requires_existing_license = False

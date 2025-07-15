@@ -413,8 +413,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         ).count()
         
         # Card statistics - now using new card system
-        from app.models.card import Card
-        licenses_with_cards = db.query(License).join(License.cards).filter(
+        from app.models.card import Card, CardLicense
+        licenses_with_cards = db.query(License).join(License.card_licenses).join(CardLicense.card).filter(
             Card.is_active == True
         ).count()
         
@@ -424,7 +424,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             and_(
                 License.status == LicenseStatus.ACTIVE,
                 License.card_ordered == False,
-                ~License.cards.any()
+                ~License.card_licenses.any()
             )
         ).count()
         
