@@ -294,9 +294,9 @@ def get_applications_pending_authorization(
     if current_user.user_type.value == "LOCATION_USER":
         location_id = current_user.primary_location_id
     
-    # Get applications with PRACTICAL_PASSED status (ready for authorization)
+    # Get applications with PASSED status (ready for authorization)
     search_params = ApplicationSearch()
-    search_params.status = ApplicationStatus.PRACTICAL_PASSED
+    search_params.status = ApplicationStatus.PASSED
     if location_id:
         search_params.location_id = location_id
     
@@ -584,7 +584,7 @@ def approve_and_generate_license(
         )
     
     # Validate current status allows approval
-    if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.PRACTICAL_PASSED]:
+    if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.PASSED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Application cannot be approved from status {application.status}"
@@ -1401,39 +1401,25 @@ def _get_minimum_age_for_professional_permit_category(category) -> int:
 def _is_valid_status_transition(current_status: ApplicationStatus, new_status: ApplicationStatus, application: Application) -> bool:
     """Validate if status transition is allowed"""
     
-    # Define valid status transitions
+    # Define valid status transitions for simplified workflow
     valid_transitions = {
         ApplicationStatus.DRAFT: [
             ApplicationStatus.SUBMITTED, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.SUBMITTED: [
-            ApplicationStatus.DOCUMENTS_PENDING, ApplicationStatus.THEORY_TEST_REQUIRED,
-            ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED
+            ApplicationStatus.PAID, ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED
         ],
-        ApplicationStatus.DOCUMENTS_PENDING: [
-            ApplicationStatus.THEORY_TEST_REQUIRED, ApplicationStatus.SUBMITTED,
-            ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED
+        ApplicationStatus.PAID: [
+            ApplicationStatus.PASSED, ApplicationStatus.FAILED, ApplicationStatus.ABSENT,
+            ApplicationStatus.APPROVED, ApplicationStatus.ON_HOLD, ApplicationStatus.CANCELLED
         ],
-        ApplicationStatus.THEORY_TEST_REQUIRED: [
-            ApplicationStatus.THEORY_PASSED, ApplicationStatus.THEORY_FAILED,
-            ApplicationStatus.CANCELLED
+        ApplicationStatus.PASSED: [
+            ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
         ],
-        ApplicationStatus.THEORY_PASSED: [
-            ApplicationStatus.PRACTICAL_TEST_REQUIRED, ApplicationStatus.APPROVED,
-            ApplicationStatus.CANCELLED
-        ],
-        ApplicationStatus.THEORY_FAILED: [
-            ApplicationStatus.THEORY_TEST_REQUIRED, ApplicationStatus.CANCELLED
-        ],
-        ApplicationStatus.PRACTICAL_TEST_REQUIRED: [
-            ApplicationStatus.PRACTICAL_PASSED, ApplicationStatus.PRACTICAL_FAILED,
-            ApplicationStatus.CANCELLED
-        ],
-        ApplicationStatus.PRACTICAL_PASSED: [
-            ApplicationStatus.APPROVED, ApplicationStatus.PRACTICAL_FAILED, ApplicationStatus.CANCELLED
-        ],
-        ApplicationStatus.PRACTICAL_FAILED: [
-            ApplicationStatus.PRACTICAL_TEST_REQUIRED, ApplicationStatus.CANCELLED
+        ApplicationStatus.FAILED: [],  # Terminal - requires new application
+        ApplicationStatus.ABSENT: [],  # Terminal - requires new application
+        ApplicationStatus.ON_HOLD: [
+            ApplicationStatus.PAID, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.APPROVED: [
             ApplicationStatus.SENT_TO_PRINTER, ApplicationStatus.CANCELLED
@@ -1555,10 +1541,10 @@ def create_application_authorization(
         )
     
     # Check if application is in correct status
-    if application.status != ApplicationStatus.PRACTICAL_PASSED:
+    if application.status != ApplicationStatus.PASSED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Application status must be PRACTICAL_PASSED, current status: {application.status}"
+            detail=f"Application status must be PASSED, current status: {application.status}"
         )
     
     # Check location access
@@ -1624,7 +1610,7 @@ def create_application_authorization(
         from app.models.application import ApplicationStatusHistory
         status_history = ApplicationStatusHistory(
             application_id=application_id,
-            from_status=ApplicationStatus.PRACTICAL_PASSED,
+            from_status=ApplicationStatus.PASSED,
             to_status=ApplicationStatus.APPROVED,
             changed_by=current_user.id,
             reason="Application authorized by examiner",
