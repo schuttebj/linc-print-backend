@@ -454,11 +454,38 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             )
         ).count()
         
+        # Category breakdown
+        category_stats = db.query(
+            License.category,
+            func.count(License.id).label('count')
+        ).group_by(License.category).all()
+        licenses_by_category = {str(category): count for category, count in category_stats}
+        
+        # Location breakdown
+        from app.models.user import Location
+        location_stats = db.query(
+            Location.name,
+            func.count(License.id).label('count')
+        ).join(License, License.issuing_location_id == Location.id).group_by(
+            Location.id, Location.name
+        ).all()
+        licenses_by_issuing_location = {location_name: count for location_name, count in location_stats}
+        
+        # Upgrade statistics
+        total_upgrades = db.query(License).filter(License.is_upgrade == True).count()
+        upgrades_this_month = db.query(License).filter(
+            and_(
+                License.is_upgrade == True,
+                License.issue_date >= month_ago
+            )
+        ).count()
+        
         return {
             "total_licenses": total_licenses,
             "active_licenses": active_licenses,
             "suspended_licenses": suspended_licenses,
             "cancelled_licenses": cancelled_licenses,
+            "licenses_by_category": licenses_by_category,
             "licenses_with_cards": licenses_with_cards,
             "licenses_without_cards": licenses_without_cards,
             "licenses_needing_card_orders": licenses_needing_card_orders,
@@ -466,7 +493,10 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "licenses_issued_this_week": licenses_issued_this_week,
             "licenses_issued_this_month": licenses_issued_this_month,
             "licenses_with_professional_permits": licenses_with_professional_permits,
-            "professional_permits_expiring_soon": professional_permits_expiring_soon
+            "professional_permits_expiring_soon": professional_permits_expiring_soon,
+            "licenses_by_issuing_location": licenses_by_issuing_location,
+            "total_upgrades": total_upgrades,
+            "upgrades_this_month": upgrades_this_month
         }
 
 

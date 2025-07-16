@@ -1621,13 +1621,13 @@ def create_application_authorization(
     else:
         # Move back to appropriate test status based on failure reason
         if authorization.is_absent:
-            application.status = ApplicationStatus.PRACTICAL_TEST_REQUIRED
+            application.status = ApplicationStatus.ABSENT
         elif authorization.eye_test_result == "FAIL":
             application.status = ApplicationStatus.REJECTED
         elif authorization.driving_test_result == "FAIL":
-            application.status = ApplicationStatus.PRACTICAL_FAILED
+            application.status = ApplicationStatus.FAILED
         else:
-            application.status = ApplicationStatus.PRACTICAL_FAILED
+            application.status = ApplicationStatus.FAILED
     
     db.commit()
     db.refresh(application)
