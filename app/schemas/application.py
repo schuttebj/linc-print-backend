@@ -482,7 +482,7 @@ class ApplicationTestAttemptInDB(ApplicationTestAttemptBase):
     id: uuid.UUID
     actual_date: Optional[datetime] = None
     examiner_id: Optional[uuid.UUID] = None
-    test_result: TestResult = TestResult.PENDING
+    test_result: Optional[TestResult] = None
     score: Optional[Decimal] = None
     fee_paid: bool = False
     payment_reference: Optional[str] = None
