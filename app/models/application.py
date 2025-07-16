@@ -298,7 +298,7 @@ class ApplicationTestAttempt(BaseModel):
     
     # Test details
     examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="Examiner user ID")
-    test_result = Column(SQLEnum(TestResult), nullable=False, default=TestResult.PENDING, comment="Test result")
+    test_result = Column(SQLEnum(TestResult), nullable=True, comment="Test result")
     score = Column(Numeric(5, 2), nullable=True, comment="Test score (percentage)")
     
     # Fee tracking
