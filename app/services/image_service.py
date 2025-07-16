@@ -26,9 +26,15 @@ class ImageProcessingService:
     ISO_HEIGHT = 400  # pixels (45mm equivalent) 
     ISO_ASPECT_RATIO = 3 / 4  # width / height
     
+    # License-ready dimensions (for card production)
+    LICENSE_READY_MIN_HEIGHT = 64   # pixels
+    LICENSE_READY_MAX_HEIGHT = 128  # pixels
+    LICENSE_READY_TARGET_SIZE = 1500  # bytes (1.5KB max)
+    
     # Quality settings
     JPEG_QUALITY = 90
-    MAX_FILE_SIZE_KB = 500  # Maximum output file size
+    LICENSE_READY_QUALITY_START = 85  # Starting quality for license-ready
+    MAX_FILE_SIZE_KB = 500  # Maximum output file size for standard
     
     # Supported formats
     SUPPORTED_FORMATS = {'JPEG', 'JPG', 'PNG', 'BMP', 'TIFF'}
@@ -92,47 +98,74 @@ class ImageProcessingService:
             # Enhance image quality
             processed_image = cls._enhance_image(processed_image)
             
-            # Generate filename and save
+            # Generate unique ID for this processing session
             file_id = str(uuid.uuid4())
-            filename = f"{filename_prefix}_{file_id}.jpg"
-            file_path = storage_path / filename
             
             # Ensure directory exists
             storage_path.mkdir(parents=True, exist_ok=True)
             
-            # Save with optimization
+            # Generate STANDARD version (for application review)
+            standard_filename = f"{filename_prefix}_standard_{file_id}.jpg"
+            standard_file_path = storage_path / standard_filename
+            
             processed_image.save(
-                file_path,
+                standard_file_path,
                 'JPEG',
                 quality=cls.JPEG_QUALITY,
                 optimize=True
             )
             
-            # Get file info
-            file_size = file_path.stat().st_size
+            # Generate LICENSE-READY version (for card production)
+            license_ready_filename = f"{filename_prefix}_license_ready_{file_id}.jpg"
+            license_ready_file_path = storage_path / license_ready_filename
+            license_ready_image = cls._create_license_ready_image(processed_image)
+            
+            cls._save_license_ready_image(license_ready_image, license_ready_file_path)
+            
+            # Get file info for both versions
+            standard_file_size = standard_file_path.stat().st_size
+            license_ready_file_size = license_ready_file_path.stat().st_size
             
             # Log processing info
             original_size = len(image_data)
-            compression_ratio = (original_size - file_size) / original_size * 100
+            standard_compression = (original_size - standard_file_size) / original_size * 100
+            license_compression = (original_size - license_ready_file_size) / original_size * 100
             
             logger.info(
-                f"Photo processed: {image_file.filename} -> {filename}, "
-                f"Original: {original_size//1024}KB, Final: {file_size//1024}KB, "
-                f"Compression: {compression_ratio:.1f}%"
+                f"Photo processed: {image_file.filename} -> Standard: {standard_filename} ({standard_file_size//1024}KB), "
+                f"License-ready: {license_ready_filename} ({license_ready_file_size}B), "
+                f"Original: {original_size//1024}KB"
             )
             
             return {
                 "success": True,
-                "file_path": str(file_path),
-                "filename": filename,
-                "file_size": file_size,
+                "standard_version": {
+                    "file_path": str(standard_file_path),
+                    "filename": standard_filename,
+                    "file_size": standard_file_size,
+                    "dimensions": f"{cls.ISO_WIDTH}x{cls.ISO_HEIGHT}",
+                    "format": "JPEG"
+                },
+                "license_ready_version": {
+                    "file_path": str(license_ready_file_path),
+                    "filename": license_ready_filename,
+                    "file_size": license_ready_file_size,
+                    "dimensions": f"{license_ready_image.width}x{license_ready_image.height}",
+                    "format": "JPEG"
+                },
+                # Legacy fields for backward compatibility (use standard version)
+                "file_path": str(standard_file_path),
+                "filename": standard_filename,
+                "file_size": standard_file_size,
                 "dimensions": f"{cls.ISO_WIDTH}x{cls.ISO_HEIGHT}",
                 "format": "JPEG",
                 "original_filename": image_file.filename,
                 "processing_info": {
                     "cropped_to_iso": True,
                     "enhanced": True,
-                    "compression_ratio": round(compression_ratio, 1)
+                    "compression_ratio": round(standard_compression, 1),
+                    "license_ready_compression": round(license_compression, 1),
+                    "license_ready_size": license_ready_file_size
                 }
             }
             
@@ -244,4 +277,88 @@ class ImageProcessingService:
         if not checks["color_mode_ok"]:
             recommendations.append("Use color photo")
             
-        return recommendations 
+        return recommendations
+    
+    @classmethod
+    def _create_license_ready_image(cls, image: Image.Image) -> Image.Image:
+        """
+        Create license-ready image for card production
+        - Convert to 8-bit grayscale
+        - Resize to 64-128px height (maintaining aspect ratio)
+        - Optimize for minimal file size while preserving quality
+        """
+        # Convert to grayscale (8-bit)
+        grayscale_image = image.convert('L')
+        
+        # Calculate dimensions for license-ready version
+        original_width, original_height = grayscale_image.size
+        aspect_ratio = original_width / original_height
+        
+        # Use target height of 96px (middle of 64-128 range)
+        target_height = 96
+        target_width = int(target_height * aspect_ratio)
+        
+        # Ensure height is within range
+        if target_height < cls.LICENSE_READY_MIN_HEIGHT:
+            target_height = cls.LICENSE_READY_MIN_HEIGHT
+            target_width = int(target_height * aspect_ratio)
+        elif target_height > cls.LICENSE_READY_MAX_HEIGHT:
+            target_height = cls.LICENSE_READY_MAX_HEIGHT
+            target_width = int(target_height * aspect_ratio)
+        
+        # Resize with high-quality resampling
+        license_ready = grayscale_image.resize(
+            (target_width, target_height),
+            Image.Resampling.LANCZOS
+        )
+        
+        # Apply slight sharpening for small size clarity
+        license_ready = license_ready.filter(ImageFilter.UnsharpMask(
+            radius=0.3,
+            percent=150,
+            threshold=2
+        ))
+        
+        return license_ready
+    
+    @classmethod
+    def _save_license_ready_image(cls, image: Image.Image, file_path: Path) -> None:
+        """
+        Save license-ready image with optimal compression to meet size requirements
+        Target: 1-1.5KB maximum file size
+        """
+        # Start with moderate quality and reduce until file size target is met
+        quality = cls.LICENSE_READY_QUALITY_START
+        min_quality = 30  # Don't go below this to maintain basic quality
+        
+        while quality >= min_quality:
+            # Save to bytes buffer to check size
+            buffer = io.BytesIO()
+            image.save(
+                buffer,
+                'JPEG',
+                quality=quality,
+                optimize=True,
+                progressive=False  # Disable progressive for smaller files
+            )
+            
+            file_size = len(buffer.getvalue())
+            
+            # If file size is acceptable, save to actual file
+            if file_size <= cls.LICENSE_READY_TARGET_SIZE:
+                with open(file_path, 'wb') as f:
+                    f.write(buffer.getvalue())
+                logger.info(f"License-ready image saved: {file_path.name}, size: {file_size}B, quality: {quality}")
+                return
+            
+            # Reduce quality and try again
+            quality -= 5
+        
+        # If we can't meet the target size, save with minimum quality
+        logger.warning(f"Could not achieve target size {cls.LICENSE_READY_TARGET_SIZE}B, saving with quality {min_quality}")
+        image.save(
+            file_path,
+            'JPEG',
+            quality=min_quality,
+            optimize=True
+        ) 
