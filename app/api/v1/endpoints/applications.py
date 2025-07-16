@@ -1090,15 +1090,25 @@ def get_person_licenses(
         # Convert to system license format for frontend compatibility
         system_licenses = []
         for license in licenses:
+            # Determine license type and expiry date
+            is_learner_permit = license.category.value in ['1', '2', '3']
+            license_type = "LEARNERS_PERMIT" if is_learner_permit else "DRIVERS_LICENSE"
+            
+            # Use actual expiry date for learner's permits, default for regular licenses
+            if license.expiry_date:
+                expiry_date = license.expiry_date.strftime("%Y-%m-%d")
+            else:
+                expiry_date = "2099-12-31"  # Default for regular licenses
+            
             system_license = {
                 "id": str(license.id),
                 "person_id": str(license.person_id),
                 "license_number": f"L-{str(license.id)[:8]}",  # Use formatted ID as license number
-                "license_type": "DRIVERS_LICENSE",  # All licenses are driver's licenses in new system
+                "license_type": license_type,
                 "categories": [license.category.value],  # Single category per license
                 "status": license.status.value,
                 "issue_date": license.issue_date.strftime("%Y-%m-%d"),
-                "expiry_date": "2099-12-31",  # Licenses don't expire in Madagascar system
+                "expiry_date": expiry_date,
                 "issuing_location": license.issuing_location.name if license.issuing_location else "Unknown",
                 "restrictions": license.restrictions or [],
                 "is_active": license.is_active
@@ -1263,7 +1273,6 @@ def _validate_and_enhance_application(
             )
         
         # Validate that captured license categories are valid enum values
-        from app.models.enums import LicenseCategory
         valid_categories = [category.value for category in LicenseCategory]
         
         for captured_license in application_in.license_capture.captured_licenses:

@@ -201,6 +201,7 @@ class LicenseResponse(BaseModel):
     
     # Issue information
     issue_date: datetime
+    expiry_date: Optional[datetime] = Field(None, description="Expiry date (only for learner's permits)")
     issuing_location_id: UUID
     issued_by_user_id: UUID
     

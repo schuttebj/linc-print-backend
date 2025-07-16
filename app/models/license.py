@@ -53,6 +53,7 @@ class License(BaseModel):
     
     # Issue information
     issue_date = Column(DateTime, nullable=False, default=func.now(), comment="Date license was issued")
+    expiry_date = Column(DateTime, nullable=True, comment="Date license expires (only for learner's permits - 6 months from issue)")
     issuing_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=False, comment="Location that issued the license")
     issued_by_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who issued the license")
     

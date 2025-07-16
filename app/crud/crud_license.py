@@ -52,12 +52,14 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             )
         
         # Create license
+        issue_date = datetime.utcnow()
+        
         license_data = {
             "person_id": application.person_id,
             "created_from_application_id": obj_in.application_id,
             "category": obj_in.license_category,
             "status": LicenseStatus.ACTIVE,
-            "issue_date": datetime.utcnow(),
+            "issue_date": issue_date,
             "issuing_location_id": application.issuing_location_id,
             "issued_by_user_id": current_user.id,
             "restrictions": obj_in.restrictions,
@@ -74,6 +76,11 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "card_order_date": datetime.utcnow() if obj_in.order_card_immediately else None,
             "card_order_reference": obj_in.card_order_reference if obj_in.order_card_immediately else None
         }
+        
+        # Set expiry date for learner's permits (6 months from issue date)
+        if obj_in.license_category.value in ['1', '2', '3']:  # LEARNERS_1, LEARNERS_2, LEARNERS_3
+            from datetime import timedelta
+            license_data["expiry_date"] = issue_date + timedelta(days=180)  # 6 months
         
         db_license = License(**license_data)
         db.add(db_license)
