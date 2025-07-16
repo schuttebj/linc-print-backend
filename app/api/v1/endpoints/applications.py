@@ -921,8 +921,8 @@ async def upload_biometric_data(
     db: Session = Depends(get_db),
     application_id: uuid.UUID,
     file: UploadFile = File(...),
-    data_type: str,
-    capture_method: Optional[str] = None,
+    data_type: str = Form(..., description="Type of biometric data: PHOTO, SIGNATURE, or FINGERPRINT"),
+    capture_method: Optional[str] = Form(None, description="Capture method (WEBCAM, DIGITAL_PAD, etc.)"),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -958,8 +958,21 @@ async def upload_biometric_data(
     try:
         settings = get_settings()
         
-        # Create storage path for this application
-        storage_path = settings.get_file_storage_path() / "biometric" / str(application_id)
+        # Create date-based storage path for better organization and backup management
+        from datetime import datetime
+        now = datetime.now()
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        day = now.strftime("%d")
+        
+        storage_path = (
+            settings.get_file_storage_path() / 
+            "biometric" / 
+            year / 
+            month / 
+            day / 
+            str(application_id)
+        )
         
         # Process based on data type
         if data_type.upper() == "PHOTO":
@@ -971,17 +984,24 @@ async def upload_biometric_data(
             )
             
             # Store biometric data record in database
-            biometric_data = {
-                "application_id": application_id,
-                "data_type": "PHOTO",
-                "file_path": result["file_path"],
-                "file_size": result["file_size"],
-                "file_format": result["format"],
-                "image_resolution": result["dimensions"],
-                "capture_method": capture_method or "WEBCAM",
-                "uploaded_by": current_user.id,
-                "processing_metadata": result["processing_info"]
-            }
+            from app.schemas.application import ApplicationBiometricDataCreate
+            biometric_data_create = ApplicationBiometricDataCreate(
+                application_id=application_id,
+                data_type="PHOTO",
+                file_path=str(result["file_path"]),
+                file_size=result["file_size"],
+                file_format=result["format"],
+                image_resolution=result["dimensions"],
+                capture_method=capture_method or "WEBCAM",
+                capture_metadata=result["processing_info"]
+            )
+            
+            # Save to database
+            biometric_record = crud_application_biometric_data.create_biometric_data(
+                db=db,
+                obj_in=biometric_data_create,
+                created_by_user_id=current_user.id
+            )
             
             # Update application photo status
             crud_application.update(
@@ -1032,16 +1052,22 @@ async def upload_biometric_data(
             
             file_size = file_path.stat().st_size
             
-            # Store biometric data record
-            biometric_data = {
-                "application_id": application_id,
-                "data_type": data_type.upper(),
-                "file_path": str(file_path),
-                "file_size": file_size,
-                "file_format": file_extension.upper(),
-                "capture_method": capture_method or "DIGITAL_PAD",
-                "uploaded_by": current_user.id
-            }
+            # Store biometric data record in database
+            biometric_data_create = ApplicationBiometricDataCreate(
+                application_id=application_id,
+                data_type=data_type.upper(),
+                file_path=str(file_path),
+                file_size=file_size,
+                file_format=file_extension.upper(),
+                capture_method=capture_method or "DIGITAL_PAD"
+            )
+            
+            # Save to database
+            biometric_record = crud_application_biometric_data.create_biometric_data(
+                db=db,
+                obj_in=biometric_data_create,
+                created_by_user_id=current_user.id
+            )
             
             return {
                 "status": "success",
@@ -1069,6 +1095,73 @@ async def upload_biometric_data(
             status_code=500,
             detail="Failed to process biometric data"
         )
+
+
+@router.get("/{application_id}/biometric-data")
+async def get_biometric_data(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all biometric data for an application
+    Returns file paths and metadata for photo, signature, and fingerprint
+    """
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view biometric data for this application"
+        )
+    
+    # Get biometric data
+    biometric_data = crud_application_biometric_data.get_by_application(
+        db=db, 
+        application_id=application_id
+    )
+    
+    # Organize by data type
+    organized_data = {
+        "photo": None,
+        "signature": None,
+        "fingerprint": None
+    }
+    
+    for item in biometric_data:
+        data_type = item.data_type.value.lower()
+        if data_type in organized_data:
+            organized_data[data_type] = {
+                "id": str(item.id),
+                "file_path": item.file_path,
+                "file_size": item.file_size,
+                "file_format": item.file_format,
+                "capture_method": item.capture_method,
+                "image_resolution": item.image_resolution,
+                "quality_score": float(item.quality_score) if item.quality_score else None,
+                "is_verified": item.is_verified,
+                "capture_metadata": item.capture_metadata,
+                "created_at": item.created_at.isoformat(),
+                "notes": item.notes
+            }
+    
+    return {
+        "application_id": str(application_id),
+        "biometric_data": organized_data,
+        "summary": {
+            "total_items": len(biometric_data),
+            "photo_captured": organized_data["photo"] is not None,
+            "signature_captured": organized_data["signature"] is not None,
+            "fingerprint_captured": organized_data["fingerprint"] is not None
+        }
+    }
 
 
 @router.get("/person/{person_id}/licenses")
