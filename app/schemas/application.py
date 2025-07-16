@@ -230,6 +230,7 @@ class ApplicationUpdate(BaseModel):
     """Schema for updating applications"""
     assigned_to_user_id: Optional[uuid.UUID] = None
     priority: Optional[int] = Field(None, ge=1, le=3)
+    test_result: Optional[TestResult] = None  # Test result for NEW_LICENSE and LEARNERS_PERMIT applications
     medical_certificate_required: Optional[bool] = None
     parental_consent_required: Optional[bool] = None
     requires_existing_license: Optional[bool] = None
@@ -281,6 +282,7 @@ class ApplicationInDBBase(ApplicationBase):
     id: uuid.UUID
     application_number: str
     status: ApplicationStatus
+    test_result: Optional[TestResult] = None  # Test result for NEW_LICENSE and LEARNERS_PERMIT applications
     application_date: datetime
     submitted_date: Optional[datetime] = None
     target_completion_date: Optional[datetime] = None

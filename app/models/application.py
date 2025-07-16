@@ -24,9 +24,9 @@ from datetime import datetime, date
 
 from app.models.base import BaseModel
 from app.models.enums import (
-    LicenseCategory, ApplicationType, ApplicationStatus,
+    LicenseCategory, ApplicationType, ApplicationStatus, TestResult,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
-    TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
+    TestAttemptType, PaymentStatus, ReplacementReason,
     ProfessionalPermitCategory, LicenseRestrictionCode
 )
 
@@ -101,6 +101,9 @@ class Application(BaseModel):
     # Application status and workflow
     status = Column(SQLEnum(ApplicationStatus), nullable=False, default=ApplicationStatus.DRAFT, index=True, comment="Current application status")
     priority = Column(Integer, nullable=False, default=1, comment="Processing priority (1=normal, 2=urgent, 3=emergency)")
+    
+    # Test result (only for NEW_LICENSE and LEARNERS_PERMIT applications)
+    test_result = Column(SQLEnum(TestResult), nullable=True, comment="Test result for new license applications (PASSED/FAILED/ABSENT)")
     
     # Dates and timing
     application_date = Column(DateTime, nullable=False, default=func.now(), comment="Date application was created")
@@ -522,16 +525,13 @@ APPLICATION_TYPE_DISPLAY_NAMES = {
 # Application status display names for frontend
 APPLICATION_STATUS_DISPLAY_NAMES = {
     ApplicationStatus.DRAFT: "Draft",
-    ApplicationStatus.SUBMITTED: "Submitted",
+    ApplicationStatus.SUBMITTED: "Submitted (Awaiting Payment)",
+    ApplicationStatus.PAID: "Paid (Ready for Processing)",
     ApplicationStatus.ON_HOLD: "On Hold",
-    ApplicationStatus.DOCUMENTS_PENDING: "Documents Pending",
-    ApplicationStatus.THEORY_TEST_REQUIRED: "Theory Test Required",
-    ApplicationStatus.THEORY_PASSED: "Theory Test Passed",
-    ApplicationStatus.THEORY_FAILED: "Theory Test Failed",
-    ApplicationStatus.PRACTICAL_TEST_REQUIRED: "Practical Test Required",
-    ApplicationStatus.PRACTICAL_PASSED: "Practical Test Passed",
-    ApplicationStatus.PRACTICAL_FAILED: "Practical Test Failed",
-    ApplicationStatus.APPROVED: "Approved",
+    ApplicationStatus.PASSED: "Test Passed",
+    ApplicationStatus.FAILED: "Test Failed (Requires New Application)",
+    ApplicationStatus.ABSENT: "Test Absent (Requires New Application)",
+    ApplicationStatus.APPROVED: "Approved (Ready for Printing)",
     ApplicationStatus.SENT_TO_PRINTER: "Sent to Printer",
     ApplicationStatus.CARD_PRODUCTION: "Card Production",
     ApplicationStatus.READY_FOR_COLLECTION: "Ready for Collection",

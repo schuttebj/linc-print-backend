@@ -171,17 +171,14 @@ class ApplicationType(PythonEnum):
 
 
 class ApplicationStatus(PythonEnum):
-    """Complete application workflow status (17 stages)"""
+    """Streamlined application workflow status with payment integration"""
     DRAFT = "DRAFT"                           # Application saved but not submitted
-    SUBMITTED = "SUBMITTED"                   # Application submitted for review
-    ON_HOLD = "ON_HOLD"                       # Application held (not sent to printer)
-    DOCUMENTS_PENDING = "DOCUMENTS_PENDING"   # Missing required documents
-    THEORY_TEST_REQUIRED = "THEORY_TEST_REQUIRED"  # Ready for theory exam
-    THEORY_PASSED = "THEORY_PASSED"          # Theory test completed successfully
-    THEORY_FAILED = "THEORY_FAILED"          # Theory test failed
-    PRACTICAL_TEST_REQUIRED = "PRACTICAL_TEST_REQUIRED"  # Ready for practical exam
-    PRACTICAL_PASSED = "PRACTICAL_PASSED"    # Practical test completed successfully
-    PRACTICAL_FAILED = "PRACTICAL_FAILED"    # Practical test failed
+    SUBMITTED = "SUBMITTED"                   # Application submitted, awaiting payment
+    PAID = "PAID"                            # Payment completed, ready for processing
+    ON_HOLD = "ON_HOLD"                       # Application held for administrative reasons
+    PASSED = "PASSED"                         # Test completed successfully
+    FAILED = "FAILED"                         # Test failed (terminal - requires new application)
+    ABSENT = "ABSENT"                         # Did not attend test (terminal - requires new application)
     APPROVED = "APPROVED"                     # Application approved, ready for printing
     SENT_TO_PRINTER = "SENT_TO_PRINTER"      # Printing job created
     CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM
@@ -232,11 +229,10 @@ class TestAttemptType(PythonEnum):
 
 
 class TestResult(PythonEnum):
-    """Test result outcomes"""
-    PENDING = "PENDING"             # Test not yet taken
+    """Test result outcomes for new license applications"""
     PASSED = "PASSED"               # Test passed
-    FAILED = "FAILED"               # Test failed
-    NO_SHOW = "NO_SHOW"             # Applicant did not appear
+    FAILED = "FAILED"               # Test failed (terminal - requires new application)
+    ABSENT = "ABSENT"               # Did not attend test (terminal - requires new application)
 
 
 class ReplacementReason(PythonEnum):
