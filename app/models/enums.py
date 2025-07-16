@@ -218,7 +218,7 @@ class MedicalCertificateStatus(PythonEnum):
 
 
 class ParentalConsentStatus(PythonEnum):
-    """Parental consent status for minors (16-17 years applying for A′)"""
+    """Parental consent status for minors (16-17 years applying for A1)"""
     NOT_REQUIRED = "NOT_REQUIRED"   # Not required (18+ years)
     REQUIRED = "REQUIRED"           # Required but not provided
     PROVIDED = "PROVIDED"           # Parental consent provided

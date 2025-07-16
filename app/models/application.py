@@ -4,13 +4,13 @@ Implements the complete driver's license application workflow based on ATT/CIM p
 
 Features:
 - 6 Application types: New, Learner's Permit, Renewal, Replacement, Temporary, IDP
-- 6 License categories: A (Full Motorcycle), A′ (Light Motorcycle), B (Light Vehicle), C (Heavy Goods), D (Passenger Transport), E (Large Trailers)
+- SADC License categories: A1/A2/A (Motorcycles), B1/B/B2/BE (Light Vehicles), C1/C/C1E/CE (Heavy Goods), D1/D/D2 (Passenger Transport)
 - 17 Application statuses: From DRAFT to COMPLETED
 - Biometric data capture: Photo, signature, fingerprint
 - Progressive requirements: C/D/E require existing B license
 - Fee management: Theory test, card production, temporary licenses
 - Associated applications: Temporary licenses linked to main applications
-- Age validation: A′(16*), A/B(18), C/D/E(21) with parental consent
+- Age validation: A1/B1(16*), A2/A/B/BE(18), C/D categories(21+) with parental consent for minors
 - Medical certificate requirements: C/D/E categories, age 60+, specific health conditions
 """
 

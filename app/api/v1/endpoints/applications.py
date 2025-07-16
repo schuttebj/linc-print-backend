@@ -1097,6 +1097,11 @@ def get_person_licenses(
             # Use actual expiry date for learner's permits, default for regular licenses
             if license.expiry_date:
                 expiry_date = license.expiry_date.strftime("%Y-%m-%d")
+            elif is_learner_permit:
+                # Fallback: calculate 6-month expiry for learner's permits if not set in DB
+                from datetime import timedelta
+                calculated_expiry = license.issue_date + timedelta(days=180)
+                expiry_date = calculated_expiry.strftime("%Y-%m-%d")
             else:
                 expiry_date = "2099-12-31"  # Default for regular licenses
             
@@ -1309,8 +1314,8 @@ def _validate_and_enhance_application(
             detail=f"Applicant is {age} years old, minimum age for category {application_in.license_category.value} is {min_age}"
         )
     
-    # Set parental consent requirement for A′ category applicants aged 16-17
-    if application_in.license_category == LicenseCategory.A_PRIME and 16 <= age < 18:
+    # Set parental consent requirement for A1 category applicants aged 16-17 (motorcycles)
+    if application_in.license_category == LicenseCategory.A1 and 16 <= age < 18:
         application_in.parental_consent_required = True
     
     # Set medical certificate requirement for heavy categories or age 60+
