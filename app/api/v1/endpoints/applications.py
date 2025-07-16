@@ -6,6 +6,7 @@ Comprehensive REST API for driver's license applications with complete workflow 
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from pathlib import Path
 import uuid
 import logging
 from datetime import datetime, timedelta
