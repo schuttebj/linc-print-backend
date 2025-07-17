@@ -960,7 +960,6 @@ async def upload_biometric_data(
         settings = get_settings()
         
         # Create date-based storage path for better organization and backup management
-        from datetime import datetime
         now = datetime.now()
         year = now.strftime("%Y")
         month = now.strftime("%m")

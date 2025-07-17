@@ -154,7 +154,6 @@ class Settings(BaseSettings):
         # For development, use local static folder if production path doesn't exist
         if not base_path.exists() and self.ENVIRONMENT == "development":
             # Use static folder relative to app directory
-            from pathlib import Path
             app_dir = Path(__file__).parent.parent
             local_storage = app_dir.parent / "static" / "uploads"
             local_storage.mkdir(parents=True, exist_ok=True)

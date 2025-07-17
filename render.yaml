@@ -20,7 +20,7 @@ services:
           name: madagascar-license-db
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app,https://linc-print-frontend-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
+        value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app,https://linc-print-frontend-schuttebjs-projects.vercel.app,https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
       - key: FILE_STORAGE_PATH
         value: /var/madagascar-license-data
       - key: ENVIRONMENT
