@@ -1269,7 +1269,6 @@ async def process_biometric_image(
             # Process license photo with ISO standards
             import tempfile
             import base64
-            from pathlib import Path
             
             # Create temporary directory for processing
             with tempfile.TemporaryDirectory() as temp_dir:

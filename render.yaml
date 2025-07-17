@@ -17,8 +17,14 @@ services:
           property: connectionString
       - key: ALLOWED_ORIGINS
         value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
-      - key: FILE_STORAGE_BASE_PATH
+      - key: FILE_STORAGE_PATH
         value: /tmp/madagascar-license-data
+      - key: ENVIRONMENT
+        value: production
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      - key: DEBUG
+        value: false
       - key: COUNTRY_CODE
         value: MG
       - key: COUNTRY_NAME
