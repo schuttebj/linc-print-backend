@@ -343,22 +343,92 @@ def get_application(
     # Build detailed response with related data
     application_dict = ApplicationSchema.from_orm(application).dict()
     
-    # Add related data
-    application_dict["biometric_data"] = crud_application_biometric_data.get_by_application(
+    # Add related data - convert model instances to dictionaries for proper serialization
+    biometric_data = crud_application_biometric_data.get_by_application(
         db=db, application_id=application_id
     )
-    application_dict["fees"] = crud_application_fee.get_by_application(
+    application_dict["biometric_data"] = [
+        {
+            "id": str(bd.id),
+            "application_id": str(bd.application_id),
+            "data_type": bd.data_type.value,
+            "file_path": bd.file_path,
+            "metadata": bd.metadata,
+            "created_at": bd.created_at.isoformat() if bd.created_at else None,
+            "updated_at": bd.updated_at.isoformat() if bd.updated_at else None
+        }
+        for bd in biometric_data
+    ] if biometric_data else []
+    
+    fees = crud_application_fee.get_by_application(
         db=db, application_id=application_id
     )
-    application_dict["test_attempts"] = crud_application_test_attempt.get_by_application(
+    application_dict["fees"] = [
+        {
+            "id": str(fee.id),
+            "application_id": str(fee.application_id),
+            "fee_type": fee.fee_type,
+            "amount": float(fee.amount),
+            "currency": fee.currency,
+            "payment_status": fee.payment_status.value,
+            "payment_date": fee.payment_date.isoformat() if fee.payment_date else None,
+            "payment_method": fee.payment_method,
+            "payment_reference": fee.payment_reference,
+            "created_at": fee.created_at.isoformat() if fee.created_at else None,
+            "updated_at": fee.updated_at.isoformat() if fee.updated_at else None
+        }
+        for fee in fees
+    ] if fees else []
+    
+    test_attempts = crud_application_test_attempt.get_by_application(
         db=db, application_id=application_id
     )
-    application_dict["documents"] = crud_application_document.get_by_application(
+    application_dict["test_attempts"] = [
+        {
+            "id": str(ta.id),
+            "application_id": str(ta.application_id),
+            "test_type": ta.test_type.value,
+            "test_result": ta.test_result.value if ta.test_result else None,
+            "score": ta.score,
+            "test_date": ta.test_date.isoformat() if ta.test_date else None,
+            "notes": ta.notes,
+            "created_at": ta.created_at.isoformat() if ta.created_at else None,
+            "updated_at": ta.updated_at.isoformat() if ta.updated_at else None
+        }
+        for ta in test_attempts
+    ] if test_attempts else []
+    
+    documents = crud_application_document.get_by_application(
         db=db, application_id=application_id
     )
-    application_dict["child_applications"] = crud_application.get_associated_applications(
+    application_dict["documents"] = [
+        {
+            "id": str(doc.id),
+            "application_id": str(doc.application_id),
+            "document_type": doc.document_type,
+            "file_path": doc.file_path,
+            "original_filename": doc.original_filename,
+            "file_size": doc.file_size,
+            "metadata": doc.metadata,
+            "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            "updated_at": doc.updated_at.isoformat() if doc.updated_at else None
+        }
+        for doc in documents
+    ] if documents else []
+    
+    child_applications = crud_application.get_associated_applications(
         db=db, parent_application_id=application_id
     )
+    application_dict["child_applications"] = [
+        {
+            "id": str(ca.id),
+            "application_number": ca.application_number,
+            "application_type": ca.application_type.value,
+            "status": ca.status.value,
+            "created_at": ca.created_at.isoformat() if ca.created_at else None
+        }
+        for ca in child_applications
+    ] if child_applications else []
     
     return ApplicationWithDetails(**application_dict)
 
