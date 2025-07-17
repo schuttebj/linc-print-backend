@@ -24,7 +24,8 @@ from app.schemas.application import (
     ApplicationWithDetails,
     ApplicationFee,
     ApplicationFeeCreate,
-    ApplicationStatistics
+    ApplicationStatistics,
+    ApplicationBiometricDataCreate
 )
 from app.crud.crud_application import (
     crud_application,
@@ -984,7 +985,6 @@ async def upload_biometric_data(
             )
             
             # Store biometric data record in database
-            from app.schemas.application import ApplicationBiometricDataCreate
             biometric_data_create = ApplicationBiometricDataCreate(
                 application_id=application_id,
                 data_type="PHOTO",
