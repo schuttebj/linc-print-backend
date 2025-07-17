@@ -183,7 +183,7 @@ async def login(
         max_age=30 * 24 * 60 * 60,  # 30 days
         httponly=True,
         secure=True,  # HTTPS only
-        samesite="none"  # Allow cross-domain
+        samesite="lax"  # More compatible than "none" for cross-domain
     )
     
     # Log successful login
@@ -223,7 +223,7 @@ async def logout(
         key="refresh_token",
         httponly=True,
         secure=True,
-        samesite="none"
+        samesite="lax"  # Match the login cookie settings
     )
     
     # Log logout
