@@ -1966,4 +1966,95 @@ def _generate_license_from_application_status(db: Session, application: Applicat
     return license
 
 
+@router.get("/files/{file_path:path}")
+def serve_biometric_file(
+    file_path: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Serve biometric files (photos, signatures, fingerprints)
+    
+    Requires: applications.read permission
+    """
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    import os
+    from app.core.config import get_settings
+    
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access files"
+        )
+    
+    settings = get_settings()
+    
+    # Get the base storage path
+    if hasattr(settings, 'FILE_STORAGE_PATH'):
+        base_path = Path(settings.FILE_STORAGE_PATH)
+    else:
+        base_path = Path(settings.FILE_STORAGE_BASE_PATH)
+    
+    # Construct full file path
+    full_file_path = base_path / file_path
+    
+    # Security check - ensure file is within the storage directory
+    try:
+        full_file_path = full_file_path.resolve()
+        base_path = base_path.resolve()
+        if not str(full_file_path).startswith(str(base_path)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Invalid file path"
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Invalid file path"
+        )
+    
+    # Check if file exists
+    if not full_file_path.exists() or not full_file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+    
+    # Additional security: verify the file belongs to a biometric record
+    # Get the application ID from the file path structure (e.g., MG/biometric/2024/01/15/app_id/)
+    path_parts = Path(file_path).parts
+    if len(path_parts) >= 6 and path_parts[0] == 'MG' and path_parts[1] == 'biometric':
+        try:
+            # Extract application ID from path (should be the 5th part: YYYY/MM/DD/app_id/)
+            potential_app_id = path_parts[5]
+            application_id = uuid.UUID(potential_app_id)
+            
+            # Verify user has access to this application's location
+            application = crud_application.get(db=db, id=application_id)
+            if application and not current_user.can_access_location(application.location_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to access this file"
+                )
+        except (ValueError, IndexError):
+            # If we can't parse the application ID, allow but log
+            logger.warning(f"Could not verify application access for file: {file_path}")
+    
+    # Determine content type
+    content_type = "application/octet-stream"
+    if file_path.lower().endswith(('.jpg', '.jpeg')):
+        content_type = "image/jpeg"
+    elif file_path.lower().endswith('.png'):
+        content_type = "image/png"
+    elif file_path.lower().endswith('.pdf'):
+        content_type = "application/pdf"
+    
+    return FileResponse(
+        path=full_file_path,
+        media_type=content_type,
+        filename=full_file_path.name
+    )
+
+
  
