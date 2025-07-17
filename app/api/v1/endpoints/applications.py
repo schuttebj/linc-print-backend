@@ -340,20 +340,45 @@ def get_application(
             detail="Not authorized to access this application"
         )
     
-    # Build detailed response with related data
-    application_dict = ApplicationSchema.from_orm(application).dict()
+    # Build detailed response with related data - use json serialization to avoid SQLAlchemy objects
+    try:
+        application_dict = ApplicationSchema.from_orm(application).dict()
+    except Exception as e:
+        logger.warning(f"Failed to serialize application with from_orm: {e}")
+        # Fallback to manual serialization
+        application_dict = {
+            "id": str(application.id),
+            "application_number": application.application_number,
+            "application_type": application.application_type.value,
+            "status": application.status.value,
+            "person_id": str(application.person_id) if application.person_id else None,
+            "location_id": str(application.location_id) if application.location_id else None,
+            "created_at": application.created_at.isoformat() if application.created_at else None,
+            "updated_at": application.updated_at.isoformat() if application.updated_at else None,
+            # Add other required fields as needed
+        }
     
     # Add related data - convert model instances to dictionaries for proper serialization
     biometric_data = crud_application_biometric_data.get_by_application(
         db=db, application_id=application_id
     )
+    
+    def safe_serialize_metadata(metadata):
+        """Safely serialize metadata, filtering out SQLAlchemy objects"""
+        if metadata is None:
+            return None
+        if isinstance(metadata, dict):
+            return {k: v for k, v in metadata.items() 
+                   if not hasattr(v, '__class__') or 'sqlalchemy' not in str(type(v)).lower()}
+        return str(metadata)  # Convert to string if not a dict
+    
     application_dict["biometric_data"] = [
         {
             "id": str(bd.id),
             "application_id": str(bd.application_id),
             "data_type": bd.data_type.value,
             "file_path": bd.file_path,
-            "metadata": bd.metadata,
+            "metadata": safe_serialize_metadata(bd.metadata),
             "created_at": bd.created_at.isoformat() if bd.created_at else None,
             "updated_at": bd.updated_at.isoformat() if bd.updated_at else None
         }
@@ -409,7 +434,7 @@ def get_application(
             "file_path": doc.file_path,
             "original_filename": doc.original_filename,
             "file_size": doc.file_size,
-            "metadata": doc.metadata,
+            "metadata": safe_serialize_metadata(doc.metadata),
             "created_at": doc.created_at.isoformat() if doc.created_at else None,
             "updated_at": doc.updated_at.isoformat() if doc.updated_at else None
         }
@@ -430,7 +455,23 @@ def get_application(
         for ca in child_applications
     ] if child_applications else []
     
-    return ApplicationWithDetails(**application_dict)
+    try:
+        return ApplicationWithDetails(**application_dict)
+    except Exception as e:
+        logger.error(f"Failed to create ApplicationWithDetails: {e}")
+        logger.error(f"Application dict keys: {list(application_dict.keys())}")
+        # For debugging, log problematic fields
+        for key, value in application_dict.items():
+            try:
+                # Try to serialize each field individually
+                import json
+                json.dumps(value, default=str)
+            except Exception as field_error:
+                logger.error(f"Field '{key}' serialization error: {field_error}, value type: {type(value)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to serialize application details: {str(e)}"
+        )
 
 
 @router.put("/{application_id}", response_model=ApplicationSchema)
