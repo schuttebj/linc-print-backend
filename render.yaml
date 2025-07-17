@@ -6,11 +6,10 @@ services:
     region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    # Add persistent disk mount
-    disk:
-      name: biometric-storage
-      mountPath: /var/madagascar-license-data
-      sizeGB: 10
+    # disk:
+    #   name: biometric-storage
+    #   mountPath: /var/madagascar-license-data
+    #   sizeGB: 10
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -21,9 +20,9 @@ services:
           name: madagascar-license-db
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
+        value: 'https://linc-print-frontend.vercel.app,https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app,https://linc-print-frontend-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173'
       - key: FILE_STORAGE_PATH
-        value: /var/madagascar-license-data
+        value: /tmp/madagascar-license-data
       - key: ENVIRONMENT
         value: production
       - key: MAX_FILE_SIZE_MB

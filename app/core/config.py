@@ -160,7 +160,20 @@ class Settings(BaseSettings):
             local_storage.mkdir(parents=True, exist_ok=True)
             return local_storage
         
-        return base_path / self.COUNTRY_CODE
+        # Ensure the base path exists (important for persistent disk mounting)
+        country_path = base_path / self.COUNTRY_CODE
+        try:
+            country_path.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            # If we can't create the directory, log the issue but don't crash
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Cannot create storage directory {country_path}. Using /tmp fallback.")
+            fallback_path = Path("/tmp") / "madagascar-license-data" / self.COUNTRY_CODE
+            fallback_path.mkdir(parents=True, exist_ok=True)
+            return fallback_path
+        
+        return country_path
 
 
 settings = Settings()
