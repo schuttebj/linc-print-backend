@@ -1137,6 +1137,9 @@ async def upload_biometric_data(
                 # Fallback to None if JSON serialization fails
                 metadata_clean = None
             
+            logger.info(f"About to create ApplicationBiometricDataCreate with metadata type: {type(metadata_clean)}")
+            logger.info(f"Metadata value being passed: {metadata_clean}")
+            
             biometric_data_create = ApplicationBiometricDataCreate(
                 application_id=application_id,
                 data_type="PHOTO",
@@ -1148,7 +1151,10 @@ async def upload_biometric_data(
                 capture_metadata=metadata_clean  # Use the JSON-cleaned version
             )
             
-            logger.info(f"Biometric data object being created: {biometric_data_create.dict()}")
+            create_dict = biometric_data_create.dict()
+            logger.info(f"ApplicationBiometricDataCreate.dict() result:")
+            logger.info(f"  - capture_metadata type: {type(create_dict.get('capture_metadata'))}")
+            logger.info(f"  - capture_metadata value: {create_dict.get('capture_metadata')}")
             
             # Save to database
             biometric_record = crud_application_biometric_data.create_biometric_data(
@@ -2039,7 +2045,10 @@ def serve_biometric_file(
     import os
     from app.core.config import get_settings
     
+    logger.info(f"=== FILE SERVING DEBUG ===")
     logger.info(f"File request: {file_path} by user: {current_user.username}")
+    logger.info(f"User permissions: {current_user.permissions}")
+    logger.info(f"Has applications.read: {current_user.has_permission('applications.read')}")
     
     if not current_user.has_permission("applications.read"):
         logger.error(f"User {current_user.username} lacks applications.read permission")
@@ -2065,16 +2074,24 @@ def serve_biometric_file(
         # If relative, append to base path
         full_file_path = base_path / file_path
     
+    logger.info(f"Path resolution: {file_path} -> {full_file_path}")
+    logger.info(f"Base path: {base_path}")
+    
     # Security check - ensure file is within the storage directory
     try:
         full_file_path = full_file_path.resolve()
         base_path = base_path.resolve()
+        logger.info(f"Resolved paths - File: {full_file_path}, Base: {base_path}")
+        logger.info(f"Path security check: {str(full_file_path).startswith(str(base_path))}")
+        
         if not str(full_file_path).startswith(str(base_path)):
+            logger.error(f"SECURITY VIOLATION: File path {full_file_path} not within base {base_path}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: Invalid file path"
             )
-    except Exception:
+    except Exception as path_error:
+        logger.error(f"Path resolution error: {path_error}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: Invalid file path"

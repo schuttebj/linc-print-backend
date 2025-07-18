@@ -326,13 +326,28 @@ class CRUDApplicationBiometricData(CRUDBase[ApplicationBiometricData, Applicatio
         created_by_user_id: uuid.UUID
     ) -> ApplicationBiometricData:
         """Create biometric data entry"""
-        db_obj = ApplicationBiometricData(**obj_in.dict())
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        obj_dict = obj_in.dict()
+        logger.info(f"=== CRUD CREATE DEBUG ===")
+        logger.info(f"Input metadata type: {type(obj_dict.get('capture_metadata'))}")
+        logger.info(f"Input metadata value: {obj_dict.get('capture_metadata')}")
+        
+        db_obj = ApplicationBiometricData(**obj_dict)
+        logger.info(f"DB object metadata type: {type(db_obj.capture_metadata)}")
+        logger.info(f"DB object metadata value: {db_obj.capture_metadata}")
+        
         db_obj.created_by = created_by_user_id
         db_obj.updated_by = created_by_user_id
         
         db.add(db_obj)
         db.commit()
         db.refresh(db_obj)
+        
+        logger.info(f"After commit metadata type: {type(db_obj.capture_metadata)}")
+        logger.info(f"After commit metadata value: {db_obj.capture_metadata}")
+        
         return db_obj
     
     def get_by_application(self, db: Session, *, application_id: uuid.UUID) -> List[ApplicationBiometricData]:
