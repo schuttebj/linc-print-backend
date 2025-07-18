@@ -1280,7 +1280,10 @@ async def get_biometric_data(
 ):
     """
     Get all biometric data for an application
-    Returns file paths and metadata for photo, signature, and fingerprint
+    Returns complete biometric information including:
+    - File paths and metadata for photo, signature, and fingerprint
+    - Direct file URLs for frontend consumption
+    - License-ready version info for photos (8-bit, compressed for card production)
     """
     application = crud_application.get(db=db, id=application_id)
     if not application:
@@ -1312,7 +1315,8 @@ async def get_biometric_data(
     for item in biometric_data:
         data_type = item.data_type.value.lower()
         if data_type in organized_data:
-            organized_data[data_type] = {
+            # Base biometric data
+            biometric_item = {
                 "id": str(item.id),
                 "file_path": item.file_path,
                 "file_size": item.file_size,
@@ -1325,6 +1329,34 @@ async def get_biometric_data(
                 "created_at": item.created_at.isoformat(),
                 "notes": item.notes
             }
+            
+            # Add file URLs for frontend consumption
+            if item.file_path:
+                # Extract relative path for API file serving
+                file_path_str = str(item.file_path)
+                if '/biometric/' in file_path_str:
+                    relative_path = file_path_str[file_path_str.index('biometric/'):]
+                    biometric_item["file_url"] = f"/api/v1/applications/files/{relative_path}"
+                else:
+                    biometric_item["file_url"] = f"/api/v1/applications/files/{item.file_path}"
+            
+            # For photos, add license-ready version info and URL
+            if data_type == "photo" and item.capture_metadata:
+                metadata = item.capture_metadata
+                license_ready_info = metadata.get("license_ready_version")
+                
+                if license_ready_info:
+                    biometric_item["license_ready"] = {
+                        "file_path": license_ready_info.get("file_path"),
+                        "filename": license_ready_info.get("filename"),
+                        "file_size": license_ready_info.get("file_size"),
+                        "dimensions": license_ready_info.get("dimensions"),
+                        "file_url": f"/api/v1/applications/{application_id}/biometric-data/PHOTO/license-ready"
+                    }
+                else:
+                    biometric_item["license_ready"] = None
+            
+            organized_data[data_type] = biometric_item
     
     return {
         "application_id": str(application_id),

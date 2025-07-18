@@ -85,6 +85,7 @@ def get_current_user(
         )
 
 
+
 def log_user_action(
     db: Session, 
     user: User, 
