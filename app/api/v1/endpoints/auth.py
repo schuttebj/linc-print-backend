@@ -183,7 +183,7 @@ async def login(
         max_age=30 * 24 * 60 * 60,  # 30 days
         httponly=True,
         secure=True,  # HTTPS only
-        samesite="lax"  # More compatible than "none" for cross-domain
+        samesite="none"  # Required for cross-domain authentication (Render + Vercel)
     )
     
     # Log successful login
@@ -223,7 +223,7 @@ async def logout(
         key="refresh_token",
         httponly=True,
         secure=True,
-        samesite="lax"  # Match the login cookie settings
+        samesite="none"  # Match the login cookie settings
     )
     
     # Log logout

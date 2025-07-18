@@ -2087,12 +2087,17 @@ def serve_biometric_file(
             
             # Verify user has access to this application's location
             application = crud_application.get(db=db, id=application_id)
-            if application and not current_user.can_access_location(application.location_id):
-                logger.warning(f"User {current_user.username} denied access to file for app {application_id}")
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to access this file"
-                )
+            if application:
+                can_access = current_user.can_access_location(application.location_id)
+                logger.info(f"File access check - App: {application_id}, Location: {application.location_id}, User can access: {can_access}")
+                if not can_access:
+                    logger.warning(f"User {current_user.username} denied access to file for app {application_id} at location {application.location_id}")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to access this file"
+                    )
+            else:
+                logger.warning(f"Application {application_id} not found for file {file_path}")
         except (ValueError, IndexError) as e:
             # If we can't parse the application ID, allow but log
             logger.warning(f"Could not verify application access for file: {file_path}, error: {e}")
@@ -2113,7 +2118,47 @@ def serve_biometric_file(
     )
 
 
-# Debug endpoints removed - file serving is working
+@router.post("/cleanup-biometric-metadata", summary="[TEMPORARY] Clean up corrupted biometric metadata")
+def cleanup_biometric_metadata(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    TEMPORARY EMERGENCY CLEANUP: Fix corrupted SQLAlchemy MetaData objects in biometric records
+    
+    ⚠️ ONE-TIME USE ONLY ⚠️
+    This endpoint fixes a specific bug where SQLAlchemy MetaData objects were stored 
+    instead of JSON metadata. Run once, then remove this endpoint.
+    
+    Future uploads will store proper JSON metadata automatically.
+    """
+    if not current_user.has_permission("applications.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to clean up metadata"
+        )
+    
+    # Get all biometric data records with corrupted metadata
+    biometric_records = db.query(ApplicationBiometricData).all()
+    
+    cleaned_count = 0
+    for record in biometric_records:
+        # Check if metadata is corrupted (SQLAlchemy MetaData object)
+        if str(type(record.capture_metadata)) == "<class 'sqlalchemy.sql.schema.MetaData'>":
+            logger.info(f"Cleaning corrupted metadata for biometric record {record.id}")
+            
+            # Set metadata to None for now - new uploads will have proper metadata
+            record.capture_metadata = None
+            cleaned_count += 1
+    
+    db.commit()
+    
+    logger.info(f"Cleaned up {cleaned_count} corrupted biometric metadata records")
+    
+    return {
+        "message": f"Successfully cleaned up {cleaned_count} corrupted biometric metadata records",
+        "cleaned_count": cleaned_count
+    }
 
 
 @router.get("/{application_id}/biometric-data/{data_type}/license-ready")

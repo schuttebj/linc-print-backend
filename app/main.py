@@ -1415,6 +1415,59 @@ async def initialize_fee_structures():
         )
 
 
+async def cleanup_biometric_files():
+    """
+    Clean up all biometric files from storage
+    Used during database reset to remove orphaned files
+    """
+    try:
+        from app.core.config import get_settings
+        from pathlib import Path
+        import shutil
+        
+        settings = get_settings()
+        storage_path = settings.get_file_storage_path()
+        biometric_path = storage_path / "biometric"
+        
+        files_removed = 0
+        folders_removed = 0
+        
+        if biometric_path.exists():
+            logger.info(f"Cleaning biometric files from: {biometric_path}")
+            
+            # Remove all files and subdirectories in biometric folder
+            for item in biometric_path.iterdir():
+                try:
+                    if item.is_file():
+                        item.unlink()
+                        files_removed += 1
+                        logger.debug(f"Removed file: {item}")
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                        folders_removed += 1
+                        logger.debug(f"Removed directory: {item}")
+                except Exception as item_error:
+                    logger.warning(f"Could not remove {item}: {item_error}")
+            
+            logger.info(f"Biometric cleanup completed: {files_removed} files, {folders_removed} folders removed")
+        else:
+            logger.info(f"Biometric path does not exist: {biometric_path}")
+        
+        return {
+            "files_removed": files_removed,
+            "folders_removed": folders_removed,
+            "storage_path": str(biometric_path)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during biometric file cleanup: {e}")
+        return {
+            "files_removed": 0,
+            "folders_removed": 0,
+            "error": str(e)
+        }
+
+
 @app.post("/admin/reset-database", tags=["Admin"])
 async def reset_database():
     """
@@ -1430,6 +1483,10 @@ async def reset_database():
         # Step 1: Drop and recreate all tables
         drop_tables()
         create_tables()
+        
+        # Step 1.5: Clean up orphaned biometric files
+        logger.info("Cleaning up biometric files...")
+        files_cleaned = await cleanup_biometric_files()
         
         # Verify enum values are properly created
         from app.core.database import get_db
@@ -1475,6 +1532,7 @@ async def reset_database():
             "warning": "All previous data has been permanently deleted",
             "steps_completed": [
                 "Tables dropped and recreated",
+                "Biometric files cleaned up",
                 "Base users and roles initialized (including EXAMINER role)",
                 "Madagascar locations initialized",
                 "Location-based users created",
@@ -1482,6 +1540,8 @@ async def reset_database():
             ],
             "summary": {
                 "enum_values_created": len(enum_values),
+                "biometric_files_removed": files_cleaned.get("files_removed", 0),
+                "biometric_folders_removed": files_cleaned.get("folders_removed", 0),
                 "permissions_created": users_result.get("permissions_created", 0),
                 "roles_created": users_result.get("roles_created", 0),
                 "locations_created": locations_result.get("locations_created", 0),
