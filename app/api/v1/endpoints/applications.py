@@ -2032,9 +2032,8 @@ def _generate_license_from_application_status(db: Session, application: Applicat
 @router.get("/files/{file_path:path}")
 def serve_biometric_file(
     file_path: str,
-    db: Session = Depends(get_db)
-    # Temporarily removing auth dependency for debugging
-    # current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Serve biometric files (photos, signatures, fingerprints)
@@ -2047,16 +2046,16 @@ def serve_biometric_file(
     from app.core.config import get_settings
     
     logger.info(f"=== FILE SERVING DEBUG ===")
-    logger.info(f"File request: {file_path}")
-    logger.info(f"Auth temporarily disabled for debugging")
+    logger.info(f"File request: {file_path} by user: {current_user.username}")
+    logger.info(f"User permissions: {current_user.permissions}")
+    logger.info(f"Has applications.read: {current_user.has_permission('applications.read')}")
     
-    # Temporarily skip auth check for debugging
-    # if not current_user.has_permission("applications.read"):
-    #     logger.error(f"User {current_user.username} lacks applications.read permission")
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Not enough permissions to access files"
-    #     )
+    if not current_user.has_permission("applications.read"):
+        logger.error(f"User {current_user.username} lacks applications.read permission")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access files"
+        )
     
     settings = get_settings()
     
@@ -2100,21 +2099,45 @@ def serve_biometric_file(
     
     # File existence already checked above
     
-    # Simplified file serving - temporarily bypass location checks for debugging
+    # Location-based access control for biometric files
     path_parts = Path(file_path).parts
     if len(path_parts) >= 5 and path_parts[0] == 'biometric':
         try:
-            # Extract application ID from path for logging
+            # Extract application ID from path for security check
             potential_app_id = path_parts[4]
             application_id = uuid.UUID(potential_app_id)
             logger.info(f"Serving biometric file for application: {application_id}")
             
-            # Temporarily allow all file access for debugging
-            # TODO: Restore location-based access control after fixing metadata issue
+            # Verify user can access this application's location
+            application = crud_application.get(db=db, id=application_id)
+            if not application:
+                logger.error(f"Application {application_id} not found for file access")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Application not found"
+                )
             
-        except (ValueError, IndexError) as e:
-            # If we can't parse the application ID, allow but log
-            logger.warning(f"Could not parse application ID from file path: {file_path}, error: {e}")
+            if not current_user.can_access_location(application.location_id):
+                logger.error(f"User {current_user.username} cannot access location {application.location_id} for application {application_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to access files for this application"
+                )
+            
+            logger.info(f"Location access verified for user {current_user.username} on application {application_id}")
+            
+        except ValueError as e:
+            logger.error(f"Invalid application ID in file path: {file_path}, error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid file path"
+            )
+        except IndexError as e:
+            logger.error(f"Invalid file path format: {file_path}, error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid file path format"
+            )
     
     logger.info(f"Serving file: {full_file_path} (exists: {full_file_path.exists()})")
     
@@ -2181,9 +2204,8 @@ def cleanup_biometric_metadata(
 def get_license_ready_biometric(
     application_id: uuid.UUID,
     data_type: str,
-    db: Session = Depends(get_db)
-    # Temporarily removing auth dependency for debugging
-    # current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get license-ready version of biometric data for card production
@@ -2196,14 +2218,13 @@ def get_license_ready_biometric(
     from fastapi.responses import FileResponse
     
     logger.info(f"=== LICENSE-READY FILE DEBUG ===")
-    logger.info(f"Request for {data_type} license-ready file for application {application_id}")
+    logger.info(f"Request for {data_type} license-ready file for application {application_id} by user: {current_user.username}")
     
-    # Temporarily skip auth check for debugging
-    # if not current_user.has_permission("applications.read"):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Not enough permissions to access biometric data"
-    #     )
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access biometric data"
+        )
     
     # Validate data type
     if data_type.upper() not in ["PHOTO", "SIGNATURE", "FINGERPRINT"]:
@@ -2220,12 +2241,11 @@ def get_license_ready_biometric(
             detail="Application not found"
         )
     
-    # Temporarily skip location access check for debugging
-    # if not current_user.can_access_location(application.location_id):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Not authorized to access this application's biometric data"
-    #     )
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this application's biometric data"
+        )
     
     # Get biometric data record
     biometric_data = crud_application_biometric_data.get_by_application_and_type(
