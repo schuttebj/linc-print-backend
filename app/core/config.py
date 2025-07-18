@@ -148,7 +148,7 @@ class Settings(BaseSettings):
     ISO_18013_COMPLIANCE: bool = True
     
     def get_file_storage_path(self) -> Path:
-        """Get file storage path for Madagascar"""
+        """Get file storage path"""
         base_path = Path(self.FILE_STORAGE_PATH)
         
         # For development, use local static folder if production path doesn't exist
@@ -160,19 +160,18 @@ class Settings(BaseSettings):
             return local_storage
         
         # Ensure the base path exists (important for persistent disk mounting)
-        country_path = base_path / self.COUNTRY_CODE
         try:
-            country_path.mkdir(parents=True, exist_ok=True)
+            base_path.mkdir(parents=True, exist_ok=True)
         except PermissionError:
             # If we can't create the directory, log the issue but don't crash
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Cannot create storage directory {country_path}. Using /tmp fallback.")
-            fallback_path = Path("/tmp") / "madagascar-license-data" / self.COUNTRY_CODE
+            logger.warning(f"Cannot create storage directory {base_path}. Using /tmp fallback.")
+            fallback_path = Path("/tmp") / "madagascar-license-data"
             fallback_path.mkdir(parents=True, exist_ok=True)
             return fallback_path
         
-        return country_path
+        return base_path
 
 
 settings = Settings()

@@ -1095,16 +1095,30 @@ async def upload_biometric_data(
                 filename_prefix=f"license_photo_{application_id}"
             )
             
-            # Store biometric data record in database
+            # Store biometric data record in database with both file versions
             biometric_data_create = ApplicationBiometricDataCreate(
                 application_id=application_id,
                 data_type="PHOTO",
-                file_path=str(result["file_path"]),
-                file_size=result["file_size"],
-                file_format=result["format"],
-                image_resolution=result["dimensions"],
+                file_path=str(result["standard_version"]["file_path"]),  # Primary path for standard version
+                file_size=result["standard_version"]["file_size"],
+                file_format=result["standard_version"]["format"],
+                image_resolution=result["standard_version"]["dimensions"],
                 capture_method=capture_method or "WEBCAM",
-                capture_metadata=result["processing_info"]
+                capture_metadata={
+                    "processing_info": result["processing_info"],
+                    "standard_version": {
+                        "file_path": str(result["standard_version"]["file_path"]),
+                        "filename": result["standard_version"]["filename"],
+                        "file_size": result["standard_version"]["file_size"],
+                        "dimensions": result["standard_version"]["dimensions"]
+                    },
+                    "license_ready_version": {
+                        "file_path": str(result["license_ready_version"]["file_path"]),
+                        "filename": result["license_ready_version"]["filename"],
+                        "file_size": result["license_ready_version"]["file_size"],
+                        "dimensions": result["license_ready_version"]["dimensions"]
+                    }
+                }
             )
             
             # Save to database
@@ -1996,8 +2010,14 @@ def serve_biometric_file(
     else:
         base_path = Path(settings.FILE_STORAGE_BASE_PATH)
     
-    # Construct full file path
-    full_file_path = base_path / file_path
+    # Handle both absolute and relative file paths
+    file_path_obj = Path(file_path)
+    if file_path_obj.is_absolute():
+        # If file_path is already absolute, use it directly
+        full_file_path = file_path_obj
+    else:
+        # If relative, append to base path
+        full_file_path = base_path / file_path
     
     # Security check - ensure file is within the storage directory
     try:
@@ -2022,12 +2042,12 @@ def serve_biometric_file(
         )
     
     # Additional security: verify the file belongs to a biometric record
-    # Get the application ID from the file path structure (e.g., MG/biometric/2024/01/15/app_id/)
+    # Get the application ID from the file path structure (e.g., biometric/2024/01/15/app_id/)
     path_parts = Path(file_path).parts
-    if len(path_parts) >= 6 and path_parts[0] == 'MG' and path_parts[1] == 'biometric':
+    if len(path_parts) >= 5 and path_parts[0] == 'biometric':
         try:
-            # Extract application ID from path (should be the 5th part: YYYY/MM/DD/app_id/)
-            potential_app_id = path_parts[5]
+            # Extract application ID from path (should be the 4th part: YYYY/MM/DD/app_id/)
+            potential_app_id = path_parts[4]
             application_id = uuid.UUID(potential_app_id)
             
             # Verify user has access to this application's location
@@ -2054,6 +2074,94 @@ def serve_biometric_file(
         path=full_file_path,
         media_type=content_type,
         filename=full_file_path.name
+    )
+
+
+@router.get("/{application_id}/biometric-data/{data_type}/license-ready")
+def get_license_ready_biometric(
+    application_id: uuid.UUID,
+    data_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get license-ready version of biometric data for card production
+    
+    Returns the optimized, small-size version suitable for license cards
+    Specifically for PHOTO data type (8-bit, 64-128px height, ~1.5KB)
+    
+    Requires: applications.read permission
+    """
+    from fastapi.responses import FileResponse
+    
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access biometric data"
+        )
+    
+    # Validate data type
+    if data_type.upper() not in ["PHOTO", "SIGNATURE", "FINGERPRINT"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid data_type. Must be PHOTO, SIGNATURE, or FINGERPRINT"
+        )
+    
+    # Get application and check permissions
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this application's biometric data"
+        )
+    
+    # Get biometric data record
+    biometric_data = crud_application_biometric_data.get_by_application_and_type(
+        db=db, application_id=application_id, data_type=data_type.upper()
+    )
+    
+    if not biometric_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No {data_type.lower()} data found for this application"
+        )
+    
+    # Get license-ready file path from metadata
+    metadata = biometric_data.capture_metadata or {}
+    license_ready_info = metadata.get("license_ready_version")
+    
+    if not license_ready_info or not license_ready_info.get("file_path"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No license-ready version available for {data_type.lower()}"
+        )
+    
+    license_ready_path = Path(license_ready_info["file_path"])
+    
+    # Check if file exists
+    if not license_ready_path.exists() or not license_ready_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="License-ready file not found on disk"
+        )
+    
+    # Determine content type
+    content_type = "application/octet-stream"
+    if license_ready_path.suffix.lower() in ['.jpg', '.jpeg']:
+        content_type = "image/jpeg"
+    elif license_ready_path.suffix.lower() == '.png':
+        content_type = "image/png"
+    
+    return FileResponse(
+        path=license_ready_path,
+        media_type=content_type,
+        filename=f"license_ready_{data_type.lower()}_{application_id}.jpg"
     )
 
 

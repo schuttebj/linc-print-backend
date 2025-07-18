@@ -339,6 +339,21 @@ class CRUDApplicationBiometricData(CRUDBase[ApplicationBiometricData, Applicatio
         """Get all biometric data for an application"""
         return db.query(ApplicationBiometricData).filter(ApplicationBiometricData.application_id == application_id).all()
     
+    def get_by_application_and_type(self, db: Session, *, application_id: uuid.UUID, data_type: str) -> Optional[ApplicationBiometricData]:
+        """Get specific biometric data by application and data type"""
+        from app.models.enums import BiometricDataType
+        
+        # Convert string to enum
+        try:
+            data_type_enum = BiometricDataType(data_type.upper())
+        except ValueError:
+            return None
+        
+        return db.query(ApplicationBiometricData).filter(
+            ApplicationBiometricData.application_id == application_id,
+            ApplicationBiometricData.data_type == data_type_enum
+        ).first()
+    
     def verify_biometric_data(
         self, 
         db: Session, 
