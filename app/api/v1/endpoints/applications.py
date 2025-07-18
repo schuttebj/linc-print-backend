@@ -365,11 +365,40 @@ def get_application(
     
     def safe_serialize_metadata(metadata):
         """Safely serialize metadata, filtering out SQLAlchemy objects"""
+        logger.info(f"=== METADATA SERIALIZATION DEBUG ===")
+        logger.info(f"Metadata type: {type(metadata)}")
+        logger.info(f"Metadata value: {metadata}")
+        logger.info(f"Metadata repr: {repr(metadata)}")
+        
         if metadata is None:
             return None
+            
+        # Handle SQLAlchemy MetaData objects specifically
+        if str(type(metadata)) == "<class 'sqlalchemy.sql.schema.MetaData'>":
+            logger.warning(f"Found SQLAlchemy MetaData object, returning None")
+            return None
+            
         if isinstance(metadata, dict):
-            return {k: v for k, v in metadata.items() 
-                   if not hasattr(v, '__class__') or 'sqlalchemy' not in str(type(v)).lower()}
+            # Only filter out actual SQLAlchemy objects, not regular dicts
+            filtered_dict = {}
+            for k, v in metadata.items():
+                if hasattr(v, '__class__') and 'sqlalchemy' in str(type(v)).lower():
+                    logger.warning(f"Filtering out SQLAlchemy object for key {k}: {type(v)}")
+                    continue
+                filtered_dict[k] = v
+            return filtered_dict
+            
+        # Try to convert to dict if it looks like JSON
+        if hasattr(metadata, '__dict__'):
+            try:
+                import json
+                metadata_str = str(metadata)
+                if metadata_str.startswith('{') and metadata_str.endswith('}'):
+                    return json.loads(metadata_str)
+            except:
+                pass
+                
+        logger.warning(f"Converting metadata to string: {metadata}")
         return str(metadata)  # Convert to string if not a dict
     
     application_dict["biometric_data"] = [
@@ -1096,6 +1125,26 @@ async def upload_biometric_data(
             )
             
             # Store biometric data record in database with both file versions
+            metadata_dict = {
+                "processing_info": result["processing_info"],
+                "standard_version": {
+                    "file_path": str(result["standard_version"]["file_path"]),
+                    "filename": result["standard_version"]["filename"],
+                    "file_size": result["standard_version"]["file_size"],
+                    "dimensions": result["standard_version"]["dimensions"]
+                },
+                "license_ready_version": {
+                    "file_path": str(result["license_ready_version"]["file_path"]),
+                    "filename": result["license_ready_version"]["filename"],
+                    "file_size": result["license_ready_version"]["file_size"],
+                    "dimensions": result["license_ready_version"]["dimensions"]
+                }
+            }
+            
+            logger.info(f"=== BIOMETRIC METADATA DEBUG ===")
+            logger.info(f"Result from image processing: {result}")
+            logger.info(f"Metadata dict being stored: {metadata_dict}")
+            
             biometric_data_create = ApplicationBiometricDataCreate(
                 application_id=application_id,
                 data_type="PHOTO",
@@ -1104,22 +1153,10 @@ async def upload_biometric_data(
                 file_format=result["standard_version"]["format"],
                 image_resolution=result["standard_version"]["dimensions"],
                 capture_method=capture_method or "WEBCAM",
-                capture_metadata={
-                    "processing_info": result["processing_info"],
-                    "standard_version": {
-                        "file_path": str(result["standard_version"]["file_path"]),
-                        "filename": result["standard_version"]["filename"],
-                        "file_size": result["standard_version"]["file_size"],
-                        "dimensions": result["standard_version"]["dimensions"]
-                    },
-                    "license_ready_version": {
-                        "file_path": str(result["license_ready_version"]["file_path"]),
-                        "filename": result["license_ready_version"]["filename"],
-                        "file_size": result["license_ready_version"]["file_size"],
-                        "dimensions": result["license_ready_version"]["dimensions"]
-                    }
-                }
+                capture_metadata=metadata_dict
             )
+            
+            logger.info(f"Biometric data object being created: {biometric_data_create.dict()}")
             
             # Save to database
             biometric_record = crud_application_biometric_data.create_biometric_data(
@@ -1127,6 +1164,20 @@ async def upload_biometric_data(
                 obj_in=biometric_data_create,
                 created_by_user_id=current_user.id
             )
+            
+            # Debug what was actually saved
+            logger.info(f"=== POST-SAVE DEBUG ===")
+            logger.info(f"Saved biometric record ID: {biometric_record.id}")
+            logger.info(f"Saved metadata type: {type(biometric_record.capture_metadata)}")
+            logger.info(f"Saved metadata value: {biometric_record.capture_metadata}")
+            logger.info(f"Saved metadata repr: {repr(biometric_record.capture_metadata)}")
+            
+            # Test immediate retrieval
+            fresh_record = crud_application_biometric_data.get(db=db, id=biometric_record.id)
+            if fresh_record:
+                logger.info(f"Fresh retrieval metadata type: {type(fresh_record.capture_metadata)}")
+                logger.info(f"Fresh retrieval metadata value: {fresh_record.capture_metadata}")
+                logger.info(f"Fresh retrieval metadata repr: {repr(fresh_record.capture_metadata)}")
             
             # Update application photo status
             crud_application.update(
@@ -1983,14 +2034,13 @@ def _generate_license_from_application_status(db: Session, application: Applicat
 @router.get("/files/{file_path:path}")
 def serve_biometric_file(
     file_path: str,
-    db: Session = Depends(get_db)
-    # Temporarily removing auth to debug
-    # current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Serve biometric files (photos, signatures, fingerprints)
     
-    Temporarily removing auth for debugging
+    Requires: applications.read permission
     """
     from fastapi.responses import FileResponse
     from fastapi import HTTPException
@@ -2000,13 +2050,12 @@ def serve_biometric_file(
     logger.info(f"=== FILE SERVING ENDPOINT HIT ===")
     logger.info(f"Requested file_path: {file_path}")
     
-    # Temporarily skip auth check for debugging
-    # if not current_user.has_permission("applications.read"):
-    #     logger.error(f"User {current_user.username} lacks applications.read permission")
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Not enough permissions to access files"
-    #     )
+    if not current_user.has_permission("applications.read"):
+        logger.error(f"User {current_user.username} lacks applications.read permission")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access files"
+        )
     
     settings = get_settings()
     
@@ -2065,17 +2114,16 @@ def serve_biometric_file(
             logger.info(f"Extracted app ID: {potential_app_id}")
             application_id = uuid.UUID(potential_app_id)
             
-            # Verify application exists (temporarily skip location check for debugging)
+            # Verify user has access to this application's location
             application = crud_application.get(db=db, id=application_id)
             if application:
                 logger.info(f"Application found, location_id: {application.location_id}")
-                # Temporarily skip location check for debugging
-                # logger.info(f"User can access location: {current_user.can_access_location(application.location_id)}")
-                # if not current_user.can_access_location(application.location_id):
-                #     raise HTTPException(
-                #         status_code=status.HTTP_403_FORBIDDEN,
-                #         detail="Not authorized to access this file"
-                #     )
+                logger.info(f"User can access location: {current_user.can_access_location(application.location_id)}")
+                if not current_user.can_access_location(application.location_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to access this file"
+                    )
             else:
                 logger.warning(f"Application not found for ID: {application_id}")
         except (ValueError, IndexError) as e:
@@ -2098,21 +2146,7 @@ def serve_biometric_file(
     )
 
 
-@router.get("/files-test/{test_path:path}")
-def test_file_serving(
-    test_path: str
-):
-    """Test endpoint to check if file serving routes are reachable"""
-    logger.info(f"=== TEST FILE ENDPOINT HIT ===")
-    logger.info(f"Test path: {test_path}")
-    return {"message": "File serving endpoint is reachable", "path": test_path}
-
-
-@router.get("/debug")
-def debug_endpoint():
-    """Simple debug endpoint to test route registration"""
-    logger.info(f"=== DEBUG ENDPOINT HIT ===")
-    return {"message": "Applications router is working", "timestamp": datetime.now().isoformat()}
+# Debug endpoints removed - file serving is working
 
 
 @router.get("/{application_id}/biometric-data/{data_type}/license-ready")
