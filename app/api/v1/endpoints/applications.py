@@ -365,41 +365,19 @@ def get_application(
     
     def safe_serialize_metadata(metadata):
         """Safely serialize metadata, filtering out SQLAlchemy objects"""
-        logger.info(f"=== METADATA SERIALIZATION DEBUG ===")
-        logger.info(f"Metadata type: {type(metadata)}")
-        logger.info(f"Metadata value: {metadata}")
-        logger.info(f"Metadata repr: {repr(metadata)}")
-        
         if metadata is None:
             return None
             
-        # Handle SQLAlchemy MetaData objects specifically
+        # Handle SQLAlchemy MetaData objects specifically - this is the main issue
         if str(type(metadata)) == "<class 'sqlalchemy.sql.schema.MetaData'>":
-            logger.warning(f"Found SQLAlchemy MetaData object, returning None")
+            logger.warning(f"Found SQLAlchemy MetaData object instead of JSON data - database issue!")
             return None
             
         if isinstance(metadata, dict):
-            # Only filter out actual SQLAlchemy objects, not regular dicts
-            filtered_dict = {}
-            for k, v in metadata.items():
-                if hasattr(v, '__class__') and 'sqlalchemy' in str(type(v)).lower():
-                    logger.warning(f"Filtering out SQLAlchemy object for key {k}: {type(v)}")
-                    continue
-                filtered_dict[k] = v
-            return filtered_dict
-            
-        # Try to convert to dict if it looks like JSON
-        if hasattr(metadata, '__dict__'):
-            try:
-                import json
-                metadata_str = str(metadata)
-                if metadata_str.startswith('{') and metadata_str.endswith('}'):
-                    return json.loads(metadata_str)
-            except:
-                pass
+            return metadata  # Return dict as-is if it's already a proper dict
                 
-        logger.warning(f"Converting metadata to string: {metadata}")
-        return str(metadata)  # Convert to string if not a dict
+        logger.warning(f"Unexpected metadata type {type(metadata)}: {metadata}")
+        return str(metadata)
     
     application_dict["biometric_data"] = [
         {
@@ -1125,6 +1103,9 @@ async def upload_biometric_data(
             )
             
             # Store biometric data record in database with both file versions
+            # Use explicit JSON serialization to avoid SQLAlchemy MetaData conflicts
+            import json
+            
             metadata_dict = {
                 "processing_info": result["processing_info"],
                 "standard_version": {
@@ -1141,9 +1122,15 @@ async def upload_biometric_data(
                 }
             }
             
+            # Ensure it's properly serializable as JSON
+            metadata_json_str = json.dumps(metadata_dict)
+            metadata_clean = json.loads(metadata_json_str)
+            
             logger.info(f"=== BIOMETRIC METADATA DEBUG ===")
             logger.info(f"Result from image processing: {result}")
-            logger.info(f"Metadata dict being stored: {metadata_dict}")
+            logger.info(f"Original metadata dict: {metadata_dict}")
+            logger.info(f"JSON-serialized metadata: {metadata_clean}")
+            logger.info(f"Metadata clean type: {type(metadata_clean)}")
             
             biometric_data_create = ApplicationBiometricDataCreate(
                 application_id=application_id,
@@ -1153,7 +1140,7 @@ async def upload_biometric_data(
                 file_format=result["standard_version"]["format"],
                 image_resolution=result["standard_version"]["dimensions"],
                 capture_method=capture_method or "WEBCAM",
-                capture_metadata=metadata_dict
+                capture_metadata=metadata_clean  # Use the JSON-cleaned version
             )
             
             logger.info(f"Biometric data object being created: {biometric_data_create.dict()}")
@@ -2047,8 +2034,7 @@ def serve_biometric_file(
     import os
     from app.core.config import get_settings
     
-    logger.info(f"=== FILE SERVING ENDPOINT HIT ===")
-    logger.info(f"Requested file_path: {file_path}")
+    logger.info(f"File request: {file_path} by user: {current_user.username}")
     
     if not current_user.has_permission("applications.read"):
         logger.error(f"User {current_user.username} lacks applications.read permission")
@@ -2089,43 +2075,24 @@ def serve_biometric_file(
             detail="Access denied: Invalid file path"
         )
     
-    # Check if file exists
-    if not full_file_path.exists() or not full_file_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
+    # File existence already checked above
     
-    # Debug logging
-    logger.info(f"Serving file request: {file_path}")
-    logger.info(f"Full file path: {full_file_path}")
-    logger.info(f"File exists: {full_file_path.exists()}")
-    logger.info(f"Is file: {full_file_path.is_file() if full_file_path.exists() else 'N/A'}")
-    
-    # Additional security: verify the file belongs to a biometric record
-    # Get the application ID from the file path structure (e.g., biometric/2024/01/15/app_id/)
+    # Verify the file belongs to a biometric record and user has access
     path_parts = Path(file_path).parts
-    logger.info(f"Path parts: {path_parts}")
-    
     if len(path_parts) >= 5 and path_parts[0] == 'biometric':
         try:
             # Extract application ID from path (should be the 4th part: YYYY/MM/DD/app_id/)
             potential_app_id = path_parts[4]
-            logger.info(f"Extracted app ID: {potential_app_id}")
             application_id = uuid.UUID(potential_app_id)
             
             # Verify user has access to this application's location
             application = crud_application.get(db=db, id=application_id)
-            if application:
-                logger.info(f"Application found, location_id: {application.location_id}")
-                logger.info(f"User can access location: {current_user.can_access_location(application.location_id)}")
-                if not current_user.can_access_location(application.location_id):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Not authorized to access this file"
-                    )
-            else:
-                logger.warning(f"Application not found for ID: {application_id}")
+            if application and not current_user.can_access_location(application.location_id):
+                logger.warning(f"User {current_user.username} denied access to file for app {application_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to access this file"
+                )
         except (ValueError, IndexError) as e:
             # If we can't parse the application ID, allow but log
             logger.warning(f"Could not verify application access for file: {file_path}, error: {e}")
