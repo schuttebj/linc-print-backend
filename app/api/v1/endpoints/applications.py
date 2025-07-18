@@ -2041,25 +2041,39 @@ def serve_biometric_file(
             detail="File not found"
         )
     
+    # Debug logging
+    logger.info(f"Serving file request: {file_path}")
+    logger.info(f"Full file path: {full_file_path}")
+    logger.info(f"File exists: {full_file_path.exists()}")
+    logger.info(f"Is file: {full_file_path.is_file() if full_file_path.exists() else 'N/A'}")
+    
     # Additional security: verify the file belongs to a biometric record
     # Get the application ID from the file path structure (e.g., biometric/2024/01/15/app_id/)
     path_parts = Path(file_path).parts
+    logger.info(f"Path parts: {path_parts}")
+    
     if len(path_parts) >= 5 and path_parts[0] == 'biometric':
         try:
             # Extract application ID from path (should be the 4th part: YYYY/MM/DD/app_id/)
             potential_app_id = path_parts[4]
+            logger.info(f"Extracted app ID: {potential_app_id}")
             application_id = uuid.UUID(potential_app_id)
             
             # Verify user has access to this application's location
             application = crud_application.get(db=db, id=application_id)
-            if application and not current_user.can_access_location(application.location_id):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to access this file"
-                )
-        except (ValueError, IndexError):
+            if application:
+                logger.info(f"Application found, location_id: {application.location_id}")
+                logger.info(f"User can access location: {current_user.can_access_location(application.location_id)}")
+                if not current_user.can_access_location(application.location_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to access this file"
+                    )
+            else:
+                logger.warning(f"Application not found for ID: {application_id}")
+        except (ValueError, IndexError) as e:
             # If we can't parse the application ID, allow but log
-            logger.warning(f"Could not verify application access for file: {file_path}")
+            logger.warning(f"Could not verify application access for file: {file_path}, error: {e}")
     
     # Determine content type
     content_type = "application/octet-stream"
