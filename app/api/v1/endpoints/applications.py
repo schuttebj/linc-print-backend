@@ -62,7 +62,8 @@ def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) 
         token = authorization[7:]  # Remove "Bearer " prefix
         try:
             payload = verify_token(token)
-            user_id = payload.get("user_id")
+            user_id = payload.get("sub")  # JWT standard uses "sub" for subject (user ID)
+            logger.info(f"Extracted user_id from header: {user_id}")
             if user_id:
                 user = crud_user.get(db=db, id=uuid.UUID(user_id))
                 if user:
@@ -78,7 +79,8 @@ def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) 
         try:
             payload = verify_token(refresh_token)
             logger.info(f"Token payload: {payload}")
-            user_id = payload.get("user_id")
+            user_id = payload.get("sub")  # JWT standard uses "sub" for subject (user ID)
+            logger.info(f"Extracted user_id: {user_id}")
             if user_id:
                 user = crud_user.get(db=db, id=uuid.UUID(user_id))
                 if user:
