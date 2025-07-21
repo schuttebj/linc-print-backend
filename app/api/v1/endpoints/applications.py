@@ -2159,7 +2159,7 @@ def serve_biometric_file(
     
     logger.info(f"=== FILE SERVING DEBUG ===")
     logger.info(f"File request: {file_path} by user: {current_user.username}")
-    logger.info(f"User permissions: {current_user.permissions}")
+    logger.info(f"User type: {current_user.user_type}")
     logger.info(f"Has applications.read: {current_user.has_permission('applications.read')}")
     
     if not current_user.has_permission("applications.read"):
