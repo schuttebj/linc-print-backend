@@ -50,8 +50,14 @@ def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) 
     from app.core.security import verify_token
     from app.crud.crud_user import user as crud_user
     
+    logger.info(f"=== FILE AUTH DEBUG ===")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Request cookies: {dict(request.cookies)}")
+    
     # Try Authorization header first (for API calls)
     authorization = request.headers.get("authorization")
+    logger.info(f"Authorization header: {authorization}")
     if authorization and authorization.startswith("Bearer "):
         token = authorization[7:]  # Remove "Bearer " prefix
         try:
@@ -60,27 +66,30 @@ def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) 
             if user_id:
                 user = crud_user.get(db=db, id=uuid.UUID(user_id))
                 if user:
-                    logger.info(f"Authenticated user {user.username} via Authorization header")
+                    logger.info(f"✅ Authenticated user {user.username} via Authorization header")
                     return user
         except Exception as e:
-            logger.debug(f"Authorization header authentication failed: {e}")
+            logger.info(f"❌ Authorization header authentication failed: {e}")
     
     # Try refresh_token cookie (which browsers send automatically)
     refresh_token = request.cookies.get("refresh_token")
+    logger.info(f"refresh_token cookie: {refresh_token}")
     if refresh_token:
         try:
             payload = verify_token(refresh_token)
+            logger.info(f"Token payload: {payload}")
             user_id = payload.get("user_id")
             if user_id:
                 user = crud_user.get(db=db, id=uuid.UUID(user_id))
                 if user:
-                    logger.info(f"Authenticated user {user.username} via refresh_token cookie")
+                    logger.info(f"✅ Authenticated user {user.username} via refresh_token cookie")
                     return user
         except Exception as e:
-            logger.debug(f"Cookie authentication failed: {e}")
+            logger.info(f"❌ Cookie authentication failed: {e}")
     
     # No valid authentication found
-    logger.warning(f"File request failed authentication - no valid token found")
+    logger.warning(f"❌ File request failed authentication - no valid token found")
+    logger.warning(f"Available cookies: {list(request.cookies.keys())}")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required for file access"
