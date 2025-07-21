@@ -379,18 +379,39 @@ def get_application(
         logger.warning(f"Unexpected metadata type {type(metadata)}: {metadata}")
         return str(metadata)
     
-    application_dict["biometric_data"] = [
-        {
+    # Serialize biometric data with file URLs and organized structure
+    biometric_data_list = []
+    organized_biometric_data = {}
+    
+    for bd in biometric_data:
+        # Generate file URL for serving
+        file_url = f"/api/v1/applications/files/{bd.file_path.replace('/var/madagascar-license-data/', '')}" if bd.file_path else None
+        
+        biometric_item = {
             "id": str(bd.id),
             "application_id": str(bd.application_id),
             "data_type": bd.data_type.value,
             "file_path": bd.file_path,
-            "metadata": safe_serialize_metadata(bd.metadata),
+            "file_url": file_url,
+            "metadata": safe_serialize_metadata(bd.capture_metadata),  # FIX: Use capture_metadata field
             "created_at": bd.created_at.isoformat() if bd.created_at else None,
             "updated_at": bd.updated_at.isoformat() if bd.updated_at else None
         }
-        for bd in biometric_data
-    ] if biometric_data else []
+        
+        biometric_data_list.append(biometric_item)
+        
+        # Organize by type for frontend convenience
+        data_type_lower = bd.data_type.value.lower()
+        if data_type_lower not in organized_biometric_data:
+            organized_biometric_data[data_type_lower] = biometric_item
+        else:
+            # Handle multiple records of same type (keep most recent)
+            if bd.created_at and organized_biometric_data[data_type_lower].get("created_at"):
+                if bd.created_at.isoformat() > organized_biometric_data[data_type_lower]["created_at"]:
+                    organized_biometric_data[data_type_lower] = biometric_item
+    
+    application_dict["biometric_data"] = biometric_data_list
+    application_dict["organized_biometric_data"] = organized_biometric_data
     
     fees = crud_application_fee.get_by_application(
         db=db, application_id=application_id
