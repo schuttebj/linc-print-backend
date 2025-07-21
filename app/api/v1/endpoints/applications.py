@@ -48,7 +48,7 @@ def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) 
     Browsers don't send Authorization headers with <img> tags, so we need to check cookies too.
     """
     from app.core.security import verify_token
-    from app.crud.crud_user import crud_user
+    from app.crud.crud_user import user as crud_user
     
     # Try Authorization header first (for API calls)
     authorization = request.headers.get("authorization")
