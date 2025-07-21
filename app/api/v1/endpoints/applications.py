@@ -4,7 +4,7 @@ Comprehensive REST API for driver's license applications with complete workflow 
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from pathlib import Path
 import uuid
@@ -40,6 +40,51 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def get_current_user_for_files(request: Request, db: Session = Depends(get_db)) -> User:
+    """
+    Manual authentication for file serving that handles both Authorization headers and cookies.
+    Browsers don't send Authorization headers with <img> tags, so we need to check cookies too.
+    """
+    from app.core.security import verify_token
+    from app.crud.crud_user import crud_user
+    
+    # Try Authorization header first (for API calls)
+    authorization = request.headers.get("authorization")
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]  # Remove "Bearer " prefix
+        try:
+            payload = verify_token(token)
+            user_id = payload.get("user_id")
+            if user_id:
+                user = crud_user.get(db=db, id=uuid.UUID(user_id))
+                if user:
+                    logger.info(f"Authenticated user {user.username} via Authorization header")
+                    return user
+        except Exception as e:
+            logger.debug(f"Authorization header authentication failed: {e}")
+    
+    # Try refresh_token cookie (which browsers send automatically)
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        try:
+            payload = verify_token(refresh_token)
+            user_id = payload.get("user_id")
+            if user_id:
+                user = crud_user.get(db=db, id=uuid.UUID(user_id))
+                if user:
+                    logger.info(f"Authenticated user {user.username} via refresh_token cookie")
+                    return user
+        except Exception as e:
+            logger.debug(f"Cookie authentication failed: {e}")
+    
+    # No valid authentication found
+    logger.warning(f"File request failed authentication - no valid token found")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required for file access"
+    )
 
 
 @router.get("/", response_model=List[ApplicationSchema])
@@ -2085,8 +2130,8 @@ def _generate_license_from_application_status(db: Session, application: Applicat
 @router.get("/files/{file_path:path}")
 def serve_biometric_file(
     file_path: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    request: Request,
+    db: Session = Depends(get_db)
 ):
     """
     Serve biometric files (photos, signatures, fingerprints)
@@ -2097,6 +2142,9 @@ def serve_biometric_file(
     from fastapi import HTTPException
     import os
     from app.core.config import get_settings
+    
+    # Use manual authentication that handles both Authorization headers and cookies
+    current_user = get_current_user_for_files(request, db)
     
     logger.info(f"=== FILE SERVING DEBUG ===")
     logger.info(f"File request: {file_path} by user: {current_user.username}")
@@ -2253,12 +2301,40 @@ def cleanup_biometric_metadata(
     }
 
 
+@router.get("/test-file-auth", summary="[TEST] Test file authentication")
+def test_file_authentication(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Test endpoint to verify file authentication works with both Authorization headers and cookies
+    """
+    try:
+        current_user = get_current_user_for_files(request, db)
+        return {
+            "status": "success",
+            "message": "Authentication successful",
+            "user": {
+                "username": current_user.username,
+                "email": current_user.email,
+                "has_applications_read": current_user.has_permission("applications.read")
+            },
+            "auth_method": "header" if request.headers.get("authorization") else "cookie"
+        }
+    except HTTPException as e:
+        return {
+            "status": "failed",
+            "message": str(e.detail),
+            "error_code": e.status_code
+        }
+
+
 @router.get("/{application_id}/biometric-data/{data_type}/license-ready")
 def get_license_ready_biometric(
     application_id: uuid.UUID,
     data_type: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    request: Request,
+    db: Session = Depends(get_db)
 ):
     """
     Get license-ready version of biometric data for card production
@@ -2269,6 +2345,9 @@ def get_license_ready_biometric(
     Requires: applications.read permission
     """
     from fastapi.responses import FileResponse
+    
+    # Use manual authentication that handles both Authorization headers and cookies
+    current_user = get_current_user_for_files(request, db)
     
     logger.info(f"=== LICENSE-READY FILE DEBUG ===")
     logger.info(f"Request for {data_type} license-ready file for application {application_id} by user: {current_user.username}")
