@@ -104,6 +104,9 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
         
         # If payment method provided, complete the payment
         if payment_method:
+            # Flush to ensure items are persisted, then refresh transaction to load items
+            db.flush()
+            db.refresh(transaction)
             print(f"DEBUG: About to call complete_payment for transaction {transaction.id}")
             print(f"DEBUG: Transaction has {len(transaction.items)} items")
             for item in transaction.items:
