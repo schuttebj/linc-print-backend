@@ -13,7 +13,7 @@ from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
     TestAttemptType, TestResult, PaymentStatus, ReplacementReason,
-    ProfessionalPermitCategory
+    ProfessionalPermitCategory, DriverRestrictionCode, VehicleRestrictionCode
 )
 
 
@@ -115,10 +115,10 @@ class MedicalInformation(BaseModel):
 class CapturedLicense(BaseModel):
     """Individual captured license data"""
     id: str = Field(..., description="Temporary ID for form management")
-    license_number: str = Field(..., description="License number")
+    license_number: Optional[str] = Field(None, description="License number (optional)")
     license_category: str = Field(..., description="Single license category as string")
     issue_date: str = Field(..., description="License issue date")
-    restrictions: List[str] = Field(default_factory=list, description="License restrictions (corrective lenses, disability modifications)")
+    restrictions: Optional[Union[List[str], Dict[str, List[str]]]] = Field(default_factory=dict, description="License restrictions - new structured format: {'driver_restrictions': ['01'], 'vehicle_restrictions': ['00']} or old list format")
     verified: bool = Field(False, description="Whether license has been verified by clerk")
     verification_notes: Optional[str] = Field(None, description="Clerk verification notes")
     
@@ -127,6 +127,41 @@ class CapturedLicense(BaseModel):
         """Validate that license_category is a valid LicenseCategory enum value"""
         if v not in [category.value for category in LicenseCategory]:
             raise ValueError(f"Invalid license category: {v}")
+        return v
+    
+    @validator('restrictions')
+    def validate_restriction_codes(cls, v):
+        """Validate restriction codes in both old and new formats"""
+        if not v:
+            return {}
+        
+        # Handle both old format (list) and new format (dict) for backward compatibility
+        if isinstance(v, list):
+            # Old format - validate as combined codes
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            valid_codes = valid_driver_codes + valid_vehicle_codes
+            
+            for code in v:
+                if code not in valid_codes:
+                    raise ValueError(f"Invalid restriction code: {code}. Valid codes are: {valid_codes}")
+                    
+        elif isinstance(v, dict):
+            # New format - validate separately
+            driver_restrictions = v.get('driver_restrictions', [])
+            vehicle_restrictions = v.get('vehicle_restrictions', [])
+            
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            
+            for code in driver_restrictions:
+                if code not in valid_driver_codes:
+                    raise ValueError(f"Invalid driver restriction code: {code}. Valid codes are: {valid_driver_codes}")
+                    
+            for code in vehicle_restrictions:
+                if code not in valid_vehicle_codes:
+                    raise ValueError(f"Invalid vehicle restriction code: {code}. Valid codes are: {valid_vehicle_codes}")
+        
         return v
 
 
