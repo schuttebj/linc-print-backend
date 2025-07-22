@@ -334,26 +334,33 @@ class Application(BaseModel):
         payment_type = self.current_required_payment_type
         
         if payment_type == "TEST_PAYMENT":
-            # Test fees for NEW_LICENSE and LEARNERS_PERMIT
-            if self.is_light_vehicle:
-                fees["test_fees"].append({
-                    "type": "THEORY_TEST_LIGHT",
-                    "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_LIGHT"],
-                    "description": "Theory Test (Light Vehicles)"
-                })
-                if self.application_type == ApplicationType.NEW_LICENSE:
+            # Test fees based on application type:
+            # - LEARNERS_PERMIT = theory test only
+            # - NEW_LICENSE = practical test only (person already has learner's permit)
+            
+            if self.application_type == ApplicationType.LEARNERS_PERMIT:
+                # Theory test for learner's permit
+                if self.is_light_vehicle:
+                    fees["test_fees"].append({
+                        "type": "THEORY_TEST_LIGHT",
+                        "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_LIGHT"],
+                        "description": "Theory Test (Light Vehicles)"
+                    })
+                else:  # Heavy vehicle
+                    fees["test_fees"].append({
+                        "type": "THEORY_TEST_HEAVY",
+                        "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_HEAVY"],
+                        "description": "Theory Test (Heavy Vehicles)"
+                    })
+            elif self.application_type == ApplicationType.NEW_LICENSE:
+                # Practical test for full license (theory already done in learner's permit)
+                if self.is_light_vehicle:
                     fees["test_fees"].append({
                         "type": "PRACTICAL_TEST_LIGHT", 
                         "amount": MADAGASCAR_LICENSE_FEES["PRACTICAL_TEST_LIGHT"],
                         "description": "Practical Test (Light Vehicles)"
                     })
-            else:  # Heavy vehicle
-                fees["test_fees"].append({
-                    "type": "THEORY_TEST_HEAVY",
-                    "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_HEAVY"],
-                    "description": "Theory Test (Heavy Vehicles)"
-                })
-                if self.application_type == ApplicationType.NEW_LICENSE:
+                else:  # Heavy vehicle
                     fees["test_fees"].append({
                         "type": "PRACTICAL_TEST_HEAVY",
                         "amount": MADAGASCAR_LICENSE_FEES["PRACTICAL_TEST_HEAVY"],
