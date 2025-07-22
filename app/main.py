@@ -1201,7 +1201,7 @@ async def initialize_fee_structures():
     """Initialize default fee structures for applications module"""
     try:
         from app.core.database import get_db
-        from app.models.application import FeeStructure
+        from app.models.transaction import FeeStructure
         from app.models.enums import LicenseCategory, ApplicationType
         
         db = next(get_db())

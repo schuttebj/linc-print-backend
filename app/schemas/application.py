@@ -353,37 +353,7 @@ class ApplicationWithDetails(Application):
     child_applications: Optional[List[Dict[str, Any]]] = None
 
 
-# Application Fee schemas
-class ApplicationFeeBase(BaseModel):
-    """Base schema for Application Fee"""
-    application_id: uuid.UUID
-    fee_type: str
-    amount: Decimal = Field(..., ge=0)
-    currency: str = Field(default="MGA")
 
-
-class ApplicationFeeCreate(ApplicationFeeBase):
-    """Schema for creating application fee"""
-    pass
-
-
-class ApplicationFeeInDB(ApplicationFeeBase):
-    """Schema for application fee in database"""
-    id: uuid.UUID
-    payment_status: PaymentStatus = PaymentStatus.PENDING
-    payment_date: Optional[datetime] = None
-    payment_method: Optional[str] = None
-    payment_reference: Optional[str] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ApplicationFee(ApplicationFeeInDB):
-    """Schema for returning application fee data"""
-    pass
 
 
 # Statistics schemas
@@ -507,16 +477,7 @@ class ApplicationTestAttempt(ApplicationTestAttemptInDB):
     pass
 
 
-# Application Fee Update schema (missing from original)
-class ApplicationFeeUpdate(BaseModel):
-    """Schema for updating application fee"""
-    amount: Optional[Decimal] = Field(None, ge=0)
-    payment_status: Optional[PaymentStatus] = None
-    payment_method: Optional[str] = None
-    payment_reference: Optional[str] = None
-    discount_amount: Optional[Decimal] = Field(None, ge=0)
-    discount_reason: Optional[str] = None
-    payment_notes: Optional[str] = None
+
 
 
 # Application Document schemas
