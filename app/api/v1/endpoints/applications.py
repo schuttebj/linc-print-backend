@@ -22,14 +22,13 @@ from app.schemas.application import (
     ApplicationUpdate, 
     ApplicationSearch,
     ApplicationWithDetails,
-    ApplicationFee,
-    ApplicationFeeCreate,
+
+
     ApplicationStatistics,
     ApplicationBiometricDataCreate
 )
 from app.crud.crud_application import (
     crud_application,
-    crud_application_fee,
     crud_application_biometric_data,
     crud_application_test_attempt,
     crud_application_document
@@ -265,11 +264,7 @@ def create_application(
         db=db, obj_in=validated_application, created_by_user_id=current_user.id
     )
     
-    # Create required fees
-    if application.status != ApplicationStatus.DRAFT:
-        crud_application_fee.create_application_fees(
-            db=db, application_id=application.id, created_by_user_id=current_user.id
-        )
+
     
     return application
 
@@ -469,25 +464,8 @@ def get_application(
     application_dict["biometric_data"] = biometric_data_list
     application_dict["organized_biometric_data"] = organized_biometric_data
     
-    fees = crud_application_fee.get_by_application(
-        db=db, application_id=application_id
-    )
-    application_dict["fees"] = [
-        {
-            "id": str(fee.id),
-            "application_id": str(fee.application_id),
-            "fee_type": fee.fee_type,
-            "amount": float(fee.amount),
-            "currency": fee.currency,
-            "payment_status": fee.payment_status.value,
-            "payment_date": fee.payment_date.isoformat() if fee.payment_date else None,
-            "payment_method": fee.payment_method,
-            "payment_reference": fee.payment_reference,
-            "created_at": fee.created_at.isoformat() if fee.created_at else None,
-            "updated_at": fee.updated_at.isoformat() if fee.updated_at else None
-        }
-        for fee in fees
-    ] if fees else []
+    # Fees are now handled by the transactions module
+    application_dict["fees"] = []
     
     test_attempts = crud_application_test_attempt.get_by_application(
         db=db, application_id=application_id
@@ -891,85 +869,7 @@ def get_application_license(
     }
 
 
-@router.get("/{application_id}/fees", response_model=List[ApplicationFee])
-def get_application_fees(
-    application_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> List[ApplicationFee]:
-    """
-    Get fees for an application
-    
-    Requires: applications.read permission
-    """
-    if not current_user.has_permission("applications.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read application fees"
-        )
-    
-    application = crud_application.get(db=db, id=application_id)
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
-        )
-    
-    # Check location access
-    if not current_user.can_access_location(application.location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this application"
-        )
-    
-    fees = crud_application_fee.get_by_application(db=db, application_id=application_id)
-    return fees
 
-
-@router.post("/{application_id}/fees/{fee_id}/pay", response_model=ApplicationFee)
-def process_fee_payment(
-    *,
-    db: Session = Depends(get_db),
-    application_id: uuid.UUID,
-    fee_id: uuid.UUID,
-    payment_method: str,
-    payment_reference: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-) -> ApplicationFee:
-    """
-    Process fee payment
-    
-    Requires: fee_payments.process permission
-    """
-    if not current_user.has_permission("fee_payments.process"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to process payments"
-        )
-    
-    application = crud_application.get(db=db, id=application_id)
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
-        )
-    
-    # Check location access
-    if not current_user.can_access_location(application.location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to process payments for this application"
-        )
-    
-    fee = crud_application_fee.process_payment(
-        db=db,
-        fee_id=fee_id,
-        processed_by=current_user.id,
-        payment_method=payment_method,
-        payment_reference=payment_reference
-    )
-    
-    return fee
 
 
 @router.get("/{application_id}/associated", response_model=List[ApplicationSchema])

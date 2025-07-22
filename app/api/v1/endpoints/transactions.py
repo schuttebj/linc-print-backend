@@ -1,0 +1,530 @@
+"""
+Transaction Management API Endpoints
+Handles payment processing, POS system, and transaction management
+"""
+
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from sqlalchemy.orm import Session, joinedload
+from decimal import Decimal
+import uuid
+from datetime import datetime, date
+
+from app.api.v1.dependencies import get_db, get_current_user
+from app.models.user import User
+from app.models.person import Person
+from app.models.application import Application
+from app.crud.crud_transaction import (
+    crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator
+)
+from app.crud.crud_person import crud_person
+from app.schemas.transaction import (
+    Transaction, TransactionCreate, TransactionUpdate,
+    CardOrder, CardOrderCreate, CardOrderUpdate,
+    FeeStructure, FeeStructureCreate, FeeStructureUpdate,
+    PersonPaymentSummary, PaymentRequest, PaymentResponse,
+    TransactionSummary, ReceiptData,
+    PayableApplicationItem, PayableCardOrderItem
+)
+
+router = APIRouter()
+
+
+# POS System Endpoints
+@router.get("/pos/search/{id_number}", response_model=PersonPaymentSummary)
+def search_person_for_payment(
+    id_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> PersonPaymentSummary:
+    """
+    Search for person by ID number and get their payable items
+    Used by POS system for payment processing
+    """
+    if not current_user.has_permission("transactions.create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to access POS system"
+        )
+    
+    # Find person by ID number
+    person = crud_person.get_by_id_number(db=db, id_number=id_number)
+    if not person:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person not found with this ID number"
+        )
+    
+    # Get payable applications
+    payable_applications = crud_transaction.get_payable_applications(db=db, person_id=person.id)
+    application_items = []
+    total_applications_amount = Decimal('0.00')
+    
+    for application in payable_applications:
+        # Calculate fees for this application
+        fees = transaction_calculator.calculate_application_fees(
+            db=db, application=application, fee_crud=crud_fee_structure
+        )
+        
+        application_total = sum(Decimal(str(fee['amount'])) for fee in fees)
+        total_applications_amount += application_total
+        
+        application_items.append(PayableApplicationItem(
+            id=application.id,
+            application_number=application.application_number,
+            application_type=application.application_type.value,
+            license_category=application.license_category.value,
+            status=application.status.value,
+            fees=fees,
+            total_amount=application_total
+        ))
+    
+    # Get payable card orders
+    payable_card_orders = crud_transaction.get_orderable_cards(db=db, person_id=person.id)
+    card_order_items = []
+    total_card_orders_amount = Decimal('0.00')
+    
+    for card_order in payable_card_orders:
+        total_card_orders_amount += card_order.fee_amount
+        
+        card_order_items.append(PayableCardOrderItem(
+            id=card_order.id,
+            order_number=card_order.order_number,
+            card_type=card_order.card_type,
+            urgency_level=card_order.urgency_level,
+            fee_amount=card_order.fee_amount,
+            application_number=card_order.application.application_number,
+            application_type=card_order.application.application_type.value
+        ))
+    
+    grand_total = total_applications_amount + total_card_orders_amount
+    
+    return PersonPaymentSummary(
+        person_id=person.id,
+        person_name=f"{person.first_name} {person.last_name}",
+        person_id_number=person.id_number,
+        payable_applications=application_items,
+        payable_card_orders=card_order_items,
+        total_applications_amount=total_applications_amount,
+        total_card_orders_amount=total_card_orders_amount,
+        grand_total_amount=grand_total
+    )
+
+
+@router.post("/pos/process-payment", response_model=PaymentResponse)
+def process_payment(
+    payment_request: PaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> PaymentResponse:
+    """
+    Process payment for selected applications and card orders
+    Main POS system payment endpoint
+    """
+    if not current_user.has_permission("transactions.create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to process payments"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(payment_request.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to process payments at this location"
+        )
+    
+    # Verify person exists
+    person = crud_person.get(db=db, id=payment_request.person_id)
+    if not person:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person not found"
+        )
+    
+    transaction_items = []
+    updated_applications = []
+    updated_card_orders = []
+    
+    # Process application payments
+    for application_id in payment_request.application_ids:
+        application = db.query(Application).filter(Application.id == application_id).first()
+        if not application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application {application_id} not found"
+            )
+        
+        if application.status != "SUBMITTED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Application {application.application_number} is not in SUBMITTED status"
+            )
+        
+        # Calculate fees for this application
+        fees = transaction_calculator.calculate_application_fees(
+            db=db, application=application, fee_crud=crud_fee_structure
+        )
+        
+        transaction_items.extend(fees)
+        updated_applications.append(application_id)
+    
+    # Process card order payments
+    for card_order_id in payment_request.card_order_ids:
+        card_order = crud_card_order.get(db=db, id=card_order_id)
+        if not card_order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Card order {card_order_id} not found"
+            )
+        
+        if card_order.status != "PENDING_PAYMENT":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Card order {card_order.order_number} is not pending payment"
+            )
+        
+        # Calculate fees for this card order
+        fees = transaction_calculator.calculate_card_fees(
+            db=db, card_order=card_order, fee_crud=crud_fee_structure
+        )
+        
+        transaction_items.extend(fees)
+        updated_card_orders.append(card_order_id)
+    
+    # Create transaction with payment
+    transaction = crud_transaction.create_with_items(
+        db=db,
+        person_id=payment_request.person_id,
+        location_id=payment_request.location_id,
+        processed_by=current_user.id,
+        items=transaction_items,
+        payment_method=payment_request.payment_method,
+        payment_reference=payment_request.payment_reference,
+        notes=payment_request.notes
+    )
+    
+    # Generate receipt URL (for future implementation)
+    receipt_url = f"/api/v1/transactions/{transaction.id}/receipt"
+    
+    success_message = f"Payment processed successfully. Receipt: {transaction.receipt_number}"
+    
+    return PaymentResponse(
+        transaction=transaction,
+        receipt_url=receipt_url,
+        updated_applications=updated_applications,
+        updated_card_orders=updated_card_orders,
+        success_message=success_message
+    )
+
+
+# Transaction CRUD Endpoints
+@router.get("/", response_model=List[Transaction])
+def get_transactions(
+    skip: int = 0,
+    limit: int = 100,
+    person_id: Optional[uuid.UUID] = None,
+    location_id: Optional[uuid.UUID] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[Transaction]:
+    """
+    Get transactions with optional filtering
+    """
+    if not current_user.has_permission("transactions.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read transactions"
+        )
+    
+    query = db.query(crud_transaction.model).options(
+        joinedload(crud_transaction.model.items),
+        joinedload(crud_transaction.model.person)
+    )
+    
+    # Apply filters
+    if person_id:
+        query = query.filter(crud_transaction.model.person_id == person_id)
+    
+    if location_id:
+        # Check location access
+        if not current_user.can_access_location(location_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access transactions from this location"
+            )
+        query = query.filter(crud_transaction.model.location_id == location_id)
+    else:
+        # If no location specified, filter by user's accessible locations
+        accessible_locations = current_user.get_accessible_locations()
+        if accessible_locations:
+            query = query.filter(crud_transaction.model.location_id.in_(accessible_locations))
+    
+    if status:
+        query = query.filter(crud_transaction.model.status == status)
+    
+    transactions = query.order_by(crud_transaction.model.created_at.desc()).offset(skip).limit(limit).all()
+    return transactions
+
+
+@router.get("/{transaction_id}", response_model=Transaction)
+def get_transaction(
+    transaction_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Transaction:
+    """
+    Get transaction by ID
+    """
+    transaction = crud_transaction.get(db=db, id=transaction_id)
+    if not transaction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(transaction.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this transaction"
+        )
+    
+    return transaction
+
+
+@router.get("/{transaction_id}/receipt")
+def get_transaction_receipt(
+    transaction_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generate and return transaction receipt (A4 format)
+    """
+    transaction = crud_transaction.get(db=db, id=transaction_id)
+    if not transaction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(transaction.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this transaction"
+        )
+    
+    # Mark receipt as printed
+    if not transaction.receipt_printed:
+        transaction.receipt_printed = True
+        transaction.receipt_printed_at = datetime.utcnow()
+        db.commit()
+    
+    # TODO: Generate actual PDF receipt
+    # For now, return receipt data as JSON
+    receipt_data = {
+        "receipt_number": transaction.receipt_number,
+        "transaction_number": transaction.transaction_number,
+        "date": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "person_name": f"{transaction.person.first_name} {transaction.person.last_name}",
+        "person_id": transaction.person.id_number,
+        "location": transaction.location.name if transaction.location else "Unknown",
+        "items": [
+            {
+                "description": item.description,
+                "amount": float(item.amount)
+            }
+            for item in transaction.items
+        ],
+        "total_amount": float(transaction.total_amount),
+        "payment_method": transaction.payment_method.value if transaction.payment_method else "Unknown",
+        "payment_reference": transaction.payment_reference,
+        "processed_by": f"{current_user.first_name} {current_user.last_name}",
+        "footer": "Please keep this receipt as proof of payment."
+    }
+    
+    return receipt_data
+
+
+# Card Order Endpoints
+@router.post("/card-orders", response_model=CardOrder)
+def create_card_order(
+    card_order_data: CardOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> CardOrder:
+    """
+    Create new card order
+    """
+    if not current_user.has_permission("card_orders.create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to create card orders"
+        )
+    
+    # Verify application exists and is eligible
+    application = db.query(Application).filter(Application.id == card_order_data.application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to create card orders for this application"
+        )
+    
+    # Check if card order already exists
+    existing_order = crud_card_order.get_by_application(db=db, application_id=application.id)
+    if existing_order:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Card order already exists for this application: {existing_order.order_number}"
+        )
+    
+    card_order = crud_card_order.create_for_application(
+        db=db,
+        application_id=application.id,
+        ordered_by=current_user.id,
+        urgency_level=card_order_data.urgency_level,
+        card_type=card_order_data.card_type
+    )
+    
+    return card_order
+
+
+@router.get("/card-orders", response_model=List[CardOrder])
+def get_card_orders(
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    person_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[CardOrder]:
+    """
+    Get card orders with optional filtering
+    """
+    if not current_user.has_permission("card_orders.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read card orders"
+        )
+    
+    query = db.query(crud_card_order.model).options(
+        joinedload(crud_card_order.model.application),
+        joinedload(crud_card_order.model.person)
+    )
+    
+    # Apply filters
+    if person_id:
+        query = query.filter(crud_card_order.model.person_id == person_id)
+    
+    if status:
+        query = query.filter(crud_card_order.model.status == status)
+    
+    # Filter by accessible locations through application
+    accessible_locations = current_user.get_accessible_locations()
+    if accessible_locations:
+        query = query.join(Application).filter(Application.location_id.in_(accessible_locations))
+    
+    card_orders = query.order_by(crud_card_order.model.created_at.desc()).offset(skip).limit(limit).all()
+    return card_orders
+
+
+# Fee Structure Management
+@router.get("/fee-structures", response_model=List[FeeStructure])
+def get_fee_structures(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[FeeStructure]:
+    """
+    Get all fee structures
+    """
+    if not current_user.has_permission("fee_structures.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read fee structures"
+        )
+    
+    return crud_fee_structure.get_effective_fees(db=db)
+
+
+@router.put("/fee-structures/{fee_structure_id}", response_model=FeeStructure)
+def update_fee_structure(
+    fee_structure_id: uuid.UUID,
+    fee_update: FeeStructureUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> FeeStructure:
+    """
+    Update fee structure
+    Requires admin permissions
+    """
+    if not current_user.has_permission("fee_structures.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to update fee structures"
+        )
+    
+    fee_structure = crud_fee_structure.get(db=db, id=fee_structure_id)
+    if not fee_structure:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fee structure not found"
+        )
+    
+    # Update last_updated_by
+    update_data = fee_update.dict(exclude_unset=True)
+    update_data['last_updated_by'] = current_user.id
+    
+    fee_structure = crud_fee_structure.update(db=db, db_obj=fee_structure, obj_in=update_data)
+    return fee_structure
+
+
+# Reporting Endpoints
+@router.get("/reports/daily-summary", response_model=TransactionSummary)
+def get_daily_transaction_summary(
+    summary_date: date,
+    location_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> TransactionSummary:
+    """
+    Get daily transaction summary for reporting
+    """
+    if not current_user.has_permission("transactions.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read transaction reports"
+        )
+    
+    # Use current user's primary location if not specified
+    if not location_id:
+        location_id = current_user.location_id
+    
+    # Check location access
+    if not current_user.can_access_location(location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access reports for this location"
+        )
+    
+    summary_datetime = datetime.combine(summary_date, datetime.min.time())
+    summary = crud_transaction.get_daily_summary(
+        db=db, location_id=location_id, date=summary_datetime
+    )
+    
+    return TransactionSummary(
+        date=summary_datetime,
+        location_id=location_id,
+        total_transactions=summary['total_transactions'],
+        total_amount=summary['total_amount'],
+        payment_methods=summary['payment_methods']
+    ) 

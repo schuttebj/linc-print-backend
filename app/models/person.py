@@ -82,8 +82,7 @@ class Person(BaseModel):
     # Relationships
     aliases = relationship("PersonAlias", back_populates="person", cascade="all, delete-orphan")
     addresses = relationship("PersonAddress", back_populates="person", cascade="all, delete-orphan")
-    # TODO: Add relationship to license applications when Applications module is implemented
-    # license_applications = relationship("LicenseApplication", back_populates="person")
+    transactions = relationship("Transaction", back_populates="person")
     
     def __repr__(self):
         return f"<Person(surname='{self.surname}', first_name='{self.first_name}', id={self.id})>"

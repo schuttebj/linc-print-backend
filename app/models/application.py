@@ -195,7 +195,6 @@ class Application(BaseModel):
     # Related models
     biometric_data = relationship("ApplicationBiometricData", back_populates="application")
     test_attempts = relationship("ApplicationTestAttempt", back_populates="application") 
-    fees = relationship("ApplicationFee", back_populates="application")
     status_history = relationship("ApplicationStatusHistory", back_populates="application")
     documents = relationship("ApplicationDocument", back_populates="application")
     authorization = relationship("ApplicationAuthorization", back_populates="application", uselist=False)
@@ -237,15 +236,7 @@ class Application(BaseModel):
         ]
         return self.license_category in categories_requiring_medical
 
-    def get_theory_test_fee_amount(self) -> int:
-        """Calculate theory test fee based on category (10,000 or 15,000 Ar)"""
-        heavy_categories = [
-            LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
-            LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
-        ]
-        if self.license_category in heavy_categories:
-            return 15000  # Ar for heavy categories
-        return 10000  # Ar for light categories
+
 
 
 class ApplicationBiometricData(BaseModel):
@@ -301,10 +292,7 @@ class ApplicationTestAttempt(BaseModel):
     test_result = Column(SQLEnum(TestResult), nullable=True, comment="Test result")
     score = Column(Numeric(5, 2), nullable=True, comment="Test score (percentage)")
     
-    # Fee tracking
-    fee_amount = Column(Numeric(10, 2), nullable=False, comment="Test fee amount (Ar)")
-    fee_paid = Column(Boolean, nullable=False, default=False, comment="Fee payment status")
-    payment_reference = Column(String(100), nullable=True, comment="Payment reference number")
+
     
     # Test metadata
     test_duration_minutes = Column(Integer, nullable=True, comment="Test duration in minutes")
@@ -330,45 +318,7 @@ class ApplicationTestAttempt(BaseModel):
         return f"<ApplicationTestAttempt(application_id={self.application_id}, type='{self.test_type}', attempt={self.attempt_number}, result='{self.test_result}')>"
 
 
-class ApplicationFee(BaseModel):
-    """Fee structure and payment tracking for applications"""
-    __tablename__ = "application_fees"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
-    
-    # Fee details
-    fee_type = Column(String(50), nullable=False, comment="Type of fee (theory_test, card_production, temporary_license)")
-    amount = Column(Numeric(10, 2), nullable=False, comment="Fee amount in Ariary (Ar)")
-    currency = Column(String(3), nullable=False, default='MGA', comment="Currency code (MGA = Madagascar Ariary)")
-    
-    # Payment status
-    payment_status = Column(SQLEnum(PaymentStatus), nullable=False, default=PaymentStatus.PENDING, comment="Payment status")
-    payment_date = Column(DateTime, nullable=True, comment="Date payment was made")
-    payment_method = Column(String(50), nullable=True, comment="Payment method (cash, mobile_money, etc.)")
-    payment_reference = Column(String(100), nullable=True, comment="Payment reference/receipt number")
-    
-    # Processing
-    processed_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who processed payment")
-    transaction_id = Column(UUID(as_uuid=True), nullable=True, comment="Transaction ID for accounting")
-    
-    # Fee metadata
-    due_date = Column(DateTime, nullable=True, comment="Payment due date")
-    discount_amount = Column(Numeric(10, 2), nullable=True, default=0, comment="Discount applied")
-    discount_reason = Column(String(200), nullable=True, comment="Reason for discount")
-    
-    # Receipt and documentation
-    receipt_number = Column(String(50), nullable=True, comment="Official receipt number")
-    receipt_file_path = Column(String(500), nullable=True, comment="Path to receipt file")
-    
-    # Notes
-    payment_notes = Column(Text, nullable=True, comment="Payment processing notes")
-    
-    # Relationships
-    application = relationship("Application", back_populates="fees")
-    processed_by_user = relationship("User", foreign_keys=[processed_by])
-    
-    def __repr__(self):
-        return f"<ApplicationFee(application_id={self.application_id}, type='{self.fee_type}', amount={self.amount}, status='{self.payment_status}')>"
 
 
 class ApplicationStatusHistory(BaseModel):
@@ -433,53 +383,7 @@ class ApplicationDocument(BaseModel):
         return f"<ApplicationDocument(application_id={self.application_id}, type='{self.document_type}', name='{self.document_name}')>"
 
 
-class FeeStructure(BaseModel):
-    """Configurable fee structure for Madagascar license system"""
-    __tablename__ = "fee_structures"
-    
-    # Fee identification
-    fee_type = Column(String(50), nullable=False, unique=True, comment="Type of fee (theory_test_ab, theory_test_cde, card_production, etc.)")
-    display_name = Column(String(100), nullable=False, comment="Human-readable fee name")
-    description = Column(Text, nullable=True, comment="Fee description")
-    
-    # Fee amount
-    amount = Column(Numeric(10, 2), nullable=False, comment="Fee amount in Ariary (Ar)")
-    currency = Column(String(3), nullable=False, default='MGA', comment="Currency code")
-    
-    # Fee applicability
-    applies_to_categories = Column(JSON, nullable=True, comment="License categories this fee applies to")
-    applies_to_application_types = Column(JSON, nullable=True, comment="Application types this fee applies to")
-    
-    # Fee settings
-    is_mandatory = Column(Boolean, nullable=False, default=True, comment="Whether fee is mandatory")
-    is_active = Column(Boolean, nullable=False, default=True, comment="Whether fee is currently active")
-    
-    # Date ranges
-    effective_from = Column(DateTime, nullable=False, default=func.now(), comment="When fee becomes effective")
-    effective_until = Column(DateTime, nullable=True, comment="When fee expires (null = indefinite)")
-    
-    # Management
-    created_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who created this fee structure")
-    last_updated_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who last updated this fee")
-    
-    # Relationships
-    created_by_user = relationship("User", foreign_keys=[created_by])
-    last_updated_by_user = relationship("User", foreign_keys=[last_updated_by])
-    
-    def __repr__(self):
-        return f"<FeeStructure(type='{self.fee_type}', amount={self.amount}, active={self.is_active})>"
 
-    @property
-    def is_effective(self) -> bool:
-        """Check if fee structure is currently effective"""
-        now = datetime.utcnow()
-        if not self.is_active:
-            return False
-        if self.effective_from > now:
-            return False
-        if self.effective_until and self.effective_until <= now:
-            return False
-        return True
 
 
 # License category display names for frontend

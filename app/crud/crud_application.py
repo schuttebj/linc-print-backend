@@ -12,7 +12,7 @@ import uuid
 from app.crud.base import CRUDBase
 from app.models.application import (
     Application, ApplicationBiometricData, ApplicationTestAttempt, 
-    ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure
+    ApplicationStatusHistory, ApplicationDocument
 )
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus,
@@ -23,9 +23,7 @@ from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationSearch,
     ApplicationBiometricDataCreate, ApplicationBiometricDataUpdate,
     ApplicationTestAttemptCreate, ApplicationTestAttemptUpdate,
-    ApplicationFeeCreate, ApplicationFeeUpdate,
-    ApplicationDocumentCreate, ApplicationDocumentUpdate,
-    FeeStructureCreate, FeeStructureUpdate
+    ApplicationDocumentCreate, ApplicationDocumentUpdate
 )
 
 
@@ -512,128 +510,7 @@ class CRUDApplicationTestAttempt(CRUDBase[ApplicationTestAttempt, ApplicationTes
         return f"LP{current_year}{next_sequence:04d}"
 
 
-class CRUDApplicationFee(CRUDBase[ApplicationFee, ApplicationFeeCreate, ApplicationFeeUpdate]):
-    """CRUD operations for Application Fees"""
-    
-    def create_application_fees(
-        self, 
-        db: Session, 
-        *, 
-        application_id: uuid.UUID,
-        created_by_user_id: uuid.UUID
-    ) -> List[ApplicationFee]:
-        """Create all required fees for an application based on type and categories"""
-        
-        application = db.query(Application).filter(Application.id == application_id).first()
-        if not application:
-            raise ValueError("Application not found")
-        
-        fees = []
-        
-        # Theory test fee
-        if application.requires_theory_test:
-            theory_fee_amount = application.get_theory_test_fee_amount()
-            fee = ApplicationFee(
-                application_id=application_id,
-                fee_type="theory_test",
-                amount=theory_fee_amount,
-                created_by=created_by_user_id,
-                updated_by=created_by_user_id
-            )
-            db.add(fee)
-            fees.append(fee)
-        
-        # Practical test fee (same as theory)
-        if application.requires_practical_test:
-            practical_fee_amount = application.get_theory_test_fee_amount()
-            fee = ApplicationFee(
-                application_id=application_id,
-                fee_type="practical_test", 
-                amount=practical_fee_amount,
-                created_by=created_by_user_id,
-                updated_by=created_by_user_id
-            )
-            db.add(fee)
-            fees.append(fee)
-        
-        # Card production fee (38,000 Ar for all applications requiring card)
-        if application.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.RENEWAL, 
-                                          ApplicationType.DUPLICATE, ApplicationType.UPGRADE]:
-            fee = ApplicationFee(
-                application_id=application_id,
-                fee_type="card_production",
-                amount=38000,
-                created_by=created_by_user_id,
-                updated_by=created_by_user_id
-            )
-            db.add(fee)
-            fees.append(fee)
-        
-        # Temporary license fee (varies by urgency)
-        if application.is_temporary_license:
-            temp_fee_amount = self._calculate_temporary_license_fee(application.priority)
-            fee = ApplicationFee(
-                application_id=application_id,
-                fee_type="temporary_license",
-                amount=temp_fee_amount,
-                created_by=created_by_user_id,
-                updated_by=created_by_user_id
-            )
-            db.add(fee)
-            fees.append(fee)
-        
-        db.commit()
-        
-        for fee in fees:
-            db.refresh(fee)
-        
-        return fees
-    
-    def _calculate_temporary_license_fee(self, priority: int) -> int:
-        """Calculate temporary license fee based on urgency"""
-        fee_mapping = {
-            1: 30000,   # Normal - 30,000 Ar
-            2: 100000,  # Urgent - 100,000 Ar
-            3: 400000,  # Emergency - 400,000 Ar
-        }
-        return fee_mapping.get(priority, 30000)
-    
-    def process_payment(
-        self, 
-        db: Session, 
-        *, 
-        fee_id: uuid.UUID,
-        processed_by: uuid.UUID,
-        payment_method: str,
-        payment_reference: Optional[str] = None
-    ) -> ApplicationFee:
-        """Process fee payment"""
-        fee = db.query(ApplicationFee).filter(ApplicationFee.id == fee_id).first()
-        if not fee:
-            raise ValueError("Fee not found")
-        
-        fee.payment_status = PaymentStatus.PAID
-        fee.payment_date = datetime.utcnow()
-        fee.payment_method = payment_method
-        fee.payment_reference = payment_reference
-        fee.processed_by = processed_by
-        
-        db.commit()
-        db.refresh(fee)
-        return fee
-    
-    def get_by_application(self, db: Session, *, application_id: uuid.UUID) -> List[ApplicationFee]:
-        """Get all fees for an application"""
-        return db.query(ApplicationFee).filter(ApplicationFee.application_id == application_id).all()
-    
-    def get_unpaid_fees(self, db: Session, *, application_id: uuid.UUID) -> List[ApplicationFee]:
-        """Get unpaid fees for an application"""
-        return db.query(ApplicationFee).filter(
-            and_(
-                ApplicationFee.application_id == application_id,
-                ApplicationFee.payment_status == PaymentStatus.PENDING
-            )
-        ).all()
+
 
 
 class CRUDApplicationDocument(CRUDBase[ApplicationDocument, ApplicationDocumentCreate, ApplicationDocumentUpdate]):
@@ -667,43 +544,11 @@ class CRUDApplicationDocument(CRUDBase[ApplicationDocument, ApplicationDocumentC
         return document
 
 
-class CRUDFeeStructure(CRUDBase[FeeStructure, FeeStructureCreate, FeeStructureUpdate]):
-    """CRUD operations for Fee Structure Management"""
-    
-    def get_active_fees(self, db: Session) -> List[FeeStructure]:
-        """Get all currently active fee structures"""
-        return db.query(FeeStructure).filter(FeeStructure.is_active == True).all()
-    
-    def get_effective_fees(self, db: Session, *, date: Optional[datetime] = None) -> List[FeeStructure]:
-        """Get fee structures effective on a specific date"""
-        if not date:
-            date = datetime.utcnow()
-        
-        return db.query(FeeStructure).filter(
-            and_(
-                FeeStructure.is_active == True,
-                FeeStructure.effective_from <= date,
-                or_(
-                    FeeStructure.effective_until.is_(None),
-                    FeeStructure.effective_until > date
-                )
-            )
-        ).all()
-    
-    def get_fee_for_type(self, db: Session, *, fee_type: str) -> Optional[FeeStructure]:
-        """Get current fee structure for a specific fee type"""
-        return db.query(FeeStructure).filter(
-            and_(
-                FeeStructure.fee_type == fee_type,
-                FeeStructure.is_active == True
-            )
-        ).first()
+
 
 
 # Create CRUD instances
 crud_application = CRUDApplication(Application)
 crud_application_biometric_data = CRUDApplicationBiometricData(ApplicationBiometricData)
 crud_application_test_attempt = CRUDApplicationTestAttempt(ApplicationTestAttempt)
-crud_application_fee = CRUDApplicationFee(ApplicationFee)
-crud_application_document = CRUDApplicationDocument(ApplicationDocument)
-crud_fee_structure = CRUDFeeStructure(FeeStructure) 
+crud_application_document = CRUDApplicationDocument(ApplicationDocument) 

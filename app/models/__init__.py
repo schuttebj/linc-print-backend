@@ -7,7 +7,10 @@ from app.models.user import User, Role, Permission, UserAuditLog, UserPermission
 from app.models.person import Person, PersonAlias, PersonAddress
 from app.models.application import (
     Application, ApplicationBiometricData, ApplicationTestAttempt, 
-    ApplicationFee, ApplicationStatusHistory, ApplicationDocument, FeeStructure
+    ApplicationStatusHistory, ApplicationDocument
+)
+from app.models.transaction import (
+    Transaction, TransactionItem, CardOrder, FeeStructure
 )
 from app.models.license import (
     License, LicenseStatusHistory
