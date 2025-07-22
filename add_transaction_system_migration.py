@@ -42,11 +42,31 @@ def run_migration():
                 DROP TABLE IF EXISTS fee_structures CASCADE;
             """))
             
+            # Create FeeType enum first
+            print("📋 Creating FeeType enum...")
+            
+            # Drop existing enum if it exists
+            db.execute(text("DROP TYPE IF EXISTS feetype CASCADE"))
+            
+            # Create FeeType enum with all values
+            fee_type_values = [
+                'THEORY_TEST_LIGHT', 'THEORY_TEST_HEAVY',
+                'PRACTICAL_TEST_LIGHT', 'PRACTICAL_TEST_HEAVY', 
+                'APPLICATION_PROCESSING',
+                'CARD_PRODUCTION', 'CARD_URGENT', 'CARD_EMERGENCY',
+                'TEMPORARY_LICENSE_NORMAL', 'TEMPORARY_LICENSE_URGENT', 'TEMPORARY_LICENSE_EMERGENCY',
+                'INTERNATIONAL_PERMIT', 'PROFESSIONAL_PERMIT', 'MEDICAL_CERTIFICATE'
+            ]
+            values_str = "', '".join(fee_type_values)
+            create_enum_sql = f"CREATE TYPE feetype AS ENUM ('{values_str}')"
+            db.execute(text(create_enum_sql))
+            print(f"✅ Created FeeType enum with {len(fee_type_values)} values")
+            
             # Create fee_structures table
             db.execute(text("""
                 CREATE TABLE fee_structures (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    fee_type VARCHAR(50) NOT NULL UNIQUE,
+                    fee_type feetype NOT NULL UNIQUE,
                     display_name VARCHAR(100) NOT NULL,
                     description TEXT,
                     amount NUMERIC(10, 2) NOT NULL,
