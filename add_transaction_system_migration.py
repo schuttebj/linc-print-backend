@@ -91,7 +91,7 @@ def run_migration():
                     receipt_printed BOOLEAN NOT NULL DEFAULT FALSE,
                     receipt_printed_at TIMESTAMP,
                     notes TEXT,
-                    metadata JSONB,
+                    transaction_metadata JSONB,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP
                 );
@@ -111,7 +111,7 @@ def run_migration():
                 COMMENT ON COLUMN transactions.receipt_printed IS 'Whether receipt was printed';
                 COMMENT ON COLUMN transactions.receipt_printed_at IS 'When receipt was printed';
                 COMMENT ON COLUMN transactions.notes IS 'Transaction notes';
-                COMMENT ON COLUMN transactions.metadata IS 'Additional transaction metadata';
+                COMMENT ON COLUMN transactions.transaction_metadata IS 'Additional transaction metadata';
                 
                 CREATE INDEX idx_transactions_person_id ON transactions(person_id);
                 CREATE INDEX idx_transactions_location_id ON transactions(location_id);
@@ -175,7 +175,7 @@ def run_migration():
                     application_id UUID REFERENCES applications(id),
                     card_order_id UUID REFERENCES card_orders(id),
                     fee_structure_id UUID REFERENCES fee_structures(id),
-                    metadata JSONB,
+                    item_metadata JSONB,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 

@@ -160,7 +160,7 @@ class Transaction(BaseModel):
     
     # Notes and metadata
     notes = Column(Text, nullable=True, comment="Transaction notes")
-    metadata = Column(JSON, nullable=True, comment="Additional transaction metadata")
+    transaction_metadata = Column(JSON, nullable=True, comment="Additional transaction metadata")
     
     # Relationships
     person = relationship("Person", back_populates="transactions")
@@ -190,7 +190,7 @@ class TransactionItem(BaseModel):
     fee_structure_id = Column(UUID(as_uuid=True), ForeignKey('fee_structures.id'), nullable=True, comment="Fee structure used")
     
     # Item metadata
-    metadata = Column(JSON, nullable=True, comment="Additional item metadata")
+    item_metadata = Column(JSON, nullable=True, comment="Additional item metadata")
     
     # Relationships
     transaction = relationship("Transaction", back_populates="items")

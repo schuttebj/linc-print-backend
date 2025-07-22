@@ -58,7 +58,7 @@ class TransactionItemBase(BaseModel):
     application_id: Optional[uuid.UUID] = None
     card_order_id: Optional[uuid.UUID] = None
     fee_structure_id: Optional[uuid.UUID] = None
-    metadata: Optional[Dict[str, Any]] = None
+    item_metadata: Optional[Dict[str, Any]] = None
 
 class TransactionItemCreate(TransactionItemBase):
     """Schema for creating Transaction Item"""
@@ -153,7 +153,7 @@ class Transaction(TransactionBase):
     receipt_number: Optional[str] = None
     receipt_printed: bool = False
     receipt_printed_at: Optional[datetime] = None
-    metadata: Optional[Dict[str, Any]] = None
+    transaction_metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     

@@ -98,7 +98,7 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
                 application_id=item_data.get('application_id'),
                 card_order_id=item_data.get('card_order_id'),
                 fee_structure_id=item_data.get('fee_structure_id'),
-                metadata=item_data.get('metadata')
+                item_metadata=item_data.get('metadata')
             )
             db.add(item)
         
