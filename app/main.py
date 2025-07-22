@@ -63,12 +63,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Madagascar License System...")
     
-    # Create database tables
-    try:
-        create_tables()
-        logger.info("Database tables created successfully")
-    except Exception as e:
-        logger.error(f"Failed to create database tables: {e}")
+    # Note: Table creation disabled during startup to prevent schema conflicts
+    # Use /admin/reset-database or /admin/init-tables endpoints for database management
+    logger.info("Database table auto-creation disabled - use admin endpoints for database management")
     
     yield
     
@@ -177,8 +174,34 @@ async def root():
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+"""
+==============================================================================
+ADMIN ENDPOINTS - DATABASE MANAGEMENT
+==============================================================================
 
-# Development/Admin endpoints for database management
+Database Management Workflow:
+1. For fresh setup: POST /admin/init-tables (creates tables with correct schema)
+2. For complete reset: POST /admin/reset-database (drops all tables, recreates, initializes data)
+3. For schema fixes: POST /admin/fix-fee-structures-schema (adds missing columns)
+
+IMPORTANT: Auto table creation on deployment is DISABLED to prevent schema conflicts.
+Always use the above endpoints for database management.
+
+Available Admin Endpoints:
+- /admin/drop-tables: Drop all database tables
+- /admin/init-tables: Create tables with latest schema
+- /admin/reset-database: Complete database reset with data initialization
+- /admin/fix-license-enum: Fix LicenseCategory enum values
+- /admin/fix-fee-structures-schema: Fix fee_structures table schema
+- /admin/init-users: Initialize default users and roles
+- /admin/init-locations: Initialize Madagascar locations
+- /admin/init-location-users: Initialize location-based users
+- /admin/init-fee-structures: Initialize fee structures
+- /admin/inspect-database: Inspect current database schema
+
+==============================================================================
+"""
+
 @app.post("/admin/drop-tables", tags=["Admin"])
 async def drop_all_tables():
     """Drop all database tables - DEVELOPMENT ONLY"""
