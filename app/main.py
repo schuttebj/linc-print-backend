@@ -771,14 +771,13 @@ async def initialize_users():
             
     except Exception as e:
         logger.error(f"Failed to initialize users: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": f"Failed to initialize users: {str(e)}",
-                "timestamp": time.time()
-            }
-        )
+        return {
+            "status": "error",
+            "message": f"Failed to initialize users: {str(e)}",
+            "permissions_created": 0,
+            "roles_created": 0,
+            "timestamp": time.time()
+        }
 
 
 @app.post("/admin/init-locations", tags=["Admin"])
@@ -1031,14 +1030,12 @@ async def initialize_locations():
             
     except Exception as e:
         logger.error(f"Failed to initialize locations: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": f"Failed to initialize locations: {str(e)}",
-                "timestamp": time.time()
-            }
-        )
+        return {
+            "status": "error",
+            "message": f"Failed to initialize locations: {str(e)}",
+            "total_locations": 0,
+            "timestamp": time.time()
+        }
 
 
 @app.post("/admin/init-location-users", tags=["Admin"])
@@ -1059,27 +1056,25 @@ async def initialize_location_users():
             printer_role = db.query(Role).filter(Role.name == "printer").first()
             
             if not all([supervisor_role, clerk_role, printer_role]):
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "status": "error",
-                        "message": "Required location roles not found. Please initialize roles first.",
-                        "timestamp": time.time()
-                    }
-                )
+                return {
+                    "status": "error",
+                    "message": "Required location roles not found. Please initialize roles first.",
+                    "users_created": 0,
+                    "total_users_created": 0,
+                    "timestamp": time.time()
+                }
             
             # Get operational locations  
             locations = db.query(Location).filter(Location.is_operational == True).all()
             
             if not locations:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "status": "error",
-                        "message": "No operational locations found. Please initialize locations first.",
-                        "timestamp": time.time()
-                    }
-                )
+                return {
+                    "status": "error",
+                    "message": "No operational locations found. Please initialize locations first.",
+                    "users_created": 0,
+                    "total_users_created": 0,
+                    "timestamp": time.time()
+                }
             
             # Test users data for each location
             user_templates = [
@@ -1186,14 +1181,13 @@ async def initialize_location_users():
             
     except Exception as e:
         logger.error(f"Failed to initialize location users: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": f"Failed to initialize location users: {str(e)}",
-                "timestamp": time.time()
-            }
-        )
+        return {
+            "status": "error",
+            "message": f"Failed to initialize location users: {str(e)}",
+            "users_created": 0,
+            "total_users_created": 0,
+            "timestamp": time.time()
+        }
 
 
 @app.post("/admin/init-fee-structures", tags=["Admin"])
@@ -1201,7 +1195,7 @@ async def initialize_fee_structures():
     """Initialize default fee structures for applications module"""
     try:
         from app.core.database import get_db
-        from app.models.transaction import FeeStructure
+        from app.models.transaction import FeeStructure, DEFAULT_FEE_STRUCTURE, FeeType
         from app.models.enums import LicenseCategory, ApplicationType
         
         db = next(get_db())
@@ -1214,137 +1208,14 @@ async def initialize_fee_structures():
                     "status": "success",
                     "message": f"Fee structures already exist ({existing_count} records)",
                     "skipped": True,
+                    "total_created": 0,
                     "timestamp": time.time()
                 }
             
-            # Madagascar Driver's License Fee Structure
-            # Using FeeStructure model with proper field names
-            fee_structures = [
-                # Theory Test Fees for Light Categories (10,000 Ar)
-                {
-                    "fee_type": "theory_test_light",
-                    "display_name": "Theory Test - Light Categories",
-                    "description": "Theory test fee for A1/A2/A (Motorcycles), B1/B (Light Vehicles)",
-                    "amount": 10000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B"],
-                    "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # Theory Test Fees for Heavy/Commercial Categories (15,000 Ar)
-                {
-                    "fee_type": "theory_test_heavy",
-                    "display_name": "Theory Test - Heavy/Commercial Categories", 
-                    "description": "Theory test fee for B2, BE, C1, C, C1E, CE, D1, D, D2 categories",
-                    "amount": 15000.0,
-                    "applies_to_categories": ["B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["NEW_LICENSE", "LEARNERS_PERMIT"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # Practical Test Fees for Light Categories (10,000 Ar)
-                {
-                    "fee_type": "practical_test_light",
-                    "display_name": "Practical Test - Light Categories",
-                    "description": "Practical test fee for A1/A2/A (Motorcycles), B1/B (Light Vehicles)",
-                    "amount": 10000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B"],
-                    "applies_to_application_types": ["NEW_LICENSE"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # Practical Test Fees for Heavy/Commercial Categories (15,000 Ar)
-                {
-                    "fee_type": "practical_test_heavy",
-                    "display_name": "Practical Test - Heavy/Commercial Categories",
-                    "description": "Practical test fee for B2, BE, C1, C, C1E, CE, D1, D, D2 categories",
-                    "amount": 15000.0,
-                    "applies_to_categories": ["B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["NEW_LICENSE"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # Card Production Fee (38,000 Ar - applies to all)
-                {
-                    "fee_type": "card_production",
-                    "display_name": "License Card Production",
-                    "description": "Card production fee for CIM-produced license cards (all SADC categories)",
-                    "amount": 38000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["NEW_LICENSE", "RENEWAL", "REPLACEMENT"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # Temporary License Fees (urgency-based pricing)
-                {
-                    "fee_type": "temporary_license_standard",
-                    "display_name": "Temporary License - Standard",
-                    "description": "Standard temporary license fee (90-day A4 permit)",
-                    "amount": 30000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                {
-                    "fee_type": "temporary_license_urgent",
-                    "display_name": "Temporary License - Urgent",
-                    "description": "Urgent temporary license fee (same-day processing)",
-                    "amount": 100000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                {
-                    "fee_type": "temporary_license_emergency",
-                    "display_name": "Temporary License - Emergency",
-                    "description": "Emergency temporary license fee (immediate processing)",
-                    "amount": 400000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["TEMPORARY_LICENSE"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # International Permit Fee (50,000 Ar)
-                {
-                    "fee_type": "international_permit",
-                    "display_name": "International Driving Permit",
-                    "description": "International driving permit fee (based on existing license)",
-                    "amount": 50000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["INTERNATIONAL_PERMIT"],
-                    "is_mandatory": True,
-                    "is_active": True
-                },
-                
-                # License Renewal Fee (20,000 Ar)
-                {
-                    "fee_type": "license_renewal",
-                    "display_name": "License Renewal",
-                    "description": "License renewal fee (5-year validity for all categories)",
-                    "amount": 20000.0,
-                    "applies_to_categories": ["A1", "A2", "A", "B1", "B", "B2", "BE", "C1", "C", "C1E", "CE", "D1", "D", "D2"],
-                    "applies_to_application_types": ["RENEWAL"],
-                    "is_mandatory": True,
-                    "is_active": True
-                }
-            ]
-            
-            # Get system user for created_by field
-            from app.models.user import User
-            from app.models.enums import UserType
-            
-            # Debug: Check what users exist
+            # Get all users for debugging
             all_users = db.query(User).all()
             logger.info(f"Fee structures init: Found {len(all_users)} users in database")
-            for user in all_users[:5]:  # Log first 5 users
+            for user in all_users:
                 logger.info(f"  User: {user.username}, type: {user.user_type}, id: {user.id}")
             
             # Try to find system user in order of preference
@@ -1358,26 +1229,30 @@ async def initialize_fee_structures():
             logger.info(f"Selected system user: {system_user.username if system_user else 'None'}")
             
             if not system_user:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "status": "error",
-                        "message": "No users found in database. Please initialize users first.",
-                        "timestamp": time.time()
-                    }
-                )
+                return {
+                    "status": "error",
+                    "message": "No users found in database. Please initialize users first.",
+                    "total_created": 0,
+                    "timestamp": time.time()
+                }
             
             created_fees = []
-            for fee_data in fee_structures:
-                # Add created_by field
-                fee_data["created_by"] = system_user.id
-                fee = FeeStructure(**fee_data)
+            for fee_type, fee_data in DEFAULT_FEE_STRUCTURE.items():
+                # Create FeeStructure with only the fields that exist in the model
+                fee = FeeStructure(
+                    fee_type=fee_type,
+                    display_name=fee_data["display_name"],
+                    description=fee_data["description"],
+                    amount=fee_data["amount"],
+                    created_by=system_user.id,
+                    is_active=True
+                )
                 db.add(fee)
                 db.flush()
                 created_fees.append({
-                    "fee_type": fee_data["fee_type"],
+                    "fee_type": fee_type.value,
                     "display_name": fee_data["display_name"],
-                    "amount": fee_data["amount"],
+                    "amount": str(fee_data["amount"]),
                     "description": fee_data["description"]
                 })
             
@@ -1389,14 +1264,14 @@ async def initialize_fee_structures():
                 "created_fee_structures": created_fees,
                 "total_created": len(created_fees),
                 "summary": {
-                    "theory_test_fees": "Light (A1/A2/A/B1/B): 10,000 Ar, Heavy/Commercial (B2/BE/C1/C/C1E/CE/D1/D/D2): 15,000 Ar",
-                    "practical_test_fees": "Same as theory test fees",
-                    "card_production": "38,000 Ar (single fee)",
-                    "temporary_licenses": "30,000-400,000 Ar (urgency-based)",
-                    "international_permit": "50,000 Ar",
-                    "renewals": "20,000 Ar"
+                    "theory_test_fees": "Light (10,000 Ar), Heavy (15,000 Ar)",
+                    "practical_test_fees": "Light (10,000 Ar), Heavy (15,000 Ar)",
+                    "card_production": "38,000 Ar (standard)",
+                    "card_urgent": "100,000 Ar",
+                    "card_emergency": "400,000 Ar",
+                    "application_processing": "5,000 Ar"
                 },
-                "note": "Madagascar driver's license fee structure using SADC license codes",
+                "note": "Madagascar driver's license fee structure",
                 "timestamp": time.time()
             }
             
@@ -1405,14 +1280,12 @@ async def initialize_fee_structures():
             
     except Exception as e:
         logger.error(f"Failed to initialize fee structures: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": f"Failed to initialize fee structures: {str(e)}",
-                "timestamp": time.time()
-            }
-        )
+        return {
+            "status": "error",
+            "message": f"Failed to initialize fee structures: {str(e)}",
+            "total_created": 0,
+            "timestamp": time.time()
+        }
 
 
 async def cleanup_biometric_files():
@@ -1508,23 +1381,23 @@ async def reset_database():
         # Step 2: Initialize all data automatically
         logger.info("Initializing users, roles, and permissions...")
         users_result = await initialize_users()
-        if users_result.get("status") != "success":
-            raise Exception(f"Failed to initialize users: {users_result.get('message', 'Unknown error')}")
+        if not isinstance(users_result, dict) or users_result.get("status") != "success":
+            raise Exception(f"Failed to initialize users: {users_result.get('message', 'Unknown error') if isinstance(users_result, dict) else 'JSONResponse returned'}")
         
         logger.info("Initializing locations...")
         locations_result = await initialize_locations()
-        if locations_result.get("status") != "success":
-            raise Exception(f"Failed to initialize locations: {locations_result.get('message', 'Unknown error')}")
+        if not isinstance(locations_result, dict) or locations_result.get("status") != "success":
+            raise Exception(f"Failed to initialize locations: {locations_result.get('message', 'Unknown error') if isinstance(locations_result, dict) else 'JSONResponse returned'}")
         
         logger.info("Initializing location users...")
         location_users_result = await initialize_location_users()
-        if location_users_result.get("status") != "success":
-            raise Exception(f"Failed to initialize location users: {location_users_result.get('message', 'Unknown error')}")
+        if not isinstance(location_users_result, dict) or location_users_result.get("status") != "success":
+            raise Exception(f"Failed to initialize location users: {location_users_result.get('message', 'Unknown error') if isinstance(location_users_result, dict) else 'JSONResponse returned'}")
         
         logger.info("Initializing fee structures...")
         fee_structures_result = await initialize_fee_structures()
-        if fee_structures_result.get("status") != "success":
-            raise Exception(f"Failed to initialize fee structures: {fee_structures_result.get('message', 'Unknown error')}")
+        if not isinstance(fee_structures_result, dict) or fee_structures_result.get("status") != "success":
+            raise Exception(f"Failed to initialize fee structures: {fee_structures_result.get('message', 'Unknown error') if isinstance(fee_structures_result, dict) else 'JSONResponse returned'}")
         
         return {
             "status": "success",
@@ -1542,11 +1415,11 @@ async def reset_database():
                 "enum_values_created": len(enum_values),
                 "biometric_files_removed": files_cleaned.get("files_removed", 0),
                 "biometric_folders_removed": files_cleaned.get("folders_removed", 0),
-                "permissions_created": users_result.get("permissions_created", 0),
-                "roles_created": users_result.get("roles_created", 0),
-                "locations_created": locations_result.get("locations_created", 0),
-                "location_users_created": location_users_result.get("users_created", 0),
-                "fee_structures_created": fee_structures_result.get("total_created", 0)
+                "permissions_created": users_result.get("permissions_created", 0) if isinstance(users_result, dict) else 0,
+                "roles_created": users_result.get("roles_created", 0) if isinstance(users_result, dict) else 0,
+                "locations_created": locations_result.get("total_locations", 0) if isinstance(locations_result, dict) else 0,
+                "location_users_created": location_users_result.get("total_users_created", 0) if isinstance(location_users_result, dict) else 0,
+                "fee_structures_created": fee_structures_result.get("total_created", 0) if isinstance(fee_structures_result, dict) else 0
             },
             "admin_credentials": {
                 "username": "admin",
