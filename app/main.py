@@ -1304,6 +1304,77 @@ async def initialize_fee_structures():
         }
 
 
+@app.post("/admin/fix-fee-structures-schema", tags=["Admin"])
+async def fix_fee_structures_schema():
+    """Fix the fee_structures table schema by adding the missing fee_type column"""
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text
+        from app.models.transaction import FeeType
+        
+        with engine.connect() as conn:
+            # First, check if fee_type column exists
+            check_column = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'fee_structures' 
+                AND column_name = 'fee_type'
+            """)).fetchone()
+            
+            if check_column:
+                return {
+                    "status": "success",
+                    "message": "fee_type column already exists",
+                    "action": "no_change_needed"
+                }
+            
+            # Add the fee_type column
+            print("🔧 Adding fee_type column to fee_structures table...")
+            conn.execute(text("""
+                ALTER TABLE fee_structures 
+                ADD COLUMN fee_type feetype NOT NULL DEFAULT 'APPLICATION_PROCESSING'
+            """))
+            
+            # Remove the default after adding
+            conn.execute(text("""
+                ALTER TABLE fee_structures 
+                ALTER COLUMN fee_type DROP DEFAULT
+            """))
+            
+            # Add unique constraint
+            conn.execute(text("""
+                ALTER TABLE fee_structures 
+                ADD CONSTRAINT fee_structures_fee_type_unique UNIQUE (fee_type)
+            """))
+            
+            conn.commit()
+            
+            # Verify the column was added
+            verify_column = conn.execute(text("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'fee_structures' 
+                AND column_name = 'fee_type'
+            """)).fetchone()
+            
+            return {
+                "status": "success",
+                "message": "fee_type column added successfully to fee_structures table",
+                "verification": {
+                    "column_exists": verify_column is not None,
+                    "column_type": verify_column[1] if verify_column else None
+                },
+                "next_step": "Run database reset again to populate with correct data"
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to fix fee_structures schema: {str(e)}",
+            "error_type": type(e).__name__
+        }
+
+
 async def cleanup_biometric_files():
     """
     Clean up all biometric files from storage
