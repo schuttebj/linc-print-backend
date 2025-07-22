@@ -579,4 +579,92 @@ class ApplicationDocument(BaseModel):
     verified_by_user = relationship("User", foreign_keys=[verified_by])
 
     def __repr__(self):
-        return f"<ApplicationDocument(application_id={self.application_id}, type='{self.document_type}', name='{self.document_name}')>" 
+        return f"<ApplicationDocument(application_id={self.application_id}, type='{self.document_type}', name='{self.document_name}')>"
+
+
+class ApplicationAuthorization(BaseModel):
+    """Application authorization for license generation"""
+    __tablename__ = "application_authorizations"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, unique=True, comment="Application ID (one authorization per application)")
+    examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="Examiner who conducted the authorization")
+    infrastructure_number = Column(String(20), nullable=True, comment="Infrastructure number for the authorization")
+    
+    # Test results
+    is_absent = Column(Boolean, nullable=False, default=False, comment="Applicant was absent for test")
+    is_failed = Column(Boolean, nullable=False, default=False, comment="Applicant failed the test")
+    eye_test_result = Column(String(10), nullable=True, comment="Eye test result (PASS/FAIL)")
+    driving_test_result = Column(String(10), nullable=True, comment="Driving test result (PASS/FAIL)")
+    driving_test_score = Column(Numeric(5, 2), nullable=True, comment="Driving test score")
+    
+    # Vehicle restrictions
+    vehicle_restriction_none = Column(Boolean, nullable=False, default=True, comment="No vehicle restrictions")
+    vehicle_restriction_automatic = Column(Boolean, nullable=False, default=False, comment="Automatic transmission only")
+    vehicle_restriction_electric = Column(Boolean, nullable=False, default=False, comment="Electric vehicles only")
+    vehicle_restriction_disabled = Column(Boolean, nullable=False, default=False, comment="Vehicles adapted for disabilities")
+    
+    # Driver restrictions  
+    driver_restriction_none = Column(Boolean, nullable=False, default=True, comment="No driver restrictions")
+    driver_restriction_glasses = Column(Boolean, nullable=False, default=False, comment="Must wear corrective lenses")
+    driver_restriction_artificial_limb = Column(Boolean, nullable=False, default=False, comment="Uses artificial limb")
+    driver_restriction_glasses_and_limb = Column(Boolean, nullable=False, default=False, comment="Glasses and artificial limb")
+    
+    # Authorization decision
+    is_authorized = Column(Boolean, nullable=False, default=False, comment="Application is authorized for license generation")
+    authorization_date = Column(DateTime, nullable=True, comment="Date authorization was granted")
+    authorization_notes = Column(Text, nullable=True, comment="Authorization notes and comments")
+    
+    # Additional test details
+    test_location = Column(String(200), nullable=True, comment="Location where test was conducted")
+    test_vehicle_details = Column(String(500), nullable=True, comment="Details of test vehicle used")
+    weather_conditions = Column(String(100), nullable=True, comment="Weather conditions during test")
+    
+    # Audit fields
+    created_at = Column(DateTime, nullable=False, default=func.now(), comment="Authorization creation timestamp")
+    updated_at = Column(DateTime, nullable=True, onupdate=func.now(), comment="Last update timestamp")
+    
+    # Relationships
+    application = relationship("Application", back_populates="authorization")
+    examiner = relationship("User", foreign_keys=[examiner_id])
+
+    @property
+    def test_passed(self) -> bool:
+        """Check if all tests were passed"""
+        return (
+            not self.is_absent and
+            not self.is_failed and
+            self.eye_test_result == "PASS" and
+            self.driving_test_result == "PASS"
+        )
+    
+    def get_restriction_codes(self) -> list:
+        """Get list of applicable license restriction codes"""
+        from app.models.enums import LicenseRestrictionCode
+        
+        codes = []
+        
+        # Driver restrictions
+        if self.driver_restriction_glasses:
+            codes.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
+        
+        if self.driver_restriction_artificial_limb:
+            codes.append(LicenseRestrictionCode.PROSTHETICS)
+            
+        if self.driver_restriction_glasses_and_limb:
+            codes.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
+            codes.append(LicenseRestrictionCode.PROSTHETICS)
+        
+        # Vehicle restrictions
+        if self.vehicle_restriction_automatic:
+            codes.append(LicenseRestrictionCode.AUTOMATIC_TRANSMISSION)
+            
+        if self.vehicle_restriction_electric:
+            codes.append(LicenseRestrictionCode.ELECTRIC_POWERED)
+            
+        if self.vehicle_restriction_disabled:
+            codes.append(LicenseRestrictionCode.PHYSICAL_DISABLED)
+        
+        return list(set(codes))  # Remove duplicates
+    
+    def __repr__(self):
+        return f"<ApplicationAuthorization(application_id={self.application_id}, examiner_id={self.examiner_id}, authorized={self.is_authorized})>" 
