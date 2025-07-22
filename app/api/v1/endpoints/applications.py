@@ -2386,16 +2386,37 @@ def search_person_for_approval(
             detail="Not enough permissions to search for applications"
         )
     
-    # Find person by ID number
-    from app.models.person import Person
-    person = db.query(Person).filter(Person.id_number == id_number.strip()).first()
+    # Find person by ID number through their alias (document)
+    # First try to find the alias by document number
+    from app.crud import person_alias
+    found_person_alias = person_alias.get_by_document_number(
+        db=db, 
+        document_number=id_number.strip(),
+        document_type="MADAGASCAR_ID"  # National ID document type
+    )
     
-    if not person:
+    # If not found as MADAGASCAR_ID, try without document type filter
+    if not found_person_alias:
+        found_person_alias = person_alias.get_by_document_number(
+            db=db, 
+            document_number=id_number.strip()
+        )
+    
+    if not found_person_alias:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Person not found with this ID number"
         )
     
+    # Get the person from the alias
+    from app.crud import crud_person
+    person = crud_person.get(db=db, id=found_person_alias.person_id)
+    if not person:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person record not found"
+        )
+
     # Get applications pending approval for this person
     applications = db.query(Application).filter(
         Application.person_id == person.id,
@@ -2497,15 +2518,15 @@ def search_person_for_approval(
     return {
         "person": {
             "id": str(person.id),
-            "name": f"{person.first_name} {person.last_name}",
-            "id_number": person.id_number
+            "name": f"{person.first_name} {person.surname}",
+            "id_number": found_person_alias.document_number
         },
         "applications": [
             {
                 "id": str(app.id),
                 "application_number": app.application_number,
                 "application_type": app.application_type.value,
-                "license_category": app.license_category,
+                "license_category": app.license_category.value,
                 "status": app.status.value,
                 "medical_information": app.medical_information
             } for app in applications
