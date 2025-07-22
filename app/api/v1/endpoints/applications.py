@@ -1121,11 +1121,14 @@ async def upload_biometric_data(
                 application_id=application_id,
                 data_type="PHOTO",
                 file_path=str(result["standard_version"]["file_path"]),  # Primary path for standard version
+                file_name=result["standard_version"]["filename"],
                 file_size=result["standard_version"]["file_size"],
                 file_format=result["standard_version"]["format"],
-                image_resolution=result["standard_version"]["dimensions"],
-                capture_method=capture_method or "WEBCAM",
-                capture_metadata=metadata_clean  # Use the JSON-cleaned version
+                capture_device=capture_method or "WEBCAM",
+                capture_software="ImageService",
+                capture_metadata=metadata_clean,  # Use the JSON-cleaned version
+                captured_by=current_user.id,
+                is_processed=True
             )
             
             create_dict = biometric_data_create.dict()
@@ -1208,9 +1211,13 @@ async def upload_biometric_data(
                 application_id=application_id,
                 data_type=data_type.upper(),
                 file_path=str(file_path),
+                file_name=filename,
                 file_size=file_size,
                 file_format=file_extension.upper(),
-                capture_method=capture_method or "DIGITAL_PAD"
+                capture_device=capture_method or "DIGITAL_PAD",
+                capture_software="FileUpload",
+                captured_by=current_user.id,
+                is_processed=True
             )
             
             # Save to database
@@ -1296,15 +1303,21 @@ async def get_biometric_data(
             biometric_item = {
                 "id": str(item.id),
                 "file_path": item.file_path,
+                "file_name": item.file_name,
                 "file_size": item.file_size,
                 "file_format": item.file_format,
-                "capture_method": item.capture_method,
-                "image_resolution": item.image_resolution,
+                "capture_device": item.capture_device,
+                "capture_software": item.capture_software,
                 "quality_score": float(item.quality_score) if item.quality_score else None,
+                "quality_metrics": item.quality_metrics,
+                "is_processed": item.is_processed,
                 "is_verified": item.is_verified,
                 "capture_metadata": item.capture_metadata,
+                "processing_notes": item.processing_notes,
                 "created_at": item.created_at.isoformat(),
-                "notes": item.notes
+                "captured_by": str(item.captured_by) if item.captured_by else None,
+                "verified_by": str(item.verified_by) if item.verified_by else None,
+                "verified_at": item.verified_at.isoformat() if item.verified_at else None
             }
             
             # Add file URLs for frontend consumption

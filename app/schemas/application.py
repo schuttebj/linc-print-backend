@@ -371,14 +371,20 @@ class ApplicationBiometricDataBase(BaseModel):
     application_id: uuid.UUID
     data_type: BiometricDataType
     file_path: Optional[str] = None
+    file_name: Optional[str] = None
     file_size: Optional[int] = None
     file_format: Optional[str] = None
-    capture_method: Optional[str] = None
-    capture_device_id: Optional[str] = None
-    image_resolution: Optional[str] = None
-    quality_score: Optional[Decimal] = None
+    capture_device: Optional[str] = None
+    capture_software: Optional[str] = None
     capture_metadata: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
+    quality_score: Optional[Decimal] = None
+    quality_metrics: Optional[Dict[str, Any]] = None
+    is_processed: Optional[bool] = False
+    is_verified: Optional[bool] = False
+    processing_notes: Optional[str] = None
+    captured_by: Optional[uuid.UUID] = None
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
 
 
 class ApplicationBiometricDataCreate(ApplicationBiometricDataBase):
@@ -389,23 +395,31 @@ class ApplicationBiometricDataCreate(ApplicationBiometricDataBase):
 class ApplicationBiometricDataUpdate(BaseModel):
     """Schema for updating biometric data"""
     file_path: Optional[str] = None
+    file_name: Optional[str] = None
     file_size: Optional[int] = None
     file_format: Optional[str] = None
-    quality_score: Optional[Decimal] = None
-    is_verified: Optional[bool] = None
-    verified_by: Optional[uuid.UUID] = None
+    capture_device: Optional[str] = None
+    capture_software: Optional[str] = None
     capture_metadata: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
+    quality_score: Optional[Decimal] = None
+    quality_metrics: Optional[Dict[str, Any]] = None
+    is_processed: Optional[bool] = None
+    is_verified: Optional[bool] = None
+    processing_notes: Optional[str] = None
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
 
 
 class ApplicationBiometricDataInDB(ApplicationBiometricDataBase):
     """Schema for biometric data in database"""
     id: uuid.UUID
-    is_verified: bool = False
-    verified_by: Optional[uuid.UUID] = None
-    verified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    created_by: Optional[uuid.UUID] = None
+    updated_by: Optional[uuid.UUID] = None
+    is_active: Optional[bool] = True
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[uuid.UUID] = None
 
     class Config:
         from_attributes = True
