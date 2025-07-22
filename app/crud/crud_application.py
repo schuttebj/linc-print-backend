@@ -75,11 +75,11 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         # Create initial status history
         status_history = ApplicationStatusHistory(
             application_id=db_obj.id,
-            from_status=None,
-            to_status=ApplicationStatus.DRAFT,
+            previous_status=None,
+            new_status=ApplicationStatus.DRAFT,
             changed_by=created_by_user_id,
-            reason="Application created",
-            notes="Initial application creation"
+            change_reason="Application created",
+            change_notes="Initial application creation"
         )
         db.add(status_history)
         
@@ -244,11 +244,11 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         # Create status history entry
         status_history = ApplicationStatusHistory(
             application_id=application_id,
-            from_status=old_status,
-            to_status=new_status,
+            previous_status=old_status,
+            new_status=new_status,
             changed_by=changed_by,
-            reason=reason,
-            notes=notes
+            change_reason=reason,
+            change_notes=notes
         )
         db.add(status_history)
         

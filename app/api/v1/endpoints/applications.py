@@ -1885,11 +1885,11 @@ def create_application_authorization(
         from app.models.application import ApplicationStatusHistory
         status_history = ApplicationStatusHistory(
             application_id=application_id,
-            from_status=ApplicationStatus.PASSED,
-            to_status=ApplicationStatus.APPROVED,
+            previous_status=ApplicationStatus.PASSED,
+            new_status=ApplicationStatus.APPROVED,
             changed_by=current_user.id,
-            reason="Application authorized by examiner",
-            notes=f"Authorized by {current_user.username}"
+            change_reason="Application authorized by examiner",
+            change_notes=f"Authorized by {current_user.username}"
         )
         db.add(status_history)
         

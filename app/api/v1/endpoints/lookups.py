@@ -309,14 +309,12 @@ async def get_fee_structures(db: Session = Depends(get_db)) -> List[Dict[str, An
     
     return [
         {
-            "fee_type": fee.fee_type,
+            "fee_type": fee.fee_type.value if hasattr(fee.fee_type, 'value') else fee.fee_type,
             "display_name": fee.display_name,
             "description": fee.description,
             "amount": float(fee.amount),
             "currency": fee.currency,
-            "applies_to_categories": fee.applies_to_categories,
-            "applies_to_application_types": fee.applies_to_application_types,
-            "is_mandatory": fee.is_mandatory,
+            "is_active": fee.is_active,
             "effective_from": fee.effective_from.isoformat() if fee.effective_from else None,
             "effective_until": fee.effective_until.isoformat() if fee.effective_until else None
         }
@@ -511,14 +509,12 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
         ],
         "fee_structures": [
             {
-                "fee_type": fee.fee_type,
+                "fee_type": fee.fee_type.value if hasattr(fee.fee_type, 'value') else fee.fee_type,
                 "display_name": fee.display_name,
                 "description": fee.description,
                 "amount": float(fee.amount),
                 "currency": fee.currency,
-                "applies_to_categories": fee.applies_to_categories,
-                "applies_to_application_types": fee.applies_to_application_types,
-                "is_mandatory": fee.is_mandatory,
+                "is_active": fee.is_active,
                 "effective_from": fee.effective_from.isoformat() if fee.effective_from else None,
                 "effective_until": fee.effective_until.isoformat() if fee.effective_until else None
             }
