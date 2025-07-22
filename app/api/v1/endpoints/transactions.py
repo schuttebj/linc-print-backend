@@ -288,6 +288,162 @@ def get_transactions(
     return transactions
 
 
+# Fee Structure Management
+@router.get("/fee-structures", response_model=List[FeeStructure])
+def get_fee_structures(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[FeeStructure]:
+    """
+    Get all fee structures
+    """
+    if not current_user.has_permission("fee_structures.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read fee structures"
+        )
+    
+    return crud_fee_structure.get_effective_fees(db=db)
+
+
+@router.put("/fee-structures/{fee_structure_id}", response_model=FeeStructure)
+def update_fee_structure(
+    fee_structure_id: uuid.UUID,
+    fee_update: FeeStructureUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> FeeStructure:
+    """
+    Update fee structure (NATIONAL_ADMIN only)
+    """
+    if not current_user.has_permission("fee_structures.update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to update fee structures"
+        )
+    
+    fee_structure = crud_fee_structure.get(db=db, id=fee_structure_id)
+    if not fee_structure:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Fee structure not found"
+        )
+    
+    update_data = fee_update.dict(exclude_unset=True)
+    update_data['last_updated_by'] = current_user.id
+    fee_structure = crud_fee_structure.update(db=db, db_obj=fee_structure, obj_in=update_data)
+    
+    return fee_structure
+
+
+# Card Order Management
+@router.post("/card-orders", response_model=CardOrder)
+def create_card_order(
+    card_order_in: CardOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> CardOrder:
+    """
+    Create new card order
+    """
+    if not current_user.has_permission("card_orders.create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to create card orders"
+        )
+    
+    # Get the application to verify it exists and is in correct status
+    application = db.query(Application).filter(Application.id == card_order_in.application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Calculate card fee
+    fees = transaction_calculator.calculate_card_fees(
+        db=db, card_order=card_order, fee_crud=crud_fee_structure
+    )
+    total_fee = sum(Decimal(str(fee['amount'])) for fee in fees)
+    
+    # Create card order
+    card_order_data = card_order_in.dict()
+    card_order_data['fee_amount'] = total_fee
+    card_order_data['ordered_by'] = current_user.id
+    
+    card_order = crud_card_order.create(db=db, obj_in=card_order_data)
+    
+    return card_order
+
+
+@router.get("/card-orders", response_model=List[CardOrder])
+def get_card_orders(
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> List[CardOrder]:
+    """
+    Get card orders with pagination and filtering
+    """
+    if not current_user.has_permission("card_orders.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read card orders"
+        )
+    
+    # Apply location-based filtering based on user permissions
+    query = db.query(CardOrder)
+    
+    if current_user.user_type in ["LOCATION_USER", "PROVINCIAL_ADMIN"]:
+        # Filter by user's accessible locations
+        accessible_locations = current_user.get_accessible_locations()
+        if accessible_locations:
+            query = query.join(Application).filter(Application.location_id.in_(accessible_locations))
+    
+    if status:
+        query = query.filter(CardOrder.status == status)
+    
+    card_orders = query.order_by(CardOrder.created_at.desc()).offset(skip).limit(limit).all()
+    return card_orders
+
+
+# Reporting
+@router.get("/reports/daily-summary", response_model=TransactionSummary)
+def get_daily_transaction_summary(
+    date: Optional[date] = None,
+    location_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> TransactionSummary:
+    """
+    Get daily transaction summary report
+    """
+    if not current_user.has_permission("transactions.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to read transaction reports"
+        )
+    
+    if location_id and not current_user.can_access_location(location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access reports for this location"
+        )
+    
+    if date is None:
+        date = datetime.utcnow().date()
+    
+    summary = crud_transaction.get_daily_summary(
+        db=db,
+        date=date,
+        location_id=location_id
+    )
+    
+    return summary
+
+
 @router.get("/{transaction_id}", response_model=Transaction)
 def get_transaction(
     transaction_id: uuid.UUID,
@@ -383,185 +539,4 @@ def get_transaction_receipt(
         "footer": "Please keep this receipt as proof of payment."
     }
     
-    return receipt_data
-
-
-# Card Order Endpoints
-@router.post("/card-orders", response_model=CardOrder)
-def create_card_order(
-    card_order_data: CardOrderCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> CardOrder:
-    """
-    Create new card order
-    """
-    if not current_user.has_permission("card_orders.create"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to create card orders"
-        )
-    
-    # Verify application exists and is eligible
-    application = db.query(Application).filter(Application.id == card_order_data.application_id).first()
-    if not application:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found"
-        )
-    
-    # Check location access
-    if not current_user.can_access_location(application.location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to create card orders for this application"
-        )
-    
-    # Check if card order already exists
-    existing_order = crud_card_order.get_by_application(db=db, application_id=application.id)
-    if existing_order:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Card order already exists for this application: {existing_order.order_number}"
-        )
-    
-    card_order = crud_card_order.create_for_application(
-        db=db,
-        application_id=application.id,
-        ordered_by=current_user.id,
-        urgency_level=card_order_data.urgency_level,
-        card_type=card_order_data.card_type
-    )
-    
-    return card_order
-
-
-@router.get("/card-orders", response_model=List[CardOrder])
-def get_card_orders(
-    skip: int = 0,
-    limit: int = 100,
-    status: Optional[str] = None,
-    person_id: Optional[uuid.UUID] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> List[CardOrder]:
-    """
-    Get card orders with optional filtering
-    """
-    if not current_user.has_permission("card_orders.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read card orders"
-        )
-    
-    query = db.query(crud_card_order.model).options(
-        joinedload(crud_card_order.model.application),
-        joinedload(crud_card_order.model.person)
-    )
-    
-    # Apply filters
-    if person_id:
-        query = query.filter(crud_card_order.model.person_id == person_id)
-    
-    if status:
-        query = query.filter(crud_card_order.model.status == status)
-    
-    # Filter by accessible locations through application
-    accessible_locations = current_user.get_accessible_locations()
-    if accessible_locations:
-        query = query.join(Application).filter(Application.location_id.in_(accessible_locations))
-    
-    card_orders = query.order_by(crud_card_order.model.created_at.desc()).offset(skip).limit(limit).all()
-    return card_orders
-
-
-# Fee Structure Management
-@router.get("/fee-structures", response_model=List[FeeStructure])
-def get_fee_structures(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> List[FeeStructure]:
-    """
-    Get all fee structures
-    """
-    if not current_user.has_permission("fee_structures.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read fee structures"
-        )
-    
-    return crud_fee_structure.get_effective_fees(db=db)
-
-
-@router.put("/fee-structures/{fee_structure_id}", response_model=FeeStructure)
-def update_fee_structure(
-    fee_structure_id: uuid.UUID,
-    fee_update: FeeStructureUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> FeeStructure:
-    """
-    Update fee structure
-    Requires admin permissions
-    """
-    if not current_user.has_permission("fee_structures.update"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to update fee structures"
-        )
-    
-    fee_structure = crud_fee_structure.get(db=db, id=fee_structure_id)
-    if not fee_structure:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Fee structure not found"
-        )
-    
-    # Update last_updated_by
-    update_data = fee_update.dict(exclude_unset=True)
-    update_data['last_updated_by'] = current_user.id
-    
-    fee_structure = crud_fee_structure.update(db=db, db_obj=fee_structure, obj_in=update_data)
-    return fee_structure
-
-
-# Reporting Endpoints
-@router.get("/reports/daily-summary", response_model=TransactionSummary)
-def get_daily_transaction_summary(
-    summary_date: date,
-    location_id: Optional[uuid.UUID] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> TransactionSummary:
-    """
-    Get daily transaction summary for reporting
-    """
-    if not current_user.has_permission("transactions.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read transaction reports"
-        )
-    
-    # Use current user's primary location if not specified
-    if not location_id:
-        location_id = current_user.location_id
-    
-    # Check location access
-    if not current_user.can_access_location(location_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access reports for this location"
-        )
-    
-    summary_datetime = datetime.combine(summary_date, datetime.min.time())
-    summary = crud_transaction.get_daily_summary(
-        db=db, location_id=location_id, date=summary_datetime
-    )
-    
-    return TransactionSummary(
-        date=summary_datetime,
-        location_id=location_id,
-        total_transactions=summary['total_transactions'],
-        total_amount=summary['total_amount'],
-        payment_methods=summary['payment_methods']
-    ) 
+    return receipt_data 
