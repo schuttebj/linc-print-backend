@@ -679,27 +679,52 @@ def get_transaction_receipt(
             # Fallback to first alias if no primary Madagascar ID found
             primary_alias = transaction.person.aliases[0] if transaction.person.aliases else None
 
-    # TODO: Generate actual PDF receipt
-    # For now, return receipt data as JSON
+    # Generate comprehensive A4 receipt data for frontend printing
     receipt_data = {
+        # Transaction details
         "receipt_number": transaction.receipt_number,
         "transaction_number": transaction.transaction_number,
         "date": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        
+        # Government headers
+        "government_header": "REPUBLIC OF MADAGASCAR",
+        "department_header": "MINISTRY OF TRANSPORT",
+        "office_header": "DRIVER'S LICENSE SERVICES",
+        "receipt_title": "OFFICIAL PAYMENT RECEIPT",
+        
+        # Person details
         "person_name": f"{transaction.person.first_name} {transaction.person.surname}",
         "person_id": primary_alias.document_number if primary_alias else "N/A",
+        
+        # Location details
         "location": transaction.location.name if transaction.location else "Unknown",
+        "location_address": f"{transaction.location.street_address}, {transaction.location.locality}" if transaction.location and transaction.location.street_address else "",
+        "location_code": transaction.location.full_code if transaction.location else "",
+        
+        # Payment details
         "items": [
             {
                 "description": item.description,
-                "amount": float(item.amount)
+                "amount": float(item.amount),
+                "currency": "MGA"
             }
             for item in transaction.items
         ],
         "total_amount": float(transaction.total_amount),
         "payment_method": transaction.payment_method.value if transaction.payment_method else "Unknown",
         "payment_reference": transaction.payment_reference,
+        
+        # Processing details
         "processed_by": f"{current_user.first_name} {current_user.last_name}",
-        "footer": "Please keep this receipt as proof of payment."
+        "processed_by_id": current_user.username,
+        "processing_date": transaction.processed_at.strftime("%Y-%m-%d %H:%M:%S") if transaction.processed_at else transaction.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        
+        # Additional information
+        "footer": "Please keep this receipt as proof of payment. Present this receipt when collecting your license or card.",
+        "validity_note": "This receipt is valid for 90 days from the date of payment.",
+        "contact_info": "For inquiries, contact your local license office.",
+        "currency": "MGA",
+        "currency_name": "Malagasy Ariary"
     }
     
     return receipt_data 
