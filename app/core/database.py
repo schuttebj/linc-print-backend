@@ -48,6 +48,9 @@ def create_tables():
     from app.models.transaction import FeeType
     from sqlalchemy import text
     
+    # Import all models to ensure they're registered with Base.metadata
+    from app.models import user, person, application, transaction, license, card
+    
     print("🔧 Creating database enums before tables...")
     
     with engine.connect() as conn:
@@ -78,6 +81,7 @@ def create_tables():
         conn.commit()
     
     print("🔧 Creating all database tables...")
+    print(f"📊 Found {len(Base.metadata.tables)} tables to create")
     Base.metadata.create_all(bind=engine)
     print("✅ All tables created successfully")
 
@@ -86,6 +90,9 @@ def drop_tables():
     """Drop all database tables (use with caution!)"""
     from app.models.base import Base
     from sqlalchemy import text
+    
+    # Import all models to ensure they're registered with Base.metadata
+    from app.models import user, person, application, transaction, license, card
     
     # First try the normal approach
     try:

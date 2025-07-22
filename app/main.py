@@ -1462,6 +1462,54 @@ async def reset_database():
         )
 
 
+@app.get("/admin/inspect-database", tags=["Admin"])
+async def inspect_database():
+    """Inspect database schema - for debugging"""
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text, inspect
+        
+        inspector = inspect(engine)
+        
+        # Get all tables
+        tables = inspector.get_table_names()
+        
+        table_info = {}
+        for table_name in tables:
+            columns = inspector.get_columns(table_name)
+            table_info[table_name] = {
+                "columns": [{"name": col["name"], "type": str(col["type"])} for col in columns],
+                "column_count": len(columns)
+            }
+        
+        # Specifically check fee_structures
+        fee_structures_info = None
+        if "fee_structures" in tables:
+            fee_columns = inspector.get_columns("fee_structures")
+            fee_structures_info = {
+                "exists": True,
+                "columns": [col["name"] for col in fee_columns],
+                "has_fee_type": "fee_type" in [col["name"] for col in fee_columns]
+            }
+        else:
+            fee_structures_info = {"exists": False}
+        
+        return {
+            "status": "success",
+            "total_tables": len(tables),
+            "tables": list(tables),
+            "fee_structures_analysis": fee_structures_info,
+            "table_details": table_info
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Database inspection failed: {str(e)}",
+            "error_type": type(e).__name__
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 
