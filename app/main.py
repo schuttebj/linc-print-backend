@@ -253,24 +253,24 @@ async def initialize_tables():
         # Step 2: Now create all tables
         logger.info("Creating database tables")
         create_tables()
-        
-        return {
-            "status": "success", 
-            "message": "Database tables created successfully",
-            "enum_values_created": created_values,
-            "total_enum_values": len(created_values),
-            "timestamp": time.time()
-        }
-    except Exception as e:
-        logger.error(f"Failed to create tables: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "error",
-                "message": f"Failed to create tables: {str(e)}",
+            
+            return {
+                "status": "success", 
+                "message": "Database tables created successfully",
+                "enum_values_created": created_values,
+                "total_enum_values": len(created_values),
                 "timestamp": time.time()
             }
-        )
+        except Exception as e:
+            logger.error(f"Failed to create tables: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"Failed to create tables: {str(e)}",
+                    "timestamp": time.time()
+                }
+            )
 
 
 @app.post("/admin/fix-license-enum", tags=["Admin"])

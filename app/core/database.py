@@ -42,9 +42,44 @@ def get_db():
 
 
 def create_tables():
-    """Create all database tables"""
+    """Create all database tables with proper enum creation"""
     from app.models.base import Base
+    from app.models.enums import LicenseCategory
+    from app.models.transaction import FeeType
+    from sqlalchemy import text
+    
+    print("🔧 Creating database enums before tables...")
+    
+    with engine.connect() as conn:
+        # Create LicenseCategory enum
+        print("📋 Creating LicenseCategory enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS licensecategory CASCADE"))
+        except Exception:
+            pass
+        
+        license_values = [category.value for category in LicenseCategory]
+        license_values_str = "', '".join(license_values)
+        conn.execute(text(f"CREATE TYPE licensecategory AS ENUM ('{license_values_str}')"))
+        print(f"✅ Created licensecategory enum with {len(license_values)} values")
+        
+        # Create FeeType enum
+        print("📋 Creating FeeType enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS feetype CASCADE"))
+        except Exception:
+            pass
+        
+        fee_type_values = [fee_type.value for fee_type in FeeType]
+        fee_values_str = "', '".join(fee_type_values)
+        conn.execute(text(f"CREATE TYPE feetype AS ENUM ('{fee_values_str}')"))
+        print(f"✅ Created feetype enum with {len(fee_type_values)} values")
+        
+        conn.commit()
+    
+    print("🔧 Creating all database tables...")
     Base.metadata.create_all(bind=engine)
+    print("✅ All tables created successfully")
 
 
 def drop_tables():
