@@ -4,18 +4,25 @@ Comprehensive REST API for driver's license applications with complete workflow 
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Response
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import desc, asc, and_, or_, func
 from pathlib import Path
 import uuid
 import logging
 from datetime import datetime, timedelta
+from decimal import Decimal
+import tempfile
+import os
+import io
+from PIL import Image
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.application import Application, ApplicationAuthorization, ApplicationBiometricData
-from app.models.enums import ApplicationStatus, ApplicationType, LicenseCategory, RoleHierarchy
+from app.models.enums import ApplicationStatus, ApplicationType, LicenseCategory, RoleHierarchy, TestResult
 from app.schemas.application import (
     Application as ApplicationSchema,
     ApplicationCreate,
@@ -322,8 +329,8 @@ def search_applications(
     return applications
 
 
-@router.get("/pending-authorization", response_model=List[ApplicationSchema])
-def get_applications_pending_authorization(
+@router.get("/pending-approval", response_model=List[ApplicationSchema])
+def get_applications_pending_approval(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
@@ -331,7 +338,7 @@ def get_applications_pending_authorization(
     location_id: Optional[uuid.UUID] = None
 ) -> List[ApplicationSchema]:
     """
-    Get applications that are pending authorization by examiners
+    Get NEW_LICENSE and LEARNERS_PERMIT applications in PAID status that need approval
     
     Requires: applications.authorize permission or EXAMINER role
     """
@@ -340,24 +347,28 @@ def get_applications_pending_authorization(
             current_user.role_hierarchy == RoleHierarchy.EXAMINER):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to view applications pending authorization"
+            detail="Not enough permissions to view applications pending approval"
         )
     
     # Apply location filtering for location users
     if current_user.user_type.value == "LOCATION_USER":
         location_id = current_user.primary_location_id
     
-    # Get applications with PASSED status (ready for authorization)
-    search_params = ApplicationSearch()
-    search_params.status = ApplicationStatus.PASSED
-    if location_id:
-        search_params.location_id = location_id
-    
-    applications = crud_application.search_applications(
-        db=db, search_params=search_params, skip=skip, limit=limit
+    # Get applications that need approval (NEW_LICENSE and LEARNERS_PERMIT in PAID status)
+    query = db.query(Application).filter(
+        Application.status == ApplicationStatus.PAID,
+        Application.application_type.in_([ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]),
+        Application.approval_outcome.is_(None)  # Not yet approved/failed/absent
     )
     
-    return applications
+    # Apply location filtering if specified
+    if location_id:
+        query = query.filter(Application.location_id == location_id)
+    
+    # Apply pagination
+    applications = query.offset(skip).limit(limit).all()
+    
+    return [ApplicationSchema.from_orm(app) for app in applications]
 
 
 @router.get("/{application_id}", response_model=ApplicationWithDetails)
@@ -2356,5 +2367,370 @@ def get_license_ready_biometric(
         filename=f"license_ready_{data_type.lower()}_{application_id}.jpg"
     )
 
+
+@router.get("/search-for-approval/{id_number}")
+def search_person_for_approval(
+    id_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Search for a person by ID number and return their applications pending approval
+    Only returns NEW_LICENSE and LEARNERS_PERMIT applications in PAID status
+    """
+    # Check permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to search for applications"
+        )
+    
+    # Find person by ID number
+    from app.models.person import Person
+    person = db.query(Person).filter(Person.id_number == id_number.strip()).first()
+    
+    if not person:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person not found with this ID number"
+        )
+    
+    # Get applications pending approval for this person
+    applications = db.query(Application).filter(
+        Application.person_id == person.id,
+        Application.status == ApplicationStatus.PAID,
+        Application.application_type.in_([ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]),
+        Application.approval_outcome.is_(None)
+    ).all()
+    
+    # Get available restrictions based on application types
+    from app.models.enums import DriverRestrictionCode, VehicleRestrictionCode, DRIVER_RESTRICTION_MAPPING, VEHICLE_RESTRICTION_MAPPING
+    
+    restrictions_info = {}
+    for app in applications:
+        app_type = app.application_type
+        
+        # Get medical information to check for vision test results
+        medical_info = app.medical_information or {}
+        vision_test = medical_info.get('vision_test', {})
+        
+        # Check if corrective lenses are required from vision test
+        corrective_lenses_required = vision_test.get('corrective_lenses_required', False)
+        vision_meets_standards = vision_test.get('vision_meets_standards', True)
+        
+        # Pre-selected restrictions based on medical information
+        pre_selected_driver_restrictions = []
+        if corrective_lenses_required or not vision_meets_standards:
+            pre_selected_driver_restrictions.append(DriverRestrictionCode.CORRECTIVE_LENSES.value)
+        
+        if app_type == ApplicationType.NEW_LICENSE:
+            # All restrictions available for NEW_LICENSE
+            driver_restrictions = [
+                {
+                    "code": DriverRestrictionCode.CORRECTIVE_LENSES.value,
+                    "description": DRIVER_RESTRICTION_MAPPING[DriverRestrictionCode.CORRECTIVE_LENSES]["description"],
+                    "pre_selected": DriverRestrictionCode.CORRECTIVE_LENSES.value in pre_selected_driver_restrictions,
+                    "locked": DriverRestrictionCode.CORRECTIVE_LENSES.value in pre_selected_driver_restrictions
+                },
+                {
+                    "code": DriverRestrictionCode.PROSTHETICS.value,
+                    "description": DRIVER_RESTRICTION_MAPPING[DriverRestrictionCode.PROSTHETICS]["description"],
+                    "pre_selected": False,
+                    "locked": False
+                }
+            ]
+            
+            vehicle_restrictions = [
+                {
+                    "code": VehicleRestrictionCode.AUTOMATIC_TRANSMISSION.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.AUTOMATIC_TRANSMISSION]["description"]
+                },
+                {
+                    "code": VehicleRestrictionCode.ELECTRIC_POWERED.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.ELECTRIC_POWERED]["description"]
+                },
+                {
+                    "code": VehicleRestrictionCode.PHYSICAL_DISABLED.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.PHYSICAL_DISABLED]["description"]
+                },
+                {
+                    "code": VehicleRestrictionCode.TRACTOR_ONLY.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.TRACTOR_ONLY]["description"]
+                },
+                {
+                    "code": VehicleRestrictionCode.INDUSTRIAL_AGRICULTURE.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.INDUSTRIAL_AGRICULTURE]["description"]
+                }
+            ]
+            
+        elif app_type == ApplicationType.LEARNERS_PERMIT:
+            # Limited restrictions for LEARNERS_PERMIT
+            driver_restrictions = [
+                {
+                    "code": DriverRestrictionCode.CORRECTIVE_LENSES.value,
+                    "description": DRIVER_RESTRICTION_MAPPING[DriverRestrictionCode.CORRECTIVE_LENSES]["description"],
+                    "pre_selected": DriverRestrictionCode.CORRECTIVE_LENSES.value in pre_selected_driver_restrictions,
+                    "locked": DriverRestrictionCode.CORRECTIVE_LENSES.value in pre_selected_driver_restrictions
+                },
+                {
+                    "code": DriverRestrictionCode.PROSTHETICS.value,
+                    "description": DRIVER_RESTRICTION_MAPPING[DriverRestrictionCode.PROSTHETICS]["description"],
+                    "pre_selected": False,
+                    "locked": False
+                }
+            ]
+            
+            vehicle_restrictions = [
+                {
+                    "code": VehicleRestrictionCode.PHYSICAL_DISABLED.value,
+                    "description": VEHICLE_RESTRICTION_MAPPING[VehicleRestrictionCode.PHYSICAL_DISABLED]["description"]
+                }
+            ]
+        
+        restrictions_info[str(app.id)] = {
+            "driver_restrictions": driver_restrictions,
+            "vehicle_restrictions": vehicle_restrictions,
+            "pre_selected_driver_restrictions": pre_selected_driver_restrictions
+        }
+    
+    return {
+        "person": {
+            "id": str(person.id),
+            "name": f"{person.first_name} {person.last_name}",
+            "id_number": person.id_number
+        },
+        "applications": [
+            {
+                "id": str(app.id),
+                "application_number": app.application_number,
+                "application_type": app.application_type.value,
+                "license_category": app.license_category,
+                "status": app.status.value,
+                "medical_information": app.medical_information
+            } for app in applications
+        ],
+        "restrictions_info": restrictions_info
+    }
+
+
+@router.post("/process-approval/{application_id}")
+def process_application_approval(
+    application_id: uuid.UUID,
+    approval_data: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Process approval outcome for an application (PASS, FAIL, or ABSENT)
+    For PASS: captures restrictions and auto-generates license
+    For FAIL/ABSENT: marks application as terminal status
+    """
+    # Check permissions
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to process approvals"
+        )
+    
+    # Get application
+    application = db.query(Application).filter(Application.id == application_id).first()
+    
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Validate application is eligible for approval
+    if application.status != ApplicationStatus.PAID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Application must be in PAID status for approval"
+        )
+    
+    if application.application_type not in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only NEW_LICENSE and LEARNERS_PERMIT applications can be approved"
+        )
+    
+    if application.approval_outcome is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Application has already been processed"
+        )
+    
+    # Validate required fields
+    outcome = approval_data.get("outcome")
+    if outcome not in ["PASSED", "FAILED", "ABSENT"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Outcome must be PASSED, FAILED, or ABSENT"
+        )
+    
+    location_id = approval_data.get("location_id")
+    if not location_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Location ID is required"
+        )
+    
+    # Update application with approval data
+    application.approval_outcome = TestResult(outcome)
+    application.approved_by_user_id = current_user.id
+    application.approved_at_location_id = uuid.UUID(location_id)
+    application.approval_date = datetime.utcnow()
+    
+    # Handle outcome-specific processing
+    if outcome == "PASSED":
+        # Get the restrictions data from the request
+        restrictions_data = approval_data.get("restrictions", {})
+        
+        # Auto-add vision-based restrictions if needed
+        medical_info = application.medical_information or {}
+        vision_test = medical_info.get('vision_test', {})
+        
+        # Ensure corrective lenses restriction is added if required by vision test
+        corrective_lenses_required = vision_test.get('corrective_lenses_required', False)
+        vision_meets_standards = vision_test.get('vision_meets_standards', True)
+        
+        driver_restrictions = restrictions_data.get("driver_restrictions", [])
+        vehicle_restrictions = restrictions_data.get("vehicle_restrictions", [])
+        
+        # Auto-add corrective lenses restriction if vision test requires it
+        if (corrective_lenses_required or not vision_meets_standards):
+            from app.models.enums import DriverRestrictionCode
+            if DriverRestrictionCode.CORRECTIVE_LENSES.value not in driver_restrictions:
+                driver_restrictions.append(DriverRestrictionCode.CORRECTIVE_LENSES.value)
+        
+        # Structure the final restrictions data
+        final_restrictions = {
+            "driver_restrictions": driver_restrictions,
+            "vehicle_restrictions": vehicle_restrictions
+        }
+        
+        # Validate restrictions for application type
+        if not _validate_restrictions_for_application_type(application.application_type.value, final_restrictions):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid restrictions for {application.application_type.value} application type"
+            )
+        
+        application.identified_restrictions = final_restrictions
+        
+        # Update status to APPROVED
+        application.status = ApplicationStatus.APPROVED
+        
+        # Auto-generate license
+        license = _generate_license_from_application(db, application, final_restrictions)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Application approved successfully and license generated",
+            "application_status": application.status.value,
+            "license_id": str(license.id),
+            "applied_restrictions": final_restrictions
+        }
+        
+    else:  # FAILED or ABSENT
+        # Update status to terminal
+        if outcome == "FAILED":
+            application.status = ApplicationStatus.FAILED
+        else:  # ABSENT
+            application.status = ApplicationStatus.ABSENT
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Application marked as {outcome}",
+            "application_status": application.status.value
+        }
+
+
+def _generate_license_from_application(db: Session, application: Application, restrictions_data: dict = None) -> "License":
+    """
+    Generate a license from an approved application
+    restrictions_data format: {"driver_restrictions": ["01"], "vehicle_restrictions": ["01", "03"]}
+    """
+    from app.models.license import License, LicenseStatus
+    
+    # Simple license number generation for now
+    location = application.approved_at_location or application.location
+    license_number = f"LIC{datetime.now().strftime('%Y%m%d')}{application.id.hex[:8].upper()}"
+    
+    # Convert restrictions to license format (structured JSON)
+    license_restrictions = restrictions_data or {"driver_restrictions": [], "vehicle_restrictions": []}
+    
+    # Create license
+    license = License(
+        person_id=application.person_id,
+        created_from_application_id=application.id,
+        category=application.license_category,
+        status=LicenseStatus.ACTIVE,
+        issue_date=application.approval_date,
+        issuing_location_id=application.approved_at_location_id,
+        issued_by_user_id=application.approved_by_user_id,
+        restrictions=license_restrictions,
+        medical_restrictions=[],  # Can be populated from medical_information if needed
+    )
+    
+    # Set expiry date for learner's permits (6 months)
+    if application.application_type == ApplicationType.LEARNERS_PERMIT:
+        from datetime import timedelta
+        license.expiry_date = application.approval_date + timedelta(days=180)
+    
+    db.add(license)
+    db.flush()  # Get the license ID
+    
+    return license
+
+
+def _validate_restrictions_for_application_type(application_type: str, restrictions_data: dict) -> bool:
+    """
+    Validate that the selected restrictions are allowed for the application type
+    Expected format: {"driver_restrictions": ["01"], "vehicle_restrictions": ["01", "03"]}
+    """
+    from app.models.enums import ApplicationType, DriverRestrictionCode, VehicleRestrictionCode
+    
+    driver_restrictions = restrictions_data.get("driver_restrictions", [])
+    vehicle_restrictions = restrictions_data.get("vehicle_restrictions", [])
+    
+    # Define allowed restrictions for each application type
+    if application_type == ApplicationType.NEW_LICENSE.value:
+        # All restrictions allowed for NEW_LICENSE
+        allowed_driver_restrictions = [code.value for code in DriverRestrictionCode]
+        allowed_vehicle_restrictions = [code.value for code in VehicleRestrictionCode]
+        
+    elif application_type == ApplicationType.LEARNERS_PERMIT.value:
+        # Limited restrictions for LEARNERS_PERMIT
+        allowed_driver_restrictions = [
+            DriverRestrictionCode.NONE.value,
+            DriverRestrictionCode.CORRECTIVE_LENSES.value,
+            DriverRestrictionCode.PROSTHETICS.value
+        ]
+        allowed_vehicle_restrictions = [
+            VehicleRestrictionCode.NONE.value,
+            VehicleRestrictionCode.PHYSICAL_DISABLED.value  # Only disabled adaptation for learners
+        ]
+    else:
+        # No restrictions allowed for other application types
+        allowed_driver_restrictions = []
+        allowed_vehicle_restrictions = []
+    
+    # Check if all selected restrictions are allowed
+    for restriction in driver_restrictions:
+        if restriction not in allowed_driver_restrictions:
+            return False
+    
+    for restriction in vehicle_restrictions:
+        if restriction not in allowed_vehicle_restrictions:
+            return False
+    
+    return True
 
  

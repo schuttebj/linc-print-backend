@@ -58,7 +58,7 @@ class License(BaseModel):
     issued_by_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who issued the license")
     
     # Restrictions and conditions
-    restrictions = Column(JSON, nullable=True, comment="License restrictions (corrective lenses, etc.)")
+    restrictions = Column(JSON, nullable=True, comment="License restrictions in structured format: {'driver_restrictions': ['01'], 'vehicle_restrictions': ['01', '03']}")
     medical_restrictions = Column(JSON, nullable=True, comment="Medical restrictions from assessment")
     
     # Professional driving permit information (if applicable)

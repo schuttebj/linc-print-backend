@@ -145,6 +145,13 @@ class Application(BaseModel):
     # Medical information - comprehensive health assessment data
     medical_information = Column(JSON, nullable=True, comment="Comprehensive medical assessment data including vision tests, medical conditions, and physical assessments")
     
+    # Approval tracking (New Simple Approval System)
+    approved_by_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who approved/failed this application")
+    approved_at_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Location where approval was processed")
+    approval_date = Column(DateTime, nullable=True, comment="Date application was approved/failed/marked absent")
+    approval_outcome = Column(SQLEnum(TestResult), nullable=True, comment="Approval outcome: PASSED, FAILED, ABSENT")
+    identified_restrictions = Column(JSON, nullable=True, comment="License restrictions identified during approval process")
+    
     # License capture data - for DRIVERS_LICENSE_CAPTURE and LEARNERS_PERMIT_CAPTURE applications
     license_capture = Column(JSON, nullable=True, comment="Captured existing license data for capture applications")
     
@@ -200,6 +207,8 @@ class Application(BaseModel):
     location = relationship("Location", foreign_keys=[location_id])
     assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
     medical_certificate_verified_by_user = relationship("User", foreign_keys=[medical_certificate_verified_by])
+    approved_by_user = relationship("User", foreign_keys=[approved_by_user_id])
+    approved_at_location = relationship("Location", foreign_keys=[approved_at_location_id])
     
     # Associated applications (self-referential)
     parent_application = relationship("Application", remote_side="Application.id", foreign_keys=[parent_application_id])

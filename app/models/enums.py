@@ -259,19 +259,23 @@ class ProfessionalPermitCategory(PythonEnum):
     G = "G"  # Professional permit G
 
 
-class LicenseRestrictionCode(PythonEnum):
-    """License restriction codes for Madagascar driver's licenses"""
+class DriverRestrictionCode(PythonEnum):
+    """Driver restriction codes for Madagascar driver's licenses"""
     
-    # Driver Physical Restrictions
-    CORRECTIVE_LENSES = "01"           # Driver must wear corrective lenses
-    PROSTHETICS = "02"                 # Driver uses prosthetics
+    NONE = "00"                    # No driver restrictions
+    CORRECTIVE_LENSES = "01"       # Driver must wear corrective lenses
+    PROSTHETICS = "02"             # Driver uses artificial limb/prosthetics
+
+
+class VehicleRestrictionCode(PythonEnum):
+    """Vehicle restriction codes for Madagascar driver's licenses"""
     
-    # Vehicle Type Restrictions  
-    AUTOMATIC_TRANSMISSION = "03"      # Automatic transmission vehicles only
-    ELECTRIC_POWERED = "04"            # Electric powered vehicles only
-    PHYSICAL_DISABLED = "05"           # Vehicles adapted for physical disabilities
-    TRACTOR_ONLY = "06"               # Tractor vehicles only
-    INDUSTRIAL_AGRICULTURE = "07"      # Industrial/agriculture vehicles only
+    NONE = "00"                    # No vehicle restrictions
+    AUTOMATIC_TRANSMISSION = "01"  # Automatic transmission vehicles only
+    ELECTRIC_POWERED = "02"        # Electric powered vehicles only
+    PHYSICAL_DISABLED = "03"       # Vehicles adapted for physical disabilities
+    TRACTOR_ONLY = "04"           # Tractor vehicles only
+    INDUSTRIAL_AGRICULTURE = "05"  # Industrial/agriculture vehicles only
 
 
 class LicenseRestrictionCategory(PythonEnum):
@@ -281,53 +285,72 @@ class LicenseRestrictionCategory(PythonEnum):
     OPERATIONAL = "OPERATIONAL" # Operational restrictions (time, location, etc.)
 
 
-# Restriction mapping for easy lookup
-LICENSE_RESTRICTION_MAPPING = {
-    # Driver restrictions
-    LicenseRestrictionCode.CORRECTIVE_LENSES: {
+# Driver restriction mapping for easy lookup
+DRIVER_RESTRICTION_MAPPING = {
+    DriverRestrictionCode.NONE: {
+        "code": "00",
+        "description": "No driver restrictions",
+        "category": LicenseRestrictionCategory.DRIVER,
+        "display_name": "No Restrictions"
+    },
+    DriverRestrictionCode.CORRECTIVE_LENSES: {
         "code": "01",
         "description": "Driver must wear corrective lenses",
         "category": LicenseRestrictionCategory.DRIVER,
         "display_name": "Corrective Lenses Required"
     },
-    LicenseRestrictionCode.PROSTHETICS: {
+    DriverRestrictionCode.PROSTHETICS: {
         "code": "02", 
-        "description": "Driver uses prosthetics",
+        "description": "Driver uses artificial limb/prosthetics",
         "category": LicenseRestrictionCategory.DRIVER,
-        "display_name": "Prosthetics"
+        "display_name": "Artificial Limb/Prosthetics"
+    }
+}
+
+# Vehicle restriction mapping for easy lookup
+VEHICLE_RESTRICTION_MAPPING = {
+    VehicleRestrictionCode.NONE: {
+        "code": "00",
+        "description": "No vehicle restrictions",
+        "category": LicenseRestrictionCategory.VEHICLE,
+        "display_name": "No Restrictions"
     },
-    
-    # Vehicle restrictions
-    LicenseRestrictionCode.AUTOMATIC_TRANSMISSION: {
-        "code": "03",
+    VehicleRestrictionCode.AUTOMATIC_TRANSMISSION: {
+        "code": "01",
         "description": "Automatic transmission vehicles only", 
         "category": LicenseRestrictionCategory.VEHICLE,
         "display_name": "Automatic Transmission Only"
     },
-    LicenseRestrictionCode.ELECTRIC_POWERED: {
-        "code": "04",
+    VehicleRestrictionCode.ELECTRIC_POWERED: {
+        "code": "02",
         "description": "Electric powered vehicles only",
         "category": LicenseRestrictionCategory.VEHICLE, 
         "display_name": "Electric Vehicles Only"
     },
-    LicenseRestrictionCode.PHYSICAL_DISABLED: {
-        "code": "05",
+    VehicleRestrictionCode.PHYSICAL_DISABLED: {
+        "code": "03",
         "description": "Vehicles adapted for physical disabilities",
         "category": LicenseRestrictionCategory.VEHICLE,
         "display_name": "Disability Adapted Vehicles"
     },
-    LicenseRestrictionCode.TRACTOR_ONLY: {
-        "code": "06", 
+    VehicleRestrictionCode.TRACTOR_ONLY: {
+        "code": "04", 
         "description": "Tractor vehicles only",
         "category": LicenseRestrictionCategory.VEHICLE,
         "display_name": "Tractor Vehicles Only"
     },
-    LicenseRestrictionCode.INDUSTRIAL_AGRICULTURE: {
-        "code": "07",
+    VehicleRestrictionCode.INDUSTRIAL_AGRICULTURE: {
+        "code": "05",
         "description": "Industrial/agriculture vehicles only", 
         "category": LicenseRestrictionCategory.VEHICLE,
         "display_name": "Industrial/Agriculture Only"
     }
+}
+
+# Combined mapping for backward compatibility during transition
+LICENSE_RESTRICTION_MAPPING = {
+    **DRIVER_RESTRICTION_MAPPING,
+    **VEHICLE_RESTRICTION_MAPPING
 }
 
 # Province display names mapping for frontend
