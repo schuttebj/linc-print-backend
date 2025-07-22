@@ -438,4 +438,59 @@ DOCUMENT_TYPE_INFO = {
 PERSON_NATURE_DISPLAY_NAMES = {
     PersonNature.MALE: "MALE (LEHILAHY)",
     PersonNature.FEMALE: "FEMALE (VEHIVAVY)",
+}
+
+# Madagascar License Fee Constants (in Ariary)
+# Keep fees simple and centralized to avoid complications
+MADAGASCAR_LICENSE_FEES = {
+    # Test Fees (used across multiple application types)
+    "THEORY_TEST_LIGHT": 10000,      # Light vehicles (A1, A2, A, B1, B)
+    "THEORY_TEST_HEAVY": 15000,      # Heavy vehicles (B2, BE, C1, C, C1E, CE, D1, D, D2)
+    "PRACTICAL_TEST_LIGHT": 10000,   # Light vehicle practical test
+    "PRACTICAL_TEST_HEAVY": 15000,   # Heavy vehicle practical test
+    
+    # Application-Type-Specific Fees (adjustable per application type)
+    "NEW_LICENSE_FEE": 38000,        # New license application + card
+    "LEARNERS_PERMIT_FEE": 0,        # Learners permit (test fees only, no additional fee)
+    "RENEWAL_FEE": 38000,            # License renewal
+    "REPLACEMENT_FEE": 38000,        # License replacement
+    "TEMPORARY_LICENSE_FEE": 10000,  # Temporary license (simplified to 10,000 Ar)
+    "INTERNATIONAL_PERMIT_FEE": 38000, # International permit (like renewal)
+    "PROFESSIONAL_LICENSE_FEE": 38000, # Professional license (like renewal)
+    "FOREIGN_CONVERSION_FEE": 38000,   # Foreign license conversion (like renewal)
+    "DRIVERS_LICENSE_CAPTURE_FEE": 38000, # Capture existing license
+    "LEARNERS_PERMIT_CAPTURE_FEE": 38000, # Capture existing learners permit
+    
+    # Calculated Totals for Quick Reference
+    "NEW_LICENSE_LIGHT_TOTAL": 48000,  # Test (10,000) + Application+Card (38,000)
+    "NEW_LICENSE_HEAVY_TOTAL": 53000,  # Test (15,000) + Application+Card (38,000)
+    "LEARNERS_PERMIT_LIGHT_TOTAL": 10000, # Theory test only
+    "LEARNERS_PERMIT_HEAVY_TOTAL": 15000, # Theory test only
+}
+
+# Fee display names for UI
+MADAGASCAR_FEE_DISPLAY = {
+    # Test fees
+    "THEORY_TEST_LIGHT": "Theory Test (Light Vehicles)",
+    "THEORY_TEST_HEAVY": "Theory Test (Heavy Vehicles)",
+    "PRACTICAL_TEST_LIGHT": "Practical Test (Light Vehicles)",
+    "PRACTICAL_TEST_HEAVY": "Practical Test (Heavy Vehicles)",
+    
+    # Application-specific fees
+    "NEW_LICENSE_FEE": "New License - Application + Card",
+    "LEARNERS_PERMIT_FEE": "Learners Permit - Additional Fee",
+    "RENEWAL_FEE": "License Renewal",
+    "REPLACEMENT_FEE": "License Replacement",
+    "TEMPORARY_LICENSE_FEE": "Temporary License",
+    "INTERNATIONAL_PERMIT_FEE": "International Driving Permit",
+    "PROFESSIONAL_LICENSE_FEE": "Professional License",
+    "FOREIGN_CONVERSION_FEE": "Foreign License Conversion",
+    "DRIVERS_LICENSE_CAPTURE_FEE": "Driver's License Capture",
+    "LEARNERS_PERMIT_CAPTURE_FEE": "Learner's Permit Capture",
+    
+    # Totals
+    "NEW_LICENSE_LIGHT_TOTAL": "New License (Light Vehicle) - Total",
+    "NEW_LICENSE_HEAVY_TOTAL": "New License (Heavy Vehicle) - Total",
+    "LEARNERS_PERMIT_LIGHT_TOTAL": "Learner's Permit (Light Vehicle) - Total",
+    "LEARNERS_PERMIT_HEAVY_TOTAL": "Learner's Permit (Heavy Vehicle) - Total",
 } 

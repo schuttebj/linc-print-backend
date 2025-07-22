@@ -384,99 +384,39 @@ class TransactionCalculator:
         application: Application,
         fee_crud: CRUDFeeStructure
     ) -> List[Dict[str, Any]]:
-        """Calculate fees for an application"""
+        """Calculate fees for an application based on payment stage"""
         fees = []
         
-        # Application processing fee
-        processing_fee = fee_crud.get_by_fee_type(db, FeeType.APPLICATION_PROCESSING)
-        if processing_fee:
+        # Use the new payment stage logic from Application model
+        required_fees = application.get_required_fees()
+        
+        # Add test fees if required
+        for test_fee in required_fees["test_fees"]:
             fees.append({
-                'item_type': 'application_processing',
-                'description': f"Application Processing - {application.application_type.value}",
-                'amount': processing_fee.amount,
+                'item_type': 'test_fee',
+                'description': test_fee["description"],
+                'amount': test_fee["amount"],
                 'application_id': application.id,
-                'fee_structure_id': processing_fee.id
+                'metadata': {
+                    'fee_type': test_fee["type"],
+                    'category': application.license_category.value,
+                    'payment_stage': 'TEST_PAYMENT'
+                }
             })
         
-        # Theory test fee (for new licenses and learner's permits)
-        if application.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]:
-            is_heavy = application.license_category in [
-                LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
-                LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
-            ]
-            
-            theory_fee_type = FeeType.THEORY_TEST_HEAVY if is_heavy else FeeType.THEORY_TEST_LIGHT
-            theory_fee = fee_crud.get_by_fee_type(db, theory_fee_type)
-            if theory_fee:
-                fees.append({
-                    'item_type': 'theory_test',
-                    'description': f"Theory Test - {application.license_category.value}",
-                    'amount': theory_fee.amount,
-                    'application_id': application.id,
-                    'fee_structure_id': theory_fee.id
-                })
-        
-        # Practical test fee (for new licenses)
-        if application.application_type == ApplicationType.NEW_LICENSE:
-            is_heavy = application.license_category in [
-                LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
-                LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
-            ]
-            
-            practical_fee_type = FeeType.PRACTICAL_TEST_HEAVY if is_heavy else FeeType.PRACTICAL_TEST_LIGHT
-            practical_fee = fee_crud.get_by_fee_type(db, practical_fee_type)
-            if practical_fee:
-                fees.append({
-                    'item_type': 'practical_test',
-                    'description': f"Practical Test - {application.license_category.value}",
-                    'amount': practical_fee.amount,
-                    'application_id': application.id,
-                    'fee_structure_id': practical_fee.id
-                })
-        
-        # Temporary license fee
-        if application.application_type == ApplicationType.TEMPORARY_LICENSE:
-            urgency = getattr(application, 'priority', 1)
-            if urgency == 3:
-                temp_fee_type = FeeType.TEMPORARY_LICENSE_EMERGENCY
-            elif urgency == 2:
-                temp_fee_type = FeeType.TEMPORARY_LICENSE_URGENT
-            else:
-                temp_fee_type = FeeType.TEMPORARY_LICENSE_NORMAL
-            
-            temp_fee = fee_crud.get_by_fee_type(db, temp_fee_type)
-            if temp_fee:
-                fees.append({
-                    'item_type': 'temporary_license',
-                    'description': f"Temporary License - {temp_fee.display_name}",
-                    'amount': temp_fee.amount,
-                    'application_id': application.id,
-                    'fee_structure_id': temp_fee.id
-                })
-        
-        # International permit fee
-        if application.application_type == ApplicationType.INTERNATIONAL_PERMIT:
-            intl_fee = fee_crud.get_by_fee_type(db, FeeType.INTERNATIONAL_PERMIT)
-            if intl_fee:
-                fees.append({
-                    'item_type': 'international_permit',
-                    'description': "International Driving Permit",
-                    'amount': intl_fee.amount,
-                    'application_id': application.id,
-                    'fee_structure_id': intl_fee.id
-                })
-        
-        # Professional permit fee
-        if application.application_type == ApplicationType.PROFESSIONAL_LICENSE:
-            prof_fee = fee_crud.get_by_fee_type(db, FeeType.PROFESSIONAL_PERMIT)
-            if prof_fee:
-                fees.append({
-                    'item_type': 'professional_permit',
-                    'description': "Professional Driving Permit",
-                    'amount': prof_fee.amount,
-                    'application_id': application.id,
-                    'fee_structure_id': prof_fee.id
-                })
+        # Add card/application fees if required  
+        for card_fee in required_fees["card_fees"]:
+            fees.append({
+                'item_type': 'card_fee',
+                'description': card_fee["description"],
+                'amount': card_fee["amount"],
+                'application_id': application.id,
+                'metadata': {
+                    'fee_type': card_fee["type"],
+                    'application_type': application.application_type.value,
+                    'payment_stage': 'CARD_PAYMENT'
+                }
+            })
         
         return fees
     

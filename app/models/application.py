@@ -182,6 +182,19 @@ class Application(BaseModel):
     collection_notice_sent = Column(Boolean, nullable=False, default=False, comment="Collection notice sent to applicant")
     collection_notice_sent_at = Column(DateTime, nullable=True, comment="Date collection notice was sent")
     
+    # Payment stage tracking (NEW FIELDS FOR STAGED PAYMENTS)
+    test_payment_completed = Column(Boolean, nullable=False, default=False, comment="Test fees have been paid")
+    test_payment_date = Column(DateTime, nullable=True, comment="Date test payment was completed")
+    card_payment_completed = Column(Boolean, nullable=False, default=False, comment="Card fees have been paid")
+    card_payment_date = Column(DateTime, nullable=True, comment="Date card payment was completed")
+    current_payment_stage = Column(String(50), nullable=True, comment="Current payment stage: TEST_PAYMENT, CARD_PAYMENT, COMPLETED")
+    
+    # Card ordering status
+    card_ordered = Column(Boolean, nullable=False, default=False, comment="Physical card has been ordered")
+    card_order_date = Column(DateTime, nullable=True, comment="Date card was ordered")
+    card_order_id = Column(UUID(as_uuid=True), nullable=True, comment="Reference to card order")
+    includes_temporary_license = Column(Boolean, nullable=False, default=False, comment="Card order includes temporary license")
+    
     # Relationships
     person = relationship("Person", foreign_keys=[person_id])
     location = relationship("Location", foreign_keys=[location_id])
@@ -236,386 +249,180 @@ class Application(BaseModel):
         ]
         return self.license_category in categories_requiring_medical
 
-
-
-
-class ApplicationBiometricData(BaseModel):
-    """Biometric data captured for license applications"""
-    __tablename__ = "application_biometric_data"
-
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
-    data_type = Column(SQLEnum(BiometricDataType), nullable=False, comment="Type of biometric data")
-    
-    # File storage
-    file_path = Column(String(500), nullable=True, comment="Path to stored biometric file")
-    file_size = Column(Integer, nullable=True, comment="File size in bytes")
-    file_format = Column(String(10), nullable=True, comment="File format (jpg, png, etc.)")
-    
-    # Capture metadata
-    capture_method = Column(String(50), nullable=True, comment="Capture method (webcam, scanner, etc.)")
-    capture_device_id = Column(String(100), nullable=True, comment="Device used for capture")
-    image_resolution = Column(String(20), nullable=True, comment="Image resolution (e.g., 1920x1080)")
-    
-    # Quality metrics
-    quality_score = Column(Numeric(5, 2), nullable=True, comment="Quality score (0-100)")
-    is_verified = Column(Boolean, nullable=False, default=False, comment="Biometric data verified")
-    verified_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who verified the data")
-    verified_at = Column(DateTime, nullable=True, comment="Verification timestamp")
-    
-    # Additional metadata
-    capture_metadata = Column(JSON, nullable=True, comment="Additional capture metadata")
-    notes = Column(Text, nullable=True, comment="Notes about the biometric capture")
-    
-    # Relationships
-    application = relationship("Application", back_populates="biometric_data")
-    verified_by_user = relationship("User", foreign_keys=[verified_by])
-    
-    def __repr__(self):
-        return f"<ApplicationBiometricData(application_id={self.application_id}, type='{self.data_type}')>"
-
-
-class ApplicationTestAttempt(BaseModel):
-    """License test attempts (theory and practical)"""
-    __tablename__ = "application_test_attempts"
-
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
-    test_type = Column(SQLEnum(TestAttemptType), nullable=False, comment="Type of test")
-    attempt_number = Column(Integer, nullable=False, default=1, comment="Attempt number (1, 2, 3, etc.)")
-    
-    # Test scheduling
-    scheduled_date = Column(DateTime, nullable=True, comment="Scheduled test date")
-    actual_date = Column(DateTime, nullable=True, comment="Actual test date")
-    test_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Test location")
-    
-    # Test details
-    examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="Examiner user ID")
-    test_result = Column(SQLEnum(TestResult), nullable=True, comment="Test result")
-    score = Column(Numeric(5, 2), nullable=True, comment="Test score (percentage)")
-    
-
-    
-    # Test metadata
-    test_duration_minutes = Column(Integer, nullable=True, comment="Test duration in minutes")
-    questions_total = Column(Integer, nullable=True, comment="Total questions (theory test)")
-    questions_correct = Column(Integer, nullable=True, comment="Correct answers (theory test)")
-    
-    # Result details
-    pass_threshold = Column(Numeric(5, 2), nullable=True, comment="Pass threshold percentage")
-    result_notes = Column(Text, nullable=True, comment="Examiner notes about test result")
-    failure_reasons = Column(JSON, nullable=True, comment="Reasons for failure (if applicable)")
-    
-    # Certificate issuance (for theory tests)
-    learners_permit_issued = Column(Boolean, nullable=False, default=False, comment="Learner's permit issued after theory pass")
-    learners_permit_number = Column(String(20), nullable=True, comment="Learner's permit number")
-    learners_permit_expiry = Column(DateTime, nullable=True, comment="Learner's permit expiry date")
-    
-    # Relationships
-    application = relationship("Application", back_populates="test_attempts")
-    test_location = relationship("Location", foreign_keys=[test_location_id])
-    examiner = relationship("User", foreign_keys=[examiner_id])
-    
-    def __repr__(self):
-        return f"<ApplicationTestAttempt(application_id={self.application_id}, type='{self.test_type}', attempt={self.attempt_number}, result='{self.test_result}')>"
-
-
-
-
-
-class ApplicationStatusHistory(BaseModel):
-    """Track application status changes for audit trail"""
-    __tablename__ = "application_status_history"
-
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
-    
-    # Status change details
-    from_status = Column(SQLEnum(ApplicationStatus), nullable=True, comment="Previous status")
-    to_status = Column(SQLEnum(ApplicationStatus), nullable=False, comment="New status")
-    changed_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who made the change")
-    changed_at = Column(DateTime, nullable=False, default=func.now(), comment="Timestamp of status change")
-    
-    # Change context
-    reason = Column(String(200), nullable=True, comment="Reason for status change")
-    notes = Column(Text, nullable=True, comment="Additional notes about the change")
-    system_initiated = Column(Boolean, nullable=False, default=False, comment="Whether change was system-initiated")
-    
-    # Relationships
-    application = relationship("Application", back_populates="status_history")
-    changed_by_user = relationship("User", foreign_keys=[changed_by])
-    
-    def __repr__(self):
-        return f"<ApplicationStatusHistory(application_id={self.application_id}, from='{self.from_status}', to='{self.to_status}')>"
-
-
-class ApplicationDocument(BaseModel):
-    """Document attachments for applications"""
-    __tablename__ = "application_documents"
-
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
-    
-    # Document details
-    document_type = Column(String(50), nullable=False, comment="Type of document (medical_certificate, parental_consent, etc.)")
-    document_name = Column(String(200), nullable=False, comment="Document file name")
-    file_path = Column(String(500), nullable=False, comment="Path to stored document file")
-    file_size = Column(Integer, nullable=True, comment="File size in bytes")
-    mime_type = Column(String(100), nullable=True, comment="MIME type of file")
-    
-    # Upload details
-    uploaded_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who uploaded document")
-    upload_date = Column(DateTime, nullable=False, default=func.now(), comment="Upload timestamp")
-    
-    # Verification
-    is_verified = Column(Boolean, nullable=False, default=False, comment="Document verified")
-    verified_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who verified document")
-    verified_at = Column(DateTime, nullable=True, comment="Verification timestamp")
-    verification_notes = Column(Text, nullable=True, comment="Verification notes")
-    
-    # Document metadata
-    expiry_date = Column(DateTime, nullable=True, comment="Document expiry date (if applicable)")
-    issuing_authority = Column(String(200), nullable=True, comment="Document issuing authority")
-    document_number = Column(String(100), nullable=True, comment="Document reference number")
-    
-    # Relationships
-    application = relationship("Application", back_populates="documents")
-    uploaded_by_user = relationship("User", foreign_keys=[uploaded_by])
-    verified_by_user = relationship("User", foreign_keys=[verified_by])
-    
-    def __repr__(self):
-        return f"<ApplicationDocument(application_id={self.application_id}, type='{self.document_type}', name='{self.document_name}')>"
-
-
-
-
-
-# License category display names for frontend
-LICENSE_CATEGORY_DISPLAY_NAMES = {
-    # Motorcycles and Mopeds
-    LicenseCategory.A1: "A1 - Small motorcycles and mopeds (<125cc)",
-    LicenseCategory.A2: "A2 - Mid-range motorcycles (power limited, up to 35kW)",
-    LicenseCategory.A: "A - Unlimited motorcycles (no power restriction)",
-    
-    # Light Vehicles
-    LicenseCategory.B1: "B1 - Light quadricycles (motorized tricycles/quadricycles)",
-    LicenseCategory.B: "B - Standard passenger cars and light vehicles (up to 3.5t)",
-    LicenseCategory.B2: "B2 - Taxis or commercial passenger vehicles",
-    LicenseCategory.BE: "BE - Category B with trailer exceeding 750kg",
-    
-    # Heavy Goods Vehicles
-    LicenseCategory.C1: "C1 - Medium-sized goods vehicles (3.5-7.5t)",
-    LicenseCategory.C: "C - Heavy goods vehicles (over 7.5t)",
-    LicenseCategory.C1E: "C1E - C1 category vehicles with heavy trailer",
-    LicenseCategory.CE: "CE - Full heavy combination vehicles",
-    
-    # Passenger Transport
-    LicenseCategory.D1: "D1 - Small buses (up to 16 passengers)",
-    LicenseCategory.D: "D - Standard buses and coaches (over 16 passengers)",
-    LicenseCategory.D2: "D2 - Specialized public transport (articulated buses)",
-    
-    # Learner's Permits
-    LicenseCategory.LEARNERS_1: "1 - Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
-    LicenseCategory.LEARNERS_2: "2 - Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
-    LicenseCategory.LEARNERS_3: "3 - Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles",
-}
-
-# Application type display names for frontend
-APPLICATION_TYPE_DISPLAY_NAMES = {
-    ApplicationType.NEW_LICENSE: "New License Application",
-    ApplicationType.LEARNERS_PERMIT: "Learner's Permit Application",
-    ApplicationType.RENEWAL: "License Renewal",
-    ApplicationType.REPLACEMENT: "Replacement License",
-    ApplicationType.TEMPORARY_LICENSE: "Temporary License",
-    ApplicationType.INTERNATIONAL_PERMIT: "International Driving Permit",
-}
-
-# Application status display names for frontend
-APPLICATION_STATUS_DISPLAY_NAMES = {
-    ApplicationStatus.DRAFT: "Draft",
-    ApplicationStatus.SUBMITTED: "Submitted (Awaiting Payment)",
-    ApplicationStatus.PAID: "Paid (Ready for Processing)",
-    ApplicationStatus.ON_HOLD: "On Hold",
-    ApplicationStatus.PASSED: "Test Passed",
-    ApplicationStatus.FAILED: "Test Failed (Requires New Application)",
-    ApplicationStatus.ABSENT: "Test Absent (Requires New Application)",
-    ApplicationStatus.APPROVED: "Approved (Ready for Printing)",
-    ApplicationStatus.SENT_TO_PRINTER: "Sent to Printer",
-    ApplicationStatus.CARD_PRODUCTION: "Card Production",
-    ApplicationStatus.READY_FOR_COLLECTION: "Ready for Collection",
-    ApplicationStatus.COMPLETED: "Completed",
-    ApplicationStatus.REJECTED: "Rejected",
-    ApplicationStatus.CANCELLED: "Cancelled",
-}
-
-# Age requirements for license categories
-LICENSE_CATEGORY_AGE_REQUIREMENTS = {
-    # Motorcycles and Mopeds
-    LicenseCategory.A1: 16,  # Requires parental consent for 16-17
-    LicenseCategory.A2: 18,
-    LicenseCategory.A: 18,
-    
-    # Light Vehicles
-    LicenseCategory.B1: 16,  # Requires parental consent for 16-17
-    LicenseCategory.B: 18,
-    LicenseCategory.B2: 21,  # Plus existing B license
-    LicenseCategory.BE: 18,  # Plus existing B license
-    
-    # Heavy Goods Vehicles
-    LicenseCategory.C1: 18,  # Plus existing B license
-    LicenseCategory.C: 21,   # Plus existing B license
-    LicenseCategory.C1E: 18, # Plus existing C1 license
-    LicenseCategory.CE: 21,  # Plus existing C license
-    
-    # Passenger Transport
-    LicenseCategory.D1: 21,  # Plus existing B license
-    LicenseCategory.D: 24,   # Plus existing B license
-    LicenseCategory.D2: 24,  # Plus existing B license
-    
-    # Learner's Permits
-    LicenseCategory.LEARNERS_1: 16,  # Requires parental consent for 16-17
-    LicenseCategory.LEARNERS_2: 18,
-    LicenseCategory.LEARNERS_3: 18,
-}
-
-# Categories requiring existing B license
-CATEGORIES_REQUIRING_B_LICENSE = [
-    LicenseCategory.B2,   # Commercial passenger vehicles
-    LicenseCategory.BE,   # B with trailer
-    LicenseCategory.C1,   # Medium goods vehicles
-    LicenseCategory.C,    # Heavy goods vehicles
-    LicenseCategory.C1E,  # C1 with trailer
-    LicenseCategory.CE,   # C with trailer
-    LicenseCategory.D1,   # Small buses
-    LicenseCategory.D,    # Standard buses
-    LicenseCategory.D2,   # Specialized transport
-]
-
-# Categories requiring medical certificate
-CATEGORIES_REQUIRING_MEDICAL = [
-    LicenseCategory.B2,   # Commercial passenger vehicles
-    LicenseCategory.C1,   # Medium goods vehicles
-    LicenseCategory.C,    # Heavy goods vehicles
-    LicenseCategory.C1E,  # C1 with trailer
-    LicenseCategory.CE,   # C with trailer
-    LicenseCategory.D1,   # Small buses
-    LicenseCategory.D,    # Standard buses
-    LicenseCategory.D2,   # Specialized transport
-]
-
-# Replacement reason display names for frontend
-REPLACEMENT_REASON_DISPLAY_NAMES = {
-    ReplacementReason.LOST: "Lost License",
-    ReplacementReason.STOLEN: "Stolen License (Police Report Required)",
-    ReplacementReason.DAMAGED: "Damaged License",
-    ReplacementReason.NAME_CHANGE: "Name Change",
-    ReplacementReason.ADDRESS_CHANGE: "Address Change",
-    ReplacementReason.OTHER: "Other Reason",
-} 
-
-class ApplicationAuthorization(BaseModel):
-    """
-    Authorization model for capturing test results and examiner decisions
-    This model captures the test day form data including eye test results,
-    driving test results, restrictions, and final authorization decision
-    """
-    __tablename__ = "application_authorizations"
-
-    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, unique=True, index=True, comment="Application ID (one authorization per application)")
-    
-    # Examiner information
-    examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="Examiner user ID")
-    infrastructure_number = Column(String(50), nullable=True, comment="Infrastructure number and name")
-    examiner_signature_path = Column(String(500), nullable=True, comment="Path to examiner signature file")
-    
-    # Test attendance and basic result
-    is_absent = Column(Boolean, nullable=False, default=False, comment="Applicant was absent for test")
-    is_failed = Column(Boolean, nullable=False, default=False, comment="Applicant failed the test")
-    absent_failed_reason = Column(Text, nullable=True, comment="Reason for absence or failure")
-    
-    # Eye test results (from medical information section)
-    eye_test_result = Column(String(20), nullable=True, comment="Eye test result: PASS/FAIL")
-    eye_test_notes = Column(Text, nullable=True, comment="Additional eye test notes")
-    
-    # Driving test results
-    driving_test_result = Column(String(20), nullable=True, comment="Driving test result: PASS/FAIL")
-    driving_test_score = Column(Numeric(5, 2), nullable=True, comment="Driving test score (percentage)")
-    driving_test_notes = Column(Text, nullable=True, comment="Driving test examiner notes")
-    
-    # Vehicle restrictions (from test form)
-    vehicle_restriction_none = Column(Boolean, nullable=False, default=True, comment="No vehicle restrictions")
-    vehicle_restriction_automatic = Column(Boolean, nullable=False, default=False, comment="Automatic transmission only")
-    vehicle_restriction_electric = Column(Boolean, nullable=False, default=False, comment="Electric powered vehicles only")
-    vehicle_restriction_disabled = Column(Boolean, nullable=False, default=False, comment="Adapted for physically disabled person")
-    
-    # Driver restrictions (from test form)
-    driver_restriction_none = Column(Boolean, nullable=False, default=True, comment="No driver restrictions")
-    driver_restriction_glasses = Column(Boolean, nullable=False, default=False, comment="Glasses or contact lenses required")
-    driver_restriction_artificial_limb = Column(Boolean, nullable=False, default=False, comment="Has artificial limb")
-    driver_restriction_glasses_and_limb = Column(Boolean, nullable=False, default=False, comment="Glasses and artificial limb")
-    
-    # Applied restrictions (final restrictions applied to license)
-    applied_restrictions = Column(JSON, nullable=True, comment="JSON array of applied LicenseRestrictionCode values")
-    
-    # Authorization decision
-    is_authorized = Column(Boolean, nullable=False, default=False, comment="Application authorized for license generation")
-    authorization_date = Column(DateTime, nullable=False, default=func.now(), comment="Date of authorization")
-    authorization_notes = Column(Text, nullable=True, comment="Examiner authorization notes")
-    
-    # License generation tracking
-    license_generated = Column(Boolean, nullable=False, default=False, comment="License generated from this authorization")
-    license_id = Column(UUID(as_uuid=True), ForeignKey('licenses.id'), nullable=True, comment="Generated license ID")
-    license_generated_at = Column(DateTime, nullable=True, comment="Date license was generated")
-    
-    # Quality assurance
-    reviewed_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="Supervisor who reviewed authorization")
-    reviewed_at = Column(DateTime, nullable=True, comment="Date authorization was reviewed")
-    review_notes = Column(Text, nullable=True, comment="Review notes")
-    
-    # Relationships
-    application = relationship("Application", back_populates="authorization", foreign_keys=[application_id])
-    examiner = relationship("User", foreign_keys=[examiner_id])
-    generated_license = relationship("License", foreign_keys=[license_id])
-    reviewed_by_user = relationship("User", foreign_keys=[reviewed_by])
-    
-    def __repr__(self):
-        return f"<ApplicationAuthorization(application_id={self.application_id}, examiner_id={self.examiner_id}, authorized={self.is_authorized})>"
-    
     @property
-    def has_vehicle_restrictions(self) -> bool:
-        """Check if any vehicle restrictions are applied"""
-        return not self.vehicle_restriction_none
-    
+    def is_light_vehicle(self) -> bool:
+        """Check if application is for light vehicle category"""
+        light_categories = [
+            LicenseCategory.A1, LicenseCategory.A2, LicenseCategory.A,
+            LicenseCategory.B1, LicenseCategory.B
+        ]
+        return self.license_category in light_categories
+
     @property
-    def has_driver_restrictions(self) -> bool:
-        """Check if any driver restrictions are applied"""
-        return not self.driver_restriction_none
-    
+    def is_heavy_vehicle(self) -> bool:
+        """Check if application is for heavy vehicle category"""
+        heavy_categories = [
+            LicenseCategory.B2, LicenseCategory.BE,
+            LicenseCategory.C1, LicenseCategory.C, LicenseCategory.C1E, LicenseCategory.CE,
+            LicenseCategory.D1, LicenseCategory.D, LicenseCategory.D2
+        ]
+        return self.license_category in heavy_categories
+
     @property
-    def test_passed(self) -> bool:
-        """Check if both eye test and driving test passed"""
-        return (
-            not self.is_absent and 
-            not self.is_failed and 
-            self.eye_test_result == "PASS" and 
-            self.driving_test_result == "PASS"
+    def requires_staged_payments(self) -> bool:
+        """Check if application requires staged payments (test first, then card)"""
+        return self.application_type in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]
+
+    @property
+    def requires_single_payment(self) -> bool:
+        """Check if application requires single payment (application + card together)"""
+        return self.application_type in [
+            ApplicationType.RENEWAL, 
+            ApplicationType.REPLACEMENT, 
+            ApplicationType.TEMPORARY_LICENSE,
+            ApplicationType.INTERNATIONAL_PERMIT,
+            ApplicationType.PROFESSIONAL_LICENSE,
+            ApplicationType.FOREIGN_CONVERSION
+        ]
+
+    @property
+    def current_required_payment_type(self) -> str:
+        """Determine what payment is currently required"""
+        if self.requires_single_payment:
+            if not self.card_payment_completed:
+                return "CARD_AND_APPLICATION"
+            else:
+                return "COMPLETED"
+        
+        elif self.requires_staged_payments:
+            if not self.test_payment_completed:
+                return "TEST_PAYMENT"
+            elif self.test_result == TestResult.PASSED and not self.card_payment_completed:
+                return "CARD_PAYMENT"
+            elif self.test_result in [TestResult.FAILED, TestResult.ABSENT]:
+                return "TEST_FAILED"  # Need new application
+            else:
+                return "WAITING_FOR_TEST"
+        
+        return "NO_PAYMENT_REQUIRED"
+
+    @property
+    def can_order_card(self) -> bool:
+        """Check if card can be ordered for this application"""
+        if self.application_type == ApplicationType.RENEWAL:
+            # Renewals: card can be ordered automatically with payment
+            return self.card_payment_completed
+        
+        elif self.application_type == ApplicationType.NEW_LICENSE:
+            # New licenses: card can only be ordered after passing test and paying
+            return (self.test_payment_completed and 
+                   self.test_result == TestResult.PASSED and 
+                   self.card_payment_completed)
+        
+        elif self.application_type == ApplicationType.REPLACEMENT:
+            # Replacements: card can be ordered with payment
+            return self.card_payment_completed
+        
+        return False
+
+    def get_required_fees(self) -> dict:
+        """Get required fees based on current payment stage and application type"""
+        from app.models.enums import MADAGASCAR_LICENSE_FEES
+        
+        fees = {"test_fees": [], "card_fees": [], "total": 0}
+        
+        payment_type = self.current_required_payment_type
+        
+        if payment_type == "TEST_PAYMENT":
+            # Test fees for NEW_LICENSE and LEARNERS_PERMIT
+            if self.is_light_vehicle:
+                fees["test_fees"].append({
+                    "type": "THEORY_TEST_LIGHT",
+                    "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_LIGHT"],
+                    "description": "Theory Test (Light Vehicles)"
+                })
+                if self.application_type == ApplicationType.NEW_LICENSE:
+                    fees["test_fees"].append({
+                        "type": "PRACTICAL_TEST_LIGHT", 
+                        "amount": MADAGASCAR_LICENSE_FEES["PRACTICAL_TEST_LIGHT"],
+                        "description": "Practical Test (Light Vehicles)"
+                    })
+            else:  # Heavy vehicle
+                fees["test_fees"].append({
+                    "type": "THEORY_TEST_HEAVY",
+                    "amount": MADAGASCAR_LICENSE_FEES["THEORY_TEST_HEAVY"],
+                    "description": "Theory Test (Heavy Vehicles)"
+                })
+                if self.application_type == ApplicationType.NEW_LICENSE:
+                    fees["test_fees"].append({
+                        "type": "PRACTICAL_TEST_HEAVY",
+                        "amount": MADAGASCAR_LICENSE_FEES["PRACTICAL_TEST_HEAVY"],
+                        "description": "Practical Test (Heavy Vehicles)"
+                    })
+        
+        elif payment_type == "CARD_PAYMENT":
+            # Card fees for second stage of NEW_LICENSE
+            fees["card_fees"].append({
+                "type": "NEW_LICENSE_FEE",
+                "amount": MADAGASCAR_LICENSE_FEES["NEW_LICENSE_FEE"],
+                "description": "New License - Application + Card"
+            })
+        
+        elif payment_type == "CARD_AND_APPLICATION":
+            # Single payment for other application types
+            if self.application_type == ApplicationType.RENEWAL:
+                fees["card_fees"].append({
+                    "type": "RENEWAL_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["RENEWAL_FEE"],
+                    "description": "License Renewal"
+                })
+            elif self.application_type == ApplicationType.REPLACEMENT:
+                fees["card_fees"].append({
+                    "type": "REPLACEMENT_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["REPLACEMENT_FEE"],
+                    "description": "License Replacement"
+                })
+            elif self.application_type == ApplicationType.TEMPORARY_LICENSE:
+                fees["card_fees"].append({
+                    "type": "TEMPORARY_LICENSE_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["TEMPORARY_LICENSE_FEE"],
+                    "description": "Temporary License"
+                })
+            elif self.application_type == ApplicationType.INTERNATIONAL_PERMIT:
+                fees["card_fees"].append({
+                    "type": "INTERNATIONAL_PERMIT_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["INTERNATIONAL_PERMIT_FEE"],
+                    "description": "International Driving Permit"
+                })
+            elif self.application_type == ApplicationType.PROFESSIONAL_LICENSE:
+                fees["card_fees"].append({
+                    "type": "PROFESSIONAL_LICENSE_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["PROFESSIONAL_LICENSE_FEE"],
+                    "description": "Professional License"
+                })
+            elif self.application_type == ApplicationType.FOREIGN_CONVERSION:
+                fees["card_fees"].append({
+                    "type": "FOREIGN_CONVERSION_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["FOREIGN_CONVERSION_FEE"],
+                    "description": "Foreign License Conversion"
+                })
+            elif self.application_type == ApplicationType.DRIVERS_LICENSE_CAPTURE:
+                fees["card_fees"].append({
+                    "type": "DRIVERS_LICENSE_CAPTURE_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["DRIVERS_LICENSE_CAPTURE_FEE"],
+                    "description": "Driver's License Capture"
+                })
+            elif self.application_type == ApplicationType.LEARNERS_PERMIT_CAPTURE:
+                fees["card_fees"].append({
+                    "type": "LEARNERS_PERMIT_CAPTURE_FEE",
+                    "amount": MADAGASCAR_LICENSE_FEES["LEARNERS_PERMIT_CAPTURE_FEE"],
+                    "description": "Learner's Permit Capture"
+                })
+        
+        # Calculate total
+        fees["total"] = (
+            sum(fee["amount"] for fee in fees["test_fees"]) +
+            sum(fee["amount"] for fee in fees["card_fees"])
         )
-    
-    def get_restriction_codes(self) -> list:
-        """Get list of restriction codes to apply to license"""
-        restrictions = []
         
-        # Driver restrictions
-        if self.driver_restriction_glasses or self.driver_restriction_glasses_and_limb:
-            restrictions.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
-        
-        if self.driver_restriction_artificial_limb or self.driver_restriction_glasses_and_limb:
-            restrictions.append(LicenseRestrictionCode.PROSTHETICS)
-        
-        # Vehicle restrictions
-        if self.vehicle_restriction_automatic:
-            restrictions.append(LicenseRestrictionCode.AUTOMATIC_TRANSMISSION)
-        
-        if self.vehicle_restriction_electric:
-            restrictions.append(LicenseRestrictionCode.ELECTRIC_POWERED)
-        
-        if self.vehicle_restriction_disabled:
-            restrictions.append(LicenseRestrictionCode.PHYSICAL_DISABLED)
-        
-        return restrictions 
+        return fees 

@@ -290,50 +290,213 @@ def get_transactions(
 
 # Fee Structure Management
 @router.get("/fee-structures", response_model=List[FeeStructure])
-def get_fee_structures(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> List[FeeStructure]:
-    """
-    Get all fee structures
-    """
-    if not current_user.has_permission("fee_structures.read"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to read fee structures"
-        )
+async def get_fee_structures(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all fee structures for fee management"""
+    # Check permissions
+    if not current_user.has_permission("transactions.read"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     
-    return crud_fee_structure.get_effective_fees(db=db)
-
+    return crud_fee_structure.get_all(db)
 
 @router.put("/fee-structures/{fee_structure_id}", response_model=FeeStructure)
-def update_fee_structure(
+async def update_fee_structure(
     fee_structure_id: uuid.UUID,
     fee_update: FeeStructureUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> FeeStructure:
-    """
-    Update fee structure (NATIONAL_ADMIN only)
-    """
-    if not current_user.has_permission("fee_structures.update"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to update fee structures"
-        )
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a specific fee structure amount"""
+    # Check permissions - only admins can update fees
+    if not current_user.has_permission("transactions.manage_fees"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to manage fees")
     
-    fee_structure = crud_fee_structure.get(db=db, id=fee_structure_id)
+    fee_structure = crud_fee_structure.get(db, id=fee_structure_id)
     if not fee_structure:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Fee structure not found"
-        )
+        raise HTTPException(status_code=404, detail="Fee structure not found")
     
-    update_data = fee_update.dict(exclude_unset=True)
-    update_data['last_updated_by'] = current_user.id
-    fee_structure = crud_fee_structure.update(db=db, db_obj=fee_structure, obj_in=update_data)
+    # Update the fee structure
+    updated_fee = crud_fee_structure.update(db=db, db_obj=fee_structure, obj_in=fee_update)
     
-    return fee_structure
+    return updated_fee
+
+@router.get("/fee-structures/by-application-type")
+async def get_fees_by_application_type(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get fees organized by application type for easy management"""
+    # Check permissions
+    if not current_user.has_permission("transactions.read"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    from app.models.enums import ApplicationType, MADAGASCAR_FEE_DISPLAY
+    
+    # Get all fee structures
+    all_fees = crud_fee_structure.get_all(db)
+    
+    # Organize by application type
+    fee_mapping = {
+        ApplicationType.NEW_LICENSE: {
+            "name": "New License",
+            "fees": {
+                "test_fees": [],
+                "application_fee": None,
+                "total_light": 0,
+                "total_heavy": 0
+            }
+        },
+        ApplicationType.LEARNERS_PERMIT: {
+            "name": "Learner's Permit",
+            "fees": {
+                "test_fees": [],
+                "application_fee": None,
+                "total_light": 0,
+                "total_heavy": 0
+            }
+        },
+        ApplicationType.RENEWAL: {
+            "name": "License Renewal",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        },
+        ApplicationType.REPLACEMENT: {
+            "name": "License Replacement",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        },
+        ApplicationType.TEMPORARY_LICENSE: {
+            "name": "Temporary License",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        },
+        ApplicationType.INTERNATIONAL_PERMIT: {
+            "name": "International Permit",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        },
+        ApplicationType.PROFESSIONAL_LICENSE: {
+            "name": "Professional License",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        },
+        ApplicationType.FOREIGN_CONVERSION: {
+            "name": "Foreign Conversion",
+            "fees": {
+                "application_fee": None,
+                "total": 0
+            }
+        }
+    }
+    
+    # Map fees to application types
+    for fee in all_fees:
+        fee_type = fee.fee_type.value
+        
+        # Test fees (apply to multiple application types)
+        if fee_type in ["THEORY_TEST_LIGHT", "THEORY_TEST_HEAVY", "PRACTICAL_TEST_LIGHT", "PRACTICAL_TEST_HEAVY"]:
+            for app_type in [ApplicationType.NEW_LICENSE, ApplicationType.LEARNERS_PERMIT]:
+                if app_type in fee_mapping:
+                    fee_mapping[app_type]["fees"]["test_fees"].append({
+                        "id": fee.id,
+                        "type": fee_type,
+                        "display_name": fee.display_name,
+                        "amount": float(fee.amount),
+                        "description": fee.description
+                    })
+        
+        # Application-specific fees
+        elif fee_type == "NEW_LICENSE_FEE":
+            fee_mapping[ApplicationType.NEW_LICENSE]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "RENEWAL_FEE":
+            fee_mapping[ApplicationType.RENEWAL]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "REPLACEMENT_FEE":
+            fee_mapping[ApplicationType.REPLACEMENT]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "TEMPORARY_LICENSE_FEE":
+            fee_mapping[ApplicationType.TEMPORARY_LICENSE]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "INTERNATIONAL_PERMIT_FEE":
+            fee_mapping[ApplicationType.INTERNATIONAL_PERMIT]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "PROFESSIONAL_LICENSE_FEE":
+            fee_mapping[ApplicationType.PROFESSIONAL_LICENSE]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+        elif fee_type == "FOREIGN_CONVERSION_FEE":
+            fee_mapping[ApplicationType.FOREIGN_CONVERSION]["fees"]["application_fee"] = {
+                "id": fee.id,
+                "type": fee_type,
+                "display_name": fee.display_name,
+                "amount": float(fee.amount),
+                "description": fee.description
+            }
+    
+    # Calculate totals
+    for app_type, data in fee_mapping.items():
+        if "total_light" in data["fees"]:
+            # Applications with tests
+            theory_light = next((f["amount"] for f in data["fees"]["test_fees"] if f["type"] == "THEORY_TEST_LIGHT"), 0)
+            practical_light = next((f["amount"] for f in data["fees"]["test_fees"] if f["type"] == "PRACTICAL_TEST_LIGHT"), 0)
+            theory_heavy = next((f["amount"] for f in data["fees"]["test_fees"] if f["type"] == "THEORY_TEST_HEAVY"), 0)
+            practical_heavy = next((f["amount"] for f in data["fees"]["test_fees"] if f["type"] == "PRACTICAL_TEST_HEAVY"), 0)
+            application_fee = data["fees"]["application_fee"]["amount"] if data["fees"]["application_fee"] else 0
+            
+            if app_type == ApplicationType.NEW_LICENSE:
+                data["fees"]["total_light"] = theory_light + practical_light + application_fee
+                data["fees"]["total_heavy"] = theory_heavy + practical_heavy + application_fee
+            else:  # LEARNERS_PERMIT
+                data["fees"]["total_light"] = theory_light
+                data["fees"]["total_heavy"] = theory_heavy
+        else:
+            # Single payment applications
+            application_fee = data["fees"]["application_fee"]["amount"] if data["fees"]["application_fee"] else 0
+            data["fees"]["total"] = application_fee
+    
+    return fee_mapping
 
 
 # Card Order Management

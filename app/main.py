@@ -461,6 +461,14 @@ async def initialize_users():
                 ("reports.export", "Export Reports", "Export reports to various formats", "reports", "report", "export"),
                 ("reports.provincial", "Provincial Reports", "Generate province-level reports", "reports", "report", "provincial"),
                 ("reports.national", "National Reports", "Generate national-level reports", "reports", "report", "national"),
+                
+                # Transaction Permissions (NEW)
+                ("transactions.create", "Create Transactions", "Process payments and create transactions", "transactions", "transaction", "create"),
+                ("transactions.read", "View Transactions", "View transaction history and details", "transactions", "transaction", "read"),
+                ("transactions.update", "Update Transactions", "Update transaction information", "transactions", "transaction", "update"),
+                ("transactions.delete", "Delete Transactions", "Delete or cancel transactions", "transactions", "transaction", "delete"),
+                ("transactions.manage", "Manage Transactions", "Full transaction management access", "transactions", "transaction", "manage"),
+                ("transactions.manage_fees", "Manage Fee Structures", "Update application fee amounts", "transactions", "fee_structure", "manage_fees"),
             ]
             
             permissions = {}
@@ -490,6 +498,8 @@ async def initialize_users():
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary",
+                # Transaction management (for processing payments)
+                "transactions.create", "transactions.read",
                 # Basic location viewing and reports for clerks
                 "locations.read", "reports.basic",
                 # Basic role viewing (needed for user interface)
@@ -501,6 +511,8 @@ async def initialize_users():
                 "users.read", "users.update", "users.view_statistics", "roles.read", "permissions.read",
                 # Additional person management permissions for supervisors
                 "persons.delete", "person_aliases.delete", "person_addresses.delete",
+                # Additional transaction management for supervisors
+                "transactions.update", "transactions.manage",
                 # Location management for supervisors
                 "locations.read", "locations.update", "locations.view_statistics",
                 # Enhanced reporting for supervisors
@@ -515,6 +527,8 @@ async def initialize_users():
                 "roles.read", "roles.view_hierarchy", "roles.view_statistics",
                 # Provincial oversight
                 "provinces.manage_users", "provinces.view_statistics", "provinces.view_audit_logs",
+                # Fee management (provincial and national admins can manage fees)
+                "transactions.manage_fees",
                 # Advanced reporting
                 "reports.provincial"
             ]
@@ -1197,6 +1211,8 @@ async def initialize_fee_structures():
         from app.core.database import get_db
         from app.models.transaction import FeeStructure, DEFAULT_FEE_STRUCTURE, FeeType
         from app.models.enums import LicenseCategory, ApplicationType
+        from app.models.user import User
+        from app.models.enums import UserType
         
         db = next(get_db())
         

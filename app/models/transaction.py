@@ -48,28 +48,28 @@ class PaymentMethod(PythonEnum):
 
 
 class FeeType(PythonEnum):
-    """Types of fees in the system"""
-    # Application fees
-    THEORY_TEST_LIGHT = "THEORY_TEST_LIGHT"         # Theory test for A1/A2/A/B1/B/B2/BE (10,000 Ar)
-    THEORY_TEST_HEAVY = "THEORY_TEST_HEAVY"         # Theory test for C/D/E categories (15,000 Ar)
-    PRACTICAL_TEST_LIGHT = "PRACTICAL_TEST_LIGHT"   # Practical test for light vehicles
-    PRACTICAL_TEST_HEAVY = "PRACTICAL_TEST_HEAVY"   # Practical test for heavy vehicles
-    APPLICATION_PROCESSING = "APPLICATION_PROCESSING" # Base application processing fee
+    """Types of fees in the system - Application-type specific"""
+    # Test fees (used across multiple application types)
+    THEORY_TEST_LIGHT = "THEORY_TEST_LIGHT"         # Theory test for light vehicles (10,000 Ar)
+    THEORY_TEST_HEAVY = "THEORY_TEST_HEAVY"         # Theory test for heavy vehicles (15,000 Ar)
+    PRACTICAL_TEST_LIGHT = "PRACTICAL_TEST_LIGHT"   # Practical test for light vehicles (10,000 Ar)
+    PRACTICAL_TEST_HEAVY = "PRACTICAL_TEST_HEAVY"   # Practical test for heavy vehicles (15,000 Ar)
     
-    # Card production fees
-    CARD_PRODUCTION = "CARD_PRODUCTION"             # Standard card production (38,000 Ar)
-    CARD_URGENT = "CARD_URGENT"                     # Urgent card production
-    CARD_EMERGENCY = "CARD_EMERGENCY"               # Emergency card production
+    # Application-type-specific fees (adjustable)
+    NEW_LICENSE_FEE = "NEW_LICENSE_FEE"             # New license application + card (38,000 Ar)
+    LEARNERS_PERMIT_FEE = "LEARNERS_PERMIT_FEE"     # Learners permit (test fees only)
+    RENEWAL_FEE = "RENEWAL_FEE"                     # License renewal (38,000 Ar)
+    REPLACEMENT_FEE = "REPLACEMENT_FEE"             # License replacement (38,000 Ar)
+    TEMPORARY_LICENSE_FEE = "TEMPORARY_LICENSE_FEE" # Temporary license (10,000 Ar)
+    INTERNATIONAL_PERMIT_FEE = "INTERNATIONAL_PERMIT_FEE" # International permit (38,000 Ar)
+    PROFESSIONAL_LICENSE_FEE = "PROFESSIONAL_LICENSE_FEE" # Professional license (38,000 Ar)
+    FOREIGN_CONVERSION_FEE = "FOREIGN_CONVERSION_FEE"     # Foreign license conversion (38,000 Ar)
+    DRIVERS_LICENSE_CAPTURE_FEE = "DRIVERS_LICENSE_CAPTURE_FEE" # License capture (38,000 Ar)
+    LEARNERS_PERMIT_CAPTURE_FEE = "LEARNERS_PERMIT_CAPTURE_FEE" # Learners capture (38,000 Ar)
     
-    # Temporary license fees  
-    TEMPORARY_LICENSE_NORMAL = "TEMPORARY_LICENSE_NORMAL"     # Normal temporary license (30,000 Ar)
-    TEMPORARY_LICENSE_URGENT = "TEMPORARY_LICENSE_URGENT"     # Urgent temporary license (100,000 Ar)
-    TEMPORARY_LICENSE_EMERGENCY = "TEMPORARY_LICENSE_EMERGENCY" # Emergency temporary license (400,000 Ar)
-    
-    # Special fees
-    INTERNATIONAL_PERMIT = "INTERNATIONAL_PERMIT"   # International driving permit
-    PROFESSIONAL_PERMIT = "PROFESSIONAL_PERMIT"     # Professional driving permit
-    MEDICAL_CERTIFICATE = "MEDICAL_CERTIFICATE"     # Medical certificate processing
+    # Legacy fees (keep for backward compatibility)
+    APPLICATION_PROCESSING = "APPLICATION_PROCESSING" # Deprecated - use application-specific fees
+    CARD_PRODUCTION = "CARD_PRODUCTION"             # Deprecated - use application-specific fees
 
 
 class CardOrderStatus(PythonEnum):
@@ -265,16 +265,17 @@ class CardOrder(BaseModel):
         return f"<CardOrder(number='{self.order_number}', status='{self.status.value}', amount={self.fee_amount})>"
 
 
-# Default fee structure data for system initialization
+# Madagascar License Fee Structure (Application-Type Specific)
 DEFAULT_FEE_STRUCTURE = {
+    # Test Fees
     FeeType.THEORY_TEST_LIGHT: {
         "display_name": "Theory Test (Light Vehicles)",
-        "description": "Theory test for A1/A2/A/B1/B/B2/BE categories",
+        "description": "Theory test for light vehicle categories (A1, A2, A, B1, B)",
         "amount": Decimal("10000.00")
     },
     FeeType.THEORY_TEST_HEAVY: {
-        "display_name": "Theory Test (Heavy Vehicles)",
-        "description": "Theory test for C/D/E categories",
+        "display_name": "Theory Test (Heavy Vehicles)", 
+        "description": "Theory test for heavy vehicle categories (B2, BE, C1, C, C1E, CE, D1, D, D2)",
         "amount": Decimal("15000.00")
     },
     FeeType.PRACTICAL_TEST_LIGHT: {
@@ -287,54 +288,68 @@ DEFAULT_FEE_STRUCTURE = {
         "description": "Practical test for heavy vehicle categories",
         "amount": Decimal("15000.00")
     },
-    FeeType.APPLICATION_PROCESSING: {
-        "display_name": "Application Processing",
-        "description": "Base application processing fee",
-        "amount": Decimal("5000.00")
-    },
-    FeeType.CARD_PRODUCTION: {
-        "display_name": "Card Production",
-        "description": "Standard license card production",
+    
+    # Application-Type-Specific Fees (adjustable)
+    FeeType.NEW_LICENSE_FEE: {
+        "display_name": "New License - Application + Card",
+        "description": "Complete new license application processing and card production",
         "amount": Decimal("38000.00")
     },
-    FeeType.CARD_URGENT: {
-        "display_name": "Urgent Card Production",
-        "description": "Urgent license card production",
-        "amount": Decimal("100000.00")
+    FeeType.LEARNERS_PERMIT_FEE: {
+        "display_name": "Learners Permit - Additional Fee",
+        "description": "Additional fee for learners permit (test fees separate)",
+        "amount": Decimal("0.00")
     },
-    FeeType.CARD_EMERGENCY: {
-        "display_name": "Emergency Card Production",
-        "description": "Emergency license card production",
-        "amount": Decimal("400000.00")
+    FeeType.RENEWAL_FEE: {
+        "display_name": "License Renewal",
+        "description": "License renewal processing and new card production",
+        "amount": Decimal("38000.00")
     },
-    FeeType.TEMPORARY_LICENSE_NORMAL: {
-        "display_name": "Temporary License (Normal)",
-        "description": "Standard temporary license",
-        "amount": Decimal("30000.00")
+    FeeType.REPLACEMENT_FEE: {
+        "display_name": "License Replacement",
+        "description": "License replacement for lost/stolen/damaged cards",
+        "amount": Decimal("38000.00")
     },
-    FeeType.TEMPORARY_LICENSE_URGENT: {
-        "display_name": "Temporary License (Urgent)",
-        "description": "Urgent temporary license",
-        "amount": Decimal("100000.00")
+    FeeType.TEMPORARY_LICENSE_FEE: {
+        "display_name": "Temporary License",
+        "description": "Temporary license (90-day validity)",
+        "amount": Decimal("10000.00")
     },
-    FeeType.TEMPORARY_LICENSE_EMERGENCY: {
-        "display_name": "Temporary License (Emergency)",
-        "description": "Emergency temporary license",
-        "amount": Decimal("400000.00")
-    },
-    FeeType.INTERNATIONAL_PERMIT: {
+    FeeType.INTERNATIONAL_PERMIT_FEE: {
         "display_name": "International Driving Permit",
         "description": "International driving permit application",
-        "amount": Decimal("50000.00")
+        "amount": Decimal("38000.00")
     },
-    FeeType.PROFESSIONAL_PERMIT: {
-        "display_name": "Professional Driving Permit",
-        "description": "Professional driving permit application",
-        "amount": Decimal("75000.00")
+    FeeType.PROFESSIONAL_LICENSE_FEE: {
+        "display_name": "Professional License",
+        "description": "Professional driving license application",
+        "amount": Decimal("38000.00")
     },
-    FeeType.MEDICAL_CERTIFICATE: {
-        "display_name": "Medical Certificate Processing",
-        "description": "Medical certificate verification",
-        "amount": Decimal("25000.00")
+    FeeType.FOREIGN_CONVERSION_FEE: {
+        "display_name": "Foreign License Conversion",
+        "description": "Foreign license conversion to Madagascar license",
+        "amount": Decimal("38000.00")
+    },
+    FeeType.DRIVERS_LICENSE_CAPTURE_FEE: {
+        "display_name": "Driver's License Capture",
+        "description": "Capture existing driver's license into system",
+        "amount": Decimal("38000.00")
+    },
+    FeeType.LEARNERS_PERMIT_CAPTURE_FEE: {
+        "display_name": "Learner's Permit Capture",
+        "description": "Capture existing learner's permit into system",
+        "amount": Decimal("38000.00")
+    },
+    
+    # Legacy fees (for backward compatibility)
+    FeeType.APPLICATION_PROCESSING: {
+        "display_name": "Application Processing (Legacy)",
+        "description": "Legacy application processing fee",
+        "amount": Decimal("38000.00")
+    },
+    FeeType.CARD_PRODUCTION: {
+        "display_name": "Card Production (Legacy)",
+        "description": "Legacy card production fee",
+        "amount": Decimal("38000.00")
     }
 } 
