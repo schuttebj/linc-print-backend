@@ -96,7 +96,7 @@ def search_person_for_payment(
             license_category=application.license_category.value,
             status=application.status.value,
             fees=fees,
-            total_amount=application_total
+            total_amount=float(application_total)
         ))
     
     # Get payable card orders
