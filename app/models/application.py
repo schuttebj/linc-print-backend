@@ -426,3 +426,157 @@ class Application(BaseModel):
         )
         
         return fees 
+
+
+class ApplicationBiometricData(BaseModel):
+    """Biometric data captured for license applications"""
+    __tablename__ = "application_biometric_data"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
+    data_type = Column(SQLEnum(BiometricDataType), nullable=False, comment="Type of biometric data")
+    
+    # File storage
+    file_path = Column(String(500), nullable=True, comment="Path to stored biometric file")
+    file_name = Column(String(255), nullable=True, comment="Original filename")
+    file_size = Column(Integer, nullable=True, comment="File size in bytes")
+    file_format = Column(String(10), nullable=True, comment="File format (jpg, png, etc.)")
+    
+    # Capture metadata
+    capture_device = Column(String(100), nullable=True, comment="Device used for capture")
+    capture_software = Column(String(100), nullable=True, comment="Software used for capture")
+    capture_metadata = Column(JSON, nullable=True, comment="Additional capture metadata")
+    
+    # Quality metrics
+    quality_score = Column(Numeric(3, 2), nullable=True, comment="Quality score (0.00-1.00)")
+    quality_metrics = Column(JSON, nullable=True, comment="Detailed quality metrics")
+    
+    # Processing flags
+    is_processed = Column(Boolean, nullable=False, default=False, comment="Data has been processed")
+    is_verified = Column(Boolean, nullable=False, default=False, comment="Data has been verified")
+    processing_notes = Column(Text, nullable=True, comment="Processing or verification notes")
+    
+    # Audit fields
+    captured_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who captured the data")
+    verified_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who verified the data")
+    verified_at = Column(DateTime, nullable=True, comment="Verification timestamp")
+    
+    # Relationships
+    application = relationship("Application", back_populates="biometric_data")
+    captured_by_user = relationship("User", foreign_keys=[captured_by])
+    verified_by_user = relationship("User", foreign_keys=[verified_by])
+
+    def __repr__(self):
+        return f"<ApplicationBiometricData(application_id={self.application_id}, type='{self.data_type}')>"
+
+
+class ApplicationTestAttempt(BaseModel):
+    """Test attempts for license applications"""
+    __tablename__ = "application_test_attempts"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
+    test_type = Column(SQLEnum(TestAttemptType), nullable=False, comment="Type of test (theory/practical)")
+    attempt_number = Column(Integer, nullable=False, default=1, comment="Attempt number (1, 2, 3, etc.)")
+    
+    # Test scheduling
+    scheduled_date = Column(DateTime, nullable=True, comment="Scheduled test date and time")
+    scheduled_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Scheduled test location")
+    
+    # Test execution
+    test_date = Column(DateTime, nullable=True, comment="Actual test date and time")
+    test_location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Actual test location")
+    examiner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="Examiner who conducted the test")
+    
+    # Test results
+    result = Column(SQLEnum(TestResult), nullable=True, comment="Test result (PASSED/FAILED/ABSENT)")
+    score = Column(Numeric(5, 2), nullable=True, comment="Test score (if applicable)")
+    max_score = Column(Numeric(5, 2), nullable=True, comment="Maximum possible score")
+    pass_threshold = Column(Numeric(5, 2), nullable=True, comment="Minimum score to pass")
+    
+    # Test details
+    test_duration_minutes = Column(Integer, nullable=True, comment="Test duration in minutes")
+    test_questions_total = Column(Integer, nullable=True, comment="Total number of questions")
+    test_questions_correct = Column(Integer, nullable=True, comment="Number of correct answers")
+    
+    # Test metadata
+    test_metadata = Column(JSON, nullable=True, comment="Additional test metadata (questions, answers, etc.)")
+    examiner_notes = Column(Text, nullable=True, comment="Examiner's notes and observations")
+    
+    # Relationships
+    application = relationship("Application", back_populates="test_attempts")
+    examiner = relationship("User", foreign_keys=[examiner_id])
+    scheduled_location = relationship("Location", foreign_keys=[scheduled_location_id])
+    test_location = relationship("Location", foreign_keys=[test_location_id])
+
+    def __repr__(self):
+        return f"<ApplicationTestAttempt(application_id={self.application_id}, type='{self.test_type}', attempt={self.attempt_number}, result='{self.result}')>"
+
+
+class ApplicationStatusHistory(BaseModel):
+    """Status change history for applications"""
+    __tablename__ = "application_status_history"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
+    previous_status = Column(SQLEnum(ApplicationStatus), nullable=True, comment="Previous status")
+    new_status = Column(SQLEnum(ApplicationStatus), nullable=False, comment="New status")
+    
+    # Change details
+    change_reason = Column(String(500), nullable=True, comment="Reason for status change")
+    change_notes = Column(Text, nullable=True, comment="Additional notes about the change")
+    
+    # Change metadata
+    changed_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who made the change")
+    changed_at = Column(DateTime, nullable=False, default=func.now(), comment="When the change was made")
+    system_generated = Column(Boolean, nullable=False, default=False, comment="Whether this was a system-generated change")
+    
+    # Additional context
+    related_document_id = Column(UUID(as_uuid=True), nullable=True, comment="Related document or transaction ID")
+    ip_address = Column(String(45), nullable=True, comment="IP address of user making change")
+    user_agent = Column(String(500), nullable=True, comment="User agent of user making change")
+    
+    # Relationships
+    application = relationship("Application", back_populates="status_history")
+    changed_by_user = relationship("User", foreign_keys=[changed_by])
+
+    def __repr__(self):
+        return f"<ApplicationStatusHistory(application_id={self.application_id}, {self.previous_status} -> {self.new_status})>"
+
+
+class ApplicationDocument(BaseModel):
+    """Documents attached to applications"""
+    __tablename__ = "application_documents"
+
+    application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, index=True, comment="Application ID")
+    document_type = Column(String(50), nullable=False, comment="Type of document")
+    document_name = Column(String(255), nullable=False, comment="Document name/title")
+    
+    # File information
+    file_path = Column(String(500), nullable=False, comment="Path to stored document file")
+    original_filename = Column(String(255), nullable=False, comment="Original filename")
+    file_size = Column(Integer, nullable=False, comment="File size in bytes")
+    file_format = Column(String(10), nullable=False, comment="File format (pdf, jpg, png, etc.)")
+    mime_type = Column(String(100), nullable=True, comment="MIME type of the file")
+    
+    # Document metadata
+    document_number = Column(String(100), nullable=True, comment="Document number (if applicable)")
+    issue_date = Column(DateTime, nullable=True, comment="Document issue date")
+    expiry_date = Column(DateTime, nullable=True, comment="Document expiry date")
+    issuing_authority = Column(String(200), nullable=True, comment="Authority that issued the document")
+    
+    # Processing status
+    is_verified = Column(Boolean, nullable=False, default=False, comment="Document has been verified")
+    verification_status = Column(String(20), nullable=False, default="pending", comment="Verification status")
+    verification_notes = Column(Text, nullable=True, comment="Verification notes")
+    
+    # Audit fields
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, comment="User who uploaded the document")
+    uploaded_at = Column(DateTime, nullable=False, default=func.now(), comment="Upload timestamp")
+    verified_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, comment="User who verified the document")
+    verified_at = Column(DateTime, nullable=True, comment="Verification timestamp")
+    
+    # Relationships
+    application = relationship("Application", back_populates="documents")
+    uploaded_by_user = relationship("User", foreign_keys=[uploaded_by])
+    verified_by_user = relationship("User", foreign_keys=[verified_by])
+
+    def __repr__(self):
+        return f"<ApplicationDocument(application_id={self.application_id}, type='{self.document_type}', name='{self.document_name}')>" 
