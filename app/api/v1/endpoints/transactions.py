@@ -15,7 +15,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
-from app.crud import crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator, person as crud_person
+from app.crud import crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator, person as crud_person, person_alias
 from app.schemas.transaction import (
     Transaction, TransactionCreate, TransactionUpdate,
     CardOrder, CardOrderCreate, CardOrderUpdate,
@@ -47,27 +47,27 @@ def search_person_for_payment(
     
     # Find person by ID number through their alias (document)
     # First try to find the alias by document number
-    person_alias = crud_person.person_alias.get_by_document_number(
+    found_person_alias = person_alias.get_by_document_number(
         db=db, 
         document_number=id_number,
         document_type="MADAGASCAR_ID"  # National ID document type
     )
     
     # If not found as MADAGASCAR_ID, try without document type filter
-    if not person_alias:
-        person_alias = crud_person.person_alias.get_by_document_number(
+    if not found_person_alias:
+        found_person_alias = person_alias.get_by_document_number(
             db=db, 
             document_number=id_number
         )
     
-    if not person_alias:
+    if not found_person_alias:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Person not found with this ID number"
         )
     
     # Get the person from the alias
-    person = crud_person.get(db=db, id=person_alias.person_id)
+    person = crud_person.get(db=db, id=found_person_alias.person_id)
     if not person:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
