@@ -35,6 +35,12 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         return db.query(self.model).offset(skip).limit(limit).all()
 
+    def get_all(self, db: Session) -> List[ModelType]:
+        """
+        Get all records without pagination.
+        """
+        return db.query(self.model).all()
+
     def create(
         self, 
         db: Session, 
