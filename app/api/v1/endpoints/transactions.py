@@ -97,7 +97,7 @@ def search_person_for_payment(
             license_category=application.license_category.value,
             status=application.status.value,
             fees=fees,
-            total_amount=float(application_total)
+            total_amount=round(float(application_total), 2)
         ))
     
     # Get payable card orders
@@ -126,9 +126,9 @@ def search_person_for_payment(
         person_id_number=found_person_alias.document_number,
         payable_applications=application_items,
         payable_card_orders=card_order_items,
-        total_applications_amount=float(total_applications_amount),
-        total_card_orders_amount=float(total_card_orders_amount),
-        grand_total_amount=float(grand_total)
+        total_applications_amount=round(float(total_applications_amount), 2),
+        total_card_orders_amount=round(float(total_card_orders_amount), 2),
+        grand_total_amount=round(float(grand_total), 2)
     )
 
 
