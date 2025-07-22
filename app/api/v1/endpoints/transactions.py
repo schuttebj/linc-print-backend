@@ -15,6 +15,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
+from app.models.enums import ApplicationStatus
 from app.models.transaction import Transaction as TransactionModel
 from app.crud import crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator, person as crud_person, person_alias
 from app.schemas.transaction import (
@@ -175,7 +176,7 @@ def process_payment(
                 detail=f"Application {application_id} not found"
             )
         
-        if application.status != "SUBMITTED":
+        if application.status != ApplicationStatus.SUBMITTED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Application {application.application_number} is not in SUBMITTED status"
