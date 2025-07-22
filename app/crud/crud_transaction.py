@@ -104,12 +104,18 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
         
         # If payment method provided, complete the payment
         if payment_method:
+            print(f"DEBUG: About to call complete_payment for transaction {transaction.id}")
+            print(f"DEBUG: Transaction has {len(transaction.items)} items")
+            for item in transaction.items:
+                print(f"DEBUG: Item {item.id} - application_id: {item.application_id}, card_order_id: {item.card_order_id}")
             self.complete_payment(
                 db=db,
                 transaction=transaction,
                 payment_method=payment_method,
                 payment_reference=payment_reference
             )
+        else:
+            print(f"DEBUG: No payment method provided, transaction remains PENDING")
         
         db.commit()
         db.refresh(transaction)
@@ -123,6 +129,9 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
         payment_reference: Optional[str] = None
     ) -> Transaction:
         """Complete payment for a transaction"""
+        
+        print(f"DEBUG: complete_payment called for transaction {transaction.id}")
+        print(f"DEBUG: Transaction has {len(transaction.items)} items to process")
         
         transaction.status = TransactionStatus.PAID
         transaction.payment_method = payment_method
@@ -156,7 +165,9 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
                 if card_order and card_order.status == CardOrderStatus.PENDING_PAYMENT:
                     card_order.status = CardOrderStatus.PAID
         
+        print(f"DEBUG: About to commit changes for transaction {transaction.id}")
         db.commit()
+        print(f"DEBUG: Changes committed successfully for transaction {transaction.id}")
         return transaction
     
     def generate_receipt_number(self, db: Session) -> str:
@@ -398,7 +409,7 @@ class TransactionCalculator:
         
         # Add test fees if required
         for test_fee in required_fees["test_fees"]:
-            fees.append({
+            fee_data = {
                 'item_type': 'test_fee',
                 'description': test_fee["description"],
                 'amount': test_fee["amount"],
@@ -408,11 +419,13 @@ class TransactionCalculator:
                     'category': application.license_category.value,
                     'payment_stage': 'TEST_PAYMENT'
                 }
-            })
+            }
+            print(f"DEBUG: Adding test fee for application {application.id}: {fee_data}")
+            fees.append(fee_data)
         
         # Add card/application fees if required  
         for card_fee in required_fees["card_fees"]:
-            fees.append({
+            fee_data = {
                 'item_type': 'card_fee',
                 'description': card_fee["description"],
                 'amount': card_fee["amount"],
@@ -422,7 +435,9 @@ class TransactionCalculator:
                     'application_type': application.application_type.value,
                     'payment_stage': 'CARD_PAYMENT'
                 }
-            })
+            }
+            print(f"DEBUG: Adding card fee for application {application.id}: {fee_data}")
+            fees.append(fee_data)
         
         return fees
     
