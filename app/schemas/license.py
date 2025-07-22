@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date
 from uuid import UUID
 
-from app.models.enums import LicenseCategory, LicenseRestrictionCode, ProfessionalPermitCategory
+from app.models.enums import LicenseCategory, DriverRestrictionCode, VehicleRestrictionCode, ProfessionalPermitCategory
 from app.models.license import LicenseStatus
 
 
@@ -38,10 +38,33 @@ class LicenseCreateFromApplication(BaseModel):
         if not v:
             return v
         
-        valid_codes = [code.value for code in LicenseRestrictionCode]
-        for code in v:
-            if code not in valid_codes:
-                raise ValueError(f"Invalid restriction code: {code}. Valid codes are: {valid_codes}")
+        # Handle both old format (list) and new format (dict) for backward compatibility
+        if isinstance(v, list):
+            # Old format - validate as combined codes
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            valid_codes = valid_driver_codes + valid_vehicle_codes
+            
+            for code in v:
+                if code not in valid_codes:
+                    raise ValueError(f"Invalid restriction code: {code}. Valid codes are: {valid_codes}")
+                    
+        elif isinstance(v, dict):
+            # New format - validate separately
+            driver_restrictions = v.get('driver_restrictions', [])
+            vehicle_restrictions = v.get('vehicle_restrictions', [])
+            
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            
+            for code in driver_restrictions:
+                if code not in valid_driver_codes:
+                    raise ValueError(f"Invalid driver restriction code: {code}. Valid codes are: {valid_driver_codes}")
+                    
+            for code in vehicle_restrictions:
+                if code not in valid_vehicle_codes:
+                    raise ValueError(f"Invalid vehicle restriction code: {code}. Valid codes are: {valid_vehicle_codes}")
+        
         return v
 
     @validator('professional_permit_categories')
@@ -106,11 +129,32 @@ class LicenseRestrictionsUpdate(BaseModel):
         """Validate restriction codes"""
         if not v:
             return v
+        
+        # Handle both old format (list) and new format (dict) for backward compatibility
+        if isinstance(v, list):
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            valid_codes = valid_driver_codes + valid_vehicle_codes
             
-        valid_codes = [code.value for code in LicenseRestrictionCode]
-        for code in v:
-            if code not in valid_codes:
-                raise ValueError(f"Invalid restriction code: {code}")
+            for code in v:
+                if code not in valid_codes:
+                    raise ValueError(f"Invalid restriction code: {code}")
+                    
+        elif isinstance(v, dict):
+            driver_restrictions = v.get('driver_restrictions', [])
+            vehicle_restrictions = v.get('vehicle_restrictions', [])
+            
+            valid_driver_codes = [code.value for code in DriverRestrictionCode]
+            valid_vehicle_codes = [code.value for code in VehicleRestrictionCode]
+            
+            for code in driver_restrictions:
+                if code not in valid_driver_codes:
+                    raise ValueError(f"Invalid driver restriction code: {code}")
+                    
+            for code in vehicle_restrictions:
+                if code not in valid_vehicle_codes:
+                    raise ValueError(f"Invalid vehicle restriction code: {code}")
+        
         return v
 
 

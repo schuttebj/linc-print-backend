@@ -21,13 +21,14 @@ from sqlalchemy.sql import func
 import uuid
 from decimal import Decimal
 from datetime import datetime, date
+from typing import List
 
 from app.models.base import BaseModel
 from app.models.enums import (
     LicenseCategory, ApplicationType, ApplicationStatus, TestResult,
     BiometricDataType, MedicalCertificateStatus, ParentalConsentStatus,
     TestAttemptType, PaymentStatus, ReplacementReason,
-    ProfessionalPermitCategory, LicenseRestrictionCode
+    ProfessionalPermitCategory, DriverRestrictionCode, VehicleRestrictionCode
 )
 
 
@@ -655,30 +656,30 @@ class ApplicationAuthorization(BaseModel):
     
     def get_restriction_codes(self) -> list:
         """Get list of applicable license restriction codes"""
-        from app.models.enums import LicenseRestrictionCode
+        from app.models.enums import DriverRestrictionCode, VehicleRestrictionCode
         
         codes = []
         
         # Driver restrictions
         if self.driver_restriction_glasses:
-            codes.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
+            codes.append(DriverRestrictionCode.CORRECTIVE_LENSES)
         
         if self.driver_restriction_artificial_limb:
-            codes.append(LicenseRestrictionCode.PROSTHETICS)
+            codes.append(DriverRestrictionCode.PROSTHETICS)
             
         if self.driver_restriction_glasses_and_limb:
-            codes.append(LicenseRestrictionCode.CORRECTIVE_LENSES)
-            codes.append(LicenseRestrictionCode.PROSTHETICS)
+            codes.append(DriverRestrictionCode.CORRECTIVE_LENSES)
+            codes.append(DriverRestrictionCode.PROSTHETICS)
         
         # Vehicle restrictions
         if self.vehicle_restriction_automatic:
-            codes.append(LicenseRestrictionCode.AUTOMATIC_TRANSMISSION)
+            codes.append(VehicleRestrictionCode.AUTOMATIC_TRANSMISSION)
             
         if self.vehicle_restriction_electric:
-            codes.append(LicenseRestrictionCode.ELECTRIC_POWERED)
+            codes.append(VehicleRestrictionCode.ELECTRIC_POWERED)
             
         if self.vehicle_restriction_disabled:
-            codes.append(LicenseRestrictionCode.PHYSICAL_DISABLED)
+            codes.append(VehicleRestrictionCode.PHYSICAL_DISABLED)
         
         return list(set(codes))  # Remove duplicates
     
