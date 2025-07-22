@@ -45,12 +45,33 @@ def search_person_for_payment(
             detail="Not enough permissions to access POS system"
         )
     
-    # Find person by ID number
-    person = crud_person.get_by_id_number(db=db, id_number=id_number)
-    if not person:
+    # Find person by ID number through their alias (document)
+    # First try to find the alias by document number
+    person_alias = crud_person.person_alias.get_by_document_number(
+        db=db, 
+        document_number=id_number,
+        document_type="MADAGASCAR_ID"  # National ID document type
+    )
+    
+    # If not found as MADAGASCAR_ID, try without document type filter
+    if not person_alias:
+        person_alias = crud_person.person_alias.get_by_document_number(
+            db=db, 
+            document_number=id_number
+        )
+    
+    if not person_alias:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Person not found with this ID number"
+        )
+    
+    # Get the person from the alias
+    person = crud_person.get(db=db, id=person_alias.person_id)
+    if not person:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person record not found"
         )
     
     # Get payable applications
