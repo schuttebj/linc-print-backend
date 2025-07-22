@@ -246,7 +246,7 @@ def get_transactions(
     limit: int = 100,
     person_id: Optional[uuid.UUID] = None,
     location_id: Optional[uuid.UUID] = None,
-    status: Optional[str] = None,
+    transaction_status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> List[Transaction]:
@@ -282,8 +282,8 @@ def get_transactions(
         if accessible_locations:
             query = query.filter(crud_transaction.model.location_id.in_(accessible_locations))
     
-    if status:
-        query = query.filter(crud_transaction.model.status == status)
+    if transaction_status:
+        query = query.filter(crud_transaction.model.status == transaction_status)
     
     transactions = query.order_by(crud_transaction.model.created_at.desc()).offset(skip).limit(limit).all()
     return transactions
