@@ -15,6 +15,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
+from app.models.transaction import Transaction as TransactionModel
 from app.crud import crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator, person as crud_person, person_alias
 from app.schemas.transaction import (
     Transaction, TransactionCreate, TransactionUpdate,
@@ -120,13 +121,13 @@ def search_person_for_payment(
     
     return PersonPaymentSummary(
         person_id=person.id,
-        person_name=f"{person.first_name} {person.last_name}",
-        person_id_number=person.id_number,
+        person_name=f"{person.first_name} {person.surname}",
+        person_id_number=found_person_alias.document_number,
         payable_applications=application_items,
         payable_card_orders=card_order_items,
-        total_applications_amount=total_applications_amount,
-        total_card_orders_amount=total_card_orders_amount,
-        grand_total_amount=grand_total
+        total_applications_amount=float(total_applications_amount),
+        total_card_orders_amount=float(total_card_orders_amount),
+        grand_total_amount=float(grand_total)
     )
 
 
@@ -322,7 +323,12 @@ def get_transaction_receipt(
     """
     Generate and return transaction receipt (A4 format)
     """
-    transaction = crud_transaction.get(db=db, id=transaction_id)
+    # Get transaction with person and aliases loaded
+    transaction = db.query(TransactionModel).options(
+        joinedload(TransactionModel.person).joinedload(Person.aliases),
+        joinedload(TransactionModel.location)
+    ).filter(TransactionModel.id == transaction_id).first()
+    
     if not transaction:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -342,14 +348,26 @@ def get_transaction_receipt(
         transaction.receipt_printed_at = datetime.utcnow()
         db.commit()
     
+    # Get the person's primary ID number from their aliases
+    primary_alias = None
+    if transaction.person.aliases:
+        # Try to find a Madagascar ID first, then any alias
+        for alias in transaction.person.aliases:
+            if alias.document_type == "MADAGASCAR_ID" and alias.is_primary:
+                primary_alias = alias
+                break
+        if not primary_alias:
+            # Fallback to first alias if no primary Madagascar ID found
+            primary_alias = transaction.person.aliases[0] if transaction.person.aliases else None
+
     # TODO: Generate actual PDF receipt
     # For now, return receipt data as JSON
     receipt_data = {
         "receipt_number": transaction.receipt_number,
         "transaction_number": transaction.transaction_number,
         "date": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        "person_name": f"{transaction.person.first_name} {transaction.person.last_name}",
-        "person_id": transaction.person.id_number,
+        "person_name": f"{transaction.person.first_name} {transaction.person.surname}",
+        "person_id": primary_alias.document_number if primary_alias else "N/A",
         "location": transaction.location.name if transaction.location else "Unknown",
         "items": [
             {
