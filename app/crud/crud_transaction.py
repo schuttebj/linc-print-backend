@@ -140,8 +140,14 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
                     Application.id == item.application_id
                 ).first()
                 if application and application.status == ApplicationStatus.SUBMITTED:
+                    print(f"DEBUG: Updating application {application.application_number} from {application.status} to PAID")
                     application.status = ApplicationStatus.PAID
                     application.updated_at = datetime.utcnow()
+                    print(f"DEBUG: Application {application.application_number} status set to {application.status}")
+                elif application:
+                    print(f"DEBUG: Application {application.application_number} not updated - current status: {application.status}")
+                else:
+                    print(f"DEBUG: No application found for item {item.id}")
             
             if item.card_order_id:
                 card_order = db.query(CardOrder).filter(

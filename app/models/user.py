@@ -15,6 +15,7 @@ from sqlalchemy.sql import func
 from enum import Enum as PythonEnum
 import uuid
 import re
+from typing import List, Optional
 
 from app.models.base import BaseModel
 from app.models.enums import MadagascarIDType, UserStatus, UserType, RoleHierarchy
@@ -296,6 +297,33 @@ class User(BaseModel):
             
         # Check assigned locations
         return any(location.id == location_id for location in self.assigned_locations)
+    
+    def get_accessible_locations(self) -> Optional[List[uuid.UUID]]:
+        """Get list of location IDs this user can access"""
+        if self.is_superuser:
+            # Superusers can access all locations - return None to indicate no filtering needed
+            return None
+        
+        # System users and National admins can access any location
+        if self.user_type in [UserType.SYSTEM_USER, UserType.NATIONAL_ADMIN]:
+            return None
+        
+        # Provincial admins can access locations in their province
+        if self.user_type == UserType.PROVINCIAL_ADMIN and self.scope_province:
+            # Return None here - province filtering should be handled at API level
+            return None
+        
+        # Location users can access their primary location and assigned locations
+        accessible_locations = []
+        
+        if self.primary_location_id:
+            accessible_locations.append(self.primary_location_id)
+            
+        for location in self.assigned_locations:
+            if location.id not in accessible_locations:
+                accessible_locations.append(location.id)
+                
+        return accessible_locations
     
     @classmethod
     def generate_system_username(cls, db_session) -> str:
