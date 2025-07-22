@@ -15,10 +15,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
-from app.crud.crud_transaction import (
-    crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator
-)
-from app.crud.crud_person import crud_person
+from app.crud import crud_transaction, crud_card_order, crud_fee_structure, transaction_calculator, person as crud_person
 from app.schemas.transaction import (
     Transaction, TransactionCreate, TransactionUpdate,
     CardOrder, CardOrderCreate, CardOrderUpdate,
