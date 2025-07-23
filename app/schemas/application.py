@@ -339,10 +339,30 @@ class ApplicationInDBBase(ApplicationBase):
     rejection_reason: Optional[str] = None
     required_documents: Optional[Dict[str, Any]] = None
     
+    # Approval tracking
+    approved_by_user_id: Optional[uuid.UUID] = None
+    approved_at_location_id: Optional[uuid.UUID] = None
+    approval_date: Optional[datetime] = None
+    approval_outcome: Optional[TestResult] = None
+    identified_restrictions: Optional[Dict[str, Any]] = None
+    
     # Biometric capture status
     photo_captured: bool = False
     signature_captured: bool = False
     fingerprint_captured: bool = False
+    
+    # Payment stage tracking (NEW FIELDS FOR STAGED PAYMENTS)
+    test_payment_completed: bool = False
+    test_payment_date: Optional[datetime] = None
+    card_payment_completed: bool = False
+    card_payment_date: Optional[datetime] = None
+    current_payment_stage: Optional[str] = None
+    
+    # Card ordering status
+    card_ordered: bool = False
+    card_order_date: Optional[datetime] = None
+    card_order_id: Optional[uuid.UUID] = None
+    includes_temporary_license: bool = False
     
     # Medical information
     medical_information: Optional[Dict[str, Any]] = None

@@ -770,63 +770,98 @@ def approve_and_generate_license(
         )
     
     # Validate current status allows approval
-    if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.PASSED]:
+    if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.PASSED, ApplicationStatus.CARD_PAYMENT_PENDING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Application cannot be approved from status {application.status}"
         )
     
-    # Update to APPROVED status
-    updated_application = crud_application.update_status(
-        db=db,
-        application_id=application_id,
-        new_status=ApplicationStatus.APPROVED,
-        changed_by=current_user.id,
-        reason=reason or "Application approved by examiner",
-        notes=notes
-    )
-    
-    # Generate license immediately
-    license = None
-    license_error = None
-    
-    try:
-        # Check if license doesn't already exist
-        from app.crud.crud_license import crud_license
-        existing_license = crud_license.get_by_application_id(db, application_id=application_id)
-        
-        if existing_license:
-            license = existing_license
-        else:
-            license = _generate_license_from_application_status(db, updated_application, current_user)
+    # Handle different approval scenarios based on application type and current status
+    if application.application_type == ApplicationType.NEW_LICENSE:
+        if application.status == ApplicationStatus.SUBMITTED:
+            # First approval: Mark as passed, but require card payment
+            application.test_result = TestResult.PASSED
+            application.status = ApplicationStatus.CARD_PAYMENT_PENDING
             
-    except Exception as e:
-        license_error = str(e)
-        logger.error(f"Failed to generate license for application {application_id}: {license_error}")
-    
-    return {
-        "status": "success",
-        "message": "Application approved successfully",
-        "application": {
-            "id": str(updated_application.id),
-            "number": updated_application.application_number,
-            "status": updated_application.status.value,
-            "person_id": str(updated_application.person_id),
-            "license_category": updated_application.license_category.value
-        },
-        "license": {
-            "id": str(license.id) if license else None,
-            "status": license.status.value if license else None,
-            "issue_date": license.issue_date.isoformat() if license else None,
-            "category": license.category.value if license else None
-        } if license else None,
-        "license_generation_error": license_error,
-        "next_steps": [
-            "License has been generated" if license else "License generation failed - check logs",
-            "Application can now be moved to COMPLETED status",
-            "Card production can be initiated"
-        ]
-    }
+            updated_application = crud_application.update_status(
+                db=db,
+                application_id=application_id,
+                new_status=ApplicationStatus.CARD_PAYMENT_PENDING,
+                changed_by=current_user.id,
+                reason=reason or "Test passed, awaiting card payment",
+                notes=notes
+            )
+            
+            return {
+                "application": updated_application,
+                "message": "Test passed! Card payment (38,000 MGA) required before license generation",
+                "next_step": "card_payment_required",
+                "card_payment_amount": "38,000 MGA"
+            }
+            
+        elif application.status == ApplicationStatus.CARD_PAYMENT_PENDING:
+            # Second approval: Generate license after card payment
+            if not application.card_payment_completed:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Card payment must be completed before final approval"
+                )
+            
+            # Update to APPROVED status
+            updated_application = crud_application.update_status(
+                db=db,
+                application_id=application_id,
+                new_status=ApplicationStatus.APPROVED,
+                changed_by=current_user.id,
+                reason=reason or "Application approved after card payment",
+                notes=notes
+            )
+            
+            # Generate license immediately
+            license = None
+            try:
+                license = _generate_license_from_application_approval(db, updated_application, current_user)
+                logger.info(f"Generated license {license.id} for application {application_id}")
+            except Exception as e:
+                logger.error(f"Failed to generate license for application {application_id}: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Application approved but license generation failed"
+                )
+            
+            return {
+                "application": updated_application,
+                "license": license,
+                "message": "Application approved successfully and license generated"
+            }
+    else:
+        # Other application types: Single-step approval to APPROVED with license generation
+        updated_application = crud_application.update_status(
+            db=db,
+            application_id=application_id,
+            new_status=ApplicationStatus.APPROVED,
+            changed_by=current_user.id,
+            reason=reason or "Application approved by examiner",
+            notes=notes
+        )
+        
+        # Generate license immediately for non-NEW_LICENSE applications
+        license = None
+        try:
+            license = _generate_license_from_application_approval(db, updated_application, current_user)
+            logger.info(f"Generated license {license.id} for application {application_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate license for application {application_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Application approved but license generation failed"
+            )
+        
+        return {
+            "application": updated_application,
+            "license": license,
+            "message": "Application approved successfully and license generated"
+        }
 
 
 @router.get("/{application_id}/license", response_model=Dict[str, Any])
@@ -1897,29 +1932,55 @@ def create_application_authorization(
     
     # Update application status based on authorization result
     if test_passed:
-        # Move to APPROVED status and generate license
-        application.status = ApplicationStatus.APPROVED
+        # Set test result first
+        application.test_result = TestResult.PASSED
         
-        # Generate license automatically
-        license = _generate_license_from_authorization(db, application, authorization)
-        
-        # Update authorization with generated license
-        authorization.license_generated = True
-        authorization.license_id = license.id
-        authorization.license_generated_at = datetime.utcnow()
-        
-        # Add status history
-        from app.models.application import ApplicationStatusHistory
-        status_history = ApplicationStatusHistory(
-            application_id=application_id,
-            previous_status=ApplicationStatus.PASSED,
-            new_status=ApplicationStatus.APPROVED,
-            changed_by=current_user.id,
-            change_reason="Application authorized by examiner",
-            change_notes=f"Authorized by {current_user.username}"
-        )
-        db.add(status_history)
-        
+        # Follow staged payment workflow for NEW_LICENSE applications
+        if application.application_type == ApplicationType.NEW_LICENSE:
+            # NEW_LICENSE: Move to CARD_PAYMENT_PENDING to require card payment
+            application.status = ApplicationStatus.CARD_PAYMENT_PENDING
+            
+            # Don't generate license yet - wait for card payment
+            authorization.license_generated = False
+            authorization.license_id = None
+            authorization.license_generated_at = None
+            
+            # Add status history
+            from app.models.application import ApplicationStatusHistory
+            status_history = ApplicationStatusHistory(
+                application_id=application_id,
+                previous_status=ApplicationStatus.PAID,
+                new_status=ApplicationStatus.CARD_PAYMENT_PENDING,
+                changed_by=current_user.id,
+                change_reason="Test passed, awaiting card payment",
+                change_notes=f"Test passed by {current_user.username}, card payment required"
+            )
+            db.add(status_history)
+            
+        else:
+            # Other application types: Move to APPROVED status and generate license
+            application.status = ApplicationStatus.APPROVED
+            
+            # Generate license automatically
+            license = _generate_license_from_authorization(db, application, authorization)
+            
+            # Update authorization with generated license
+            authorization.license_generated = True
+            authorization.license_id = license.id
+            authorization.license_generated_at = datetime.utcnow()
+            
+            # Add status history
+            from app.models.application import ApplicationStatusHistory
+            status_history = ApplicationStatusHistory(
+                application_id=application_id,
+                previous_status=ApplicationStatus.PAID,
+                new_status=ApplicationStatus.APPROVED,
+                changed_by=current_user.id,
+                change_reason="Application authorized by examiner",
+                change_notes=f"Authorized by {current_user.username}"
+            )
+            db.add(status_history)
+    
     else:
         # Move back to appropriate test status based on failure reason
         if authorization.is_absent:
@@ -2643,21 +2704,42 @@ def process_application_approval(
         
         application.identified_restrictions = final_restrictions
         
-        # Update status to APPROVED
-        application.status = ApplicationStatus.APPROVED
+        # Set test result first
+        application.test_result = TestResult.PASSED
         
-        # Auto-generate license
-        license = _generate_license_from_application(db, application, final_restrictions)
-        
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "Application approved successfully and license generated",
-            "application_status": application.status.value,
-            "license_id": str(license.id),
-            "applied_restrictions": final_restrictions
-        }
+        # Follow staged payment workflow for NEW_LICENSE applications
+        if application.application_type == ApplicationType.NEW_LICENSE:
+            # NEW_LICENSE: Move to CARD_PAYMENT_PENDING to require card payment
+            application.status = ApplicationStatus.CARD_PAYMENT_PENDING
+            
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": "Test passed! Card payment (38,000 MGA) required before license generation",
+                "application_status": application.status.value,
+                "test_result": application.test_result.value,
+                "next_step": "card_payment_required",
+                "card_payment_amount": "38,000 MGA",
+                "applied_restrictions": final_restrictions
+            }
+        else:
+            # Other application types: Go directly to APPROVED and generate license
+            application.status = ApplicationStatus.APPROVED
+            
+            # Auto-generate license
+            license = _generate_license_from_application(db, application, final_restrictions)
+            
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": "Application approved successfully and license generated",
+                "application_status": application.status.value,
+                "test_result": application.test_result.value,
+                "license_id": str(license.id),
+                "applied_restrictions": final_restrictions
+            }
         
     else:  # FAILED or ABSENT
         # Update status to terminal
@@ -2820,5 +2902,91 @@ def mark_application_card_payment_pending(
     )
     
     return ApplicationSchema.from_orm(updated_application)
+
+
+@router.post("/fix-new-license-workflow/{application_id}")
+def fix_new_license_workflow(
+    application_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fix NEW_LICENSE applications that bypassed the staged payment workflow
+    
+    This endpoint fixes applications that went directly to APPROVED without
+    going through PASSED -> CARD_PAYMENT_PENDING workflow.
+    
+    Requires: applications.change_status permission
+    """
+    if not current_user.has_permission("applications.change_status"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to fix application workflow"
+        )
+    
+    application = db.query(Application).filter(Application.id == application_id).first()
+    
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Only fix NEW_LICENSE applications
+    if application.application_type != ApplicationType.NEW_LICENSE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint only fixes NEW_LICENSE applications"
+        )
+    
+    # Only fix applications that are in APPROVED status but shouldn't be
+    if application.status != ApplicationStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application is in {application.status} status, expected APPROVED"
+        )
+    
+    # Check if this application bypassed the staged payment workflow
+    if application.test_result is None or not application.card_payment_completed:
+        # This application needs to be fixed
+        
+        # Set test result to PASSED (since it was approved)
+        application.test_result = TestResult.PASSED
+        
+        # Check if card payment was completed
+        if not application.card_payment_completed:
+            # Move back to CARD_PAYMENT_PENDING to require card payment
+            application.status = ApplicationStatus.CARD_PAYMENT_PENDING
+            
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": "Application fixed: moved to CARD_PAYMENT_PENDING status",
+                "application_status": application.status.value,
+                "test_result": application.test_result.value,
+                "next_step": "card_payment_required",
+                "card_payment_amount": "38,000 MGA"
+            }
+        else:
+            # Card payment was completed, application can stay APPROVED
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": "Application workflow corrected: test_result set to PASSED",
+                "application_status": application.status.value,
+                "test_result": application.test_result.value,
+                "next_step": "ready_for_card_ordering"
+            }
+    else:
+        # Application is already in correct state
+        return {
+            "success": True,
+            "message": "Application workflow is already correct",
+            "application_status": application.status.value,
+            "test_result": application.test_result.value,
+            "next_step": "ready_for_card_ordering"
+        }
 
  
