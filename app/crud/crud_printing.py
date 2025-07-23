@@ -80,10 +80,12 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         try:
             # Generate job number
             job_number = self.generate_job_number(db, print_location_id)
+            logger.info(f"Generated job number: {job_number}")
             
             # Get queue position
             queue_manager = CRUDPrintQueue()
             queue_position = queue_manager.get_next_queue_position(db, print_location_id)
+            logger.info(f"Queue position: {queue_position}")
             
             # Create print job
             print_job = PrintJob(
@@ -103,6 +105,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             
             db.add(print_job)
             db.flush()  # Get print job ID
+            logger.info(f"Created print job with ID: {print_job.id}")
             
             # Create application associations
             application_ids = [application_id]

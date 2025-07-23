@@ -659,13 +659,13 @@ class CRUDCard(CRUDBase[Card, CardCreate, CardUpdate]):
             
             # Get next sequence number for this location
             sequence_counter = db.query(CardSequenceCounter).filter(
-                CardSequenceCounter.location_id == location_id
+                CardSequenceCounter.location_code == location_code
             ).first()
             
             if not sequence_counter:
                 # Create new sequence counter
                 sequence_counter = CardSequenceCounter(
-                    location_id=location_id,
+                    location_code=location_code,
                     current_sequence=1
                 )
                 db.add(sequence_counter)

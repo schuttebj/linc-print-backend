@@ -73,9 +73,10 @@ async def create_print_job(
     
     This endpoint:
     1. Validates application is ready for printing
-    2. Retrieves all person's licenses (excluding learners permits)
-    3. Generates card number and PDF files
-    4. Adds job to print queue
+    2. Validates user has access to print location
+    3. Retrieves all person's licenses (excluding learners permits)
+    4. Generates card number and PDF files
+    5. Adds job to print queue
     """
     try:
         # Get primary application
@@ -84,6 +85,13 @@ async def create_print_job(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Application not found"
+            )
+        
+        # Validate user has access to the application's location
+        if not current_user.can_access_location(application.location_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to create print jobs for this location"
             )
         
         # Validate application is ready for printing
@@ -191,37 +199,91 @@ async def create_print_job(
 
 
 # Queue Management
-@router.get("/queue/{location_id}", response_model=PrintQueueResponse, summary="Get Print Queue")
-async def get_print_queue(
-    location_id: UUID = Path(..., description="Location ID"),
-    status: Optional[List[PrintJobStatus]] = Query(None, description="Filter by job status"),
-    limit: int = Query(50, le=100, description="Maximum number of jobs to return"),
+@router.get("/queues", response_model=List[PrintQueueResponse], summary="Get Accessible Print Queues")
+async def get_accessible_print_queues(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("printing.read"))
 ):
     """
-    Get print queue for a location
-    
-    Shows jobs ordered by priority and FIFO submission time.
-    Location-based access control applies.
+    Get all print queues accessible to the current user based on their role:
+    - System/National Admins: All queues nationwide
+    - Provincial Admins: All queues in their province
+    - Location Users: Only their assigned location's queue
     """
-    # Check user has access to this location
+    accessible_locations = []
+    
+    if current_user.is_superuser or current_user.user_type.value in ["SYSTEM_USER", "NATIONAL_ADMIN"]:
+        # System and National admins can see all locations
+        from app.crud.crud_location import crud_location
+        accessible_locations = crud_location.get_all_active(db)
+        
+    elif current_user.user_type.value == "PROVINCIAL_ADMIN":
+        # Provincial admin can see locations in their province
+        from app.crud.crud_location import crud_location
+        accessible_locations = crud_location.get_by_province(db, current_user.scope_province)
+        
+    elif current_user.primary_location_id:
+        # Location user can only see their assigned location
+        from app.crud.crud_location import crud_location
+        location = crud_location.get(db, id=current_user.primary_location_id)
+        if location:
+            accessible_locations = [location]
+    
+    # Get print queues for accessible locations
+    queues = []
+    for location in accessible_locations:
+        try:
+            print_queue = crud_print_queue.get_or_create_queue(db, location_id=location.id)
+            queue_response = PrintQueueResponse(
+                location_id=location.id,
+                location_name=location.name,
+                current_queue_size=print_queue.current_queue_size,
+                total_jobs_processed=print_queue.total_jobs_processed,
+                average_processing_time_minutes=float(print_queue.average_processing_time_minutes) if print_queue.average_processing_time_minutes else None,
+                last_updated=print_queue.last_updated,
+                queued_jobs=[],  # Empty for summary view
+                in_progress_jobs=[],  # Empty for summary view
+                completed_jobs=[]  # Empty for summary view
+            )
+            queues.append(queue_response)
+        except Exception as e:
+            logger.warning(f"Failed to get queue for location {location.id}: {e}")
+            continue
+    
+    return queues
+
+
+@router.get("/queue/{location_id}", response_model=PrintQueueResponse, summary="Get Print Queue")
+async def get_print_queue(
+    location_id: UUID = Path(..., description="Location ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.read"))
+):
+    """
+    Get print queue for a specific location
+    
+    Only users with access to the location can view its print queue.
+    System/National admins can view any queue.
+    Provincial admins can view queues in their province.
+    Location users can only view their assigned location's queue.
+    """
+    # Validate user has access to this location
     if not current_user.can_access_location(location_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this location's print queue"
+            detail="Not authorized to view print queue for this location"
         )
+    
+    # Get print queue for location
+    print_queue = crud_print_queue.get_or_create_queue(db, location_id=location_id)
     
     # Get queue jobs
     jobs = crud_print_job.get_print_queue(
         db=db,
         location_id=location_id,
-        status=status,
-        limit=limit
+        status=None, # No specific status filtering here, as the endpoint is for a single location
+        limit=50 # Default limit for a single location
     )
-    
-    # Get queue statistics
-    queue = crud_print_queue.get_or_create_queue(db, location_id)
     
     # Separate jobs by status
     queued_jobs = [job for job in jobs if job.status == PrintJobStatus.QUEUED]
@@ -239,11 +301,11 @@ async def get_print_queue(
     
     return PrintQueueResponse(
         location_id=location_id,
-        location_name=queue.location.name if queue.location else None,
-        current_queue_size=queue.current_queue_size,
-        total_jobs_processed=queue.total_jobs_processed,
-        average_processing_time_minutes=float(queue.average_processing_time_minutes) if queue.average_processing_time_minutes else None,
-        last_updated=queue.last_updated,
+        location_name=print_queue.location.name if print_queue.location else None,
+        current_queue_size=print_queue.current_queue_size,
+        total_jobs_processed=print_queue.total_jobs_processed,
+        average_processing_time_minutes=float(print_queue.average_processing_time_minutes) if print_queue.average_processing_time_minutes else None,
+        last_updated=print_queue.last_updated,
         queued_jobs=[PrintJobResponse.from_orm(job) for job in queued_jobs],
         in_progress_jobs=[PrintJobResponse.from_orm(job) for job in in_progress_jobs],
         completed_today=completed_today
@@ -308,7 +370,23 @@ async def start_printing_job(
     
     Moves job from ASSIGNED to PRINTING status.
     Requires PDF files to be generated first.
+    Only users with access to the print location can start jobs.
     """
+    # Get print job first to validate location access
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Print job not found"
+        )
+    
+    # Validate user has access to the print location
+    if not current_user.can_access_location(print_job.print_location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to manage print jobs for this location"
+        )
+    
     print_job = crud_print_job.start_printing(
         db=db,
         job_id=job_id,
@@ -363,23 +441,20 @@ async def start_quality_check(
     return PrintJobResponse.from_orm(print_job)
 
 
-@router.post("/jobs/{job_id}/qa-complete", response_model=PrintJobResponse, summary="Complete Quality Check")
-async def complete_quality_check(
+@router.post("/jobs/{job_id}/quality-check", response_model=PrintJobResponse, summary="Quality Check")
+async def quality_check_job(
     job_id: UUID = Path(..., description="Print Job ID"),
     request: QualityCheckRequest = ...,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("printing.quality_check"))
 ):
     """
-    Complete quality assurance review
+    Perform quality assurance check on printed card
     
-    IMPORTANT: When QA passes (PASSED result), card files are automatically deleted from disk
-    to save storage space. The database record is kept with metadata about the deletion.
-    
-    If QA passes: moves to COMPLETED, deletes files, updates applications to READY_FOR_COLLECTION
-    If QA fails: creates reprint job that goes to top of queue, keeps files for reprint
+    Sets quality check result (PASS/FAIL/NEEDS_REPRINT).
+    Only users with access to the print location can perform QA.
     """
-    # Get the print job first
+    # Get print job first to validate location access
     print_job = crud_print_job.get(db, id=job_id)
     if not print_job:
         raise HTTPException(
@@ -387,23 +462,22 @@ async def complete_quality_check(
             detail="Print job not found"
         )
     
-    # Validate job state
-    if print_job.status != PrintJobStatus.QUALITY_CHECK:
+    # Validate user has access to the print location
+    if not current_user.can_access_location(print_job.print_location_id):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Job must be in QUALITY_CHECK status to complete QA. Current status: {print_job.status}"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform quality checks for this location"
         )
     
-    # Complete QA using updated CRUD method
-    updated_print_job = crud_print_job.complete_quality_check(
+    print_job = crud_print_job.quality_check(
         db=db,
-        print_job=print_job,
-        qa_result=request.qa_result,
-        qa_notes=request.qa_notes or "",
+        job_id=job_id,
+        quality_result=request.quality_result,
+        quality_notes=request.quality_notes,
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(updated_print_job)
+    return PrintJobResponse.from_orm(print_job)
 
 
 # Job Information
