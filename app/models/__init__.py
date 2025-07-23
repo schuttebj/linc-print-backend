@@ -18,6 +18,10 @@ from app.models.license import (
 from app.models.card import (
     Card, CardLicense, CardStatusHistory, CardProductionBatch, CardSequenceCounter
 )
+from app.models.printing import (
+    PrintJob, PrintJobApplication, PrintJobStatusHistory, PrintQueue,
+    PrintJobStatus, PrintJobPriority, QualityCheckResult
+)
 from app.models.enums import (
     UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus
 ) 

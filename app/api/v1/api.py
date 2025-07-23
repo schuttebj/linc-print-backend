@@ -5,7 +5,7 @@ Includes all endpoint routers
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, users, roles, permissions, persons, locations, lookups, audit, applications, licenses, cards, transactions
+from app.api.v1.endpoints import auth, users, roles, permissions, persons, locations, lookups, audit, applications, licenses, cards, transactions, printing
 
 # Create main API router
 api_router = APIRouter()
@@ -21,5 +21,6 @@ api_router.include_router(applications.router, prefix="/applications", tags=["Ap
 api_router.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 api_router.include_router(licenses.router, prefix="/licenses", tags=["Licenses"])
 api_router.include_router(cards.router, prefix="/cards", tags=["Cards"])
+api_router.include_router(printing.router, prefix="/printing", tags=["Print Jobs"])
 api_router.include_router(lookups.router, prefix="/lookups", tags=["Lookups"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit Logs"]) 

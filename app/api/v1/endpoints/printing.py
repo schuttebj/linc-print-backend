@@ -1,0 +1,533 @@
+"""
+Print Job Management API Endpoints
+Handles card printing workflow, queue management, and production tracking
+"""
+
+from typing import List, Optional, Dict, Any
+from uuid import UUID
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db, get_current_user, require_permission
+from app.crud.crud_printing import crud_print_job, crud_print_queue
+from app.crud.crud_application import crud_application
+from app.crud.crud_license import crud_license
+from app.crud.crud_person import crud_person
+from app.crud.crud_card import crud_card
+from app.models.user import User
+from app.models.application import Application
+from app.models.license import License
+from app.models.enums import ApplicationStatus, LicenseCategory
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult
+from app.schemas.printing import (
+    PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
+    PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
+    PrintJobCompleteRequest, QualityCheckRequest, PrintJobSearchFilters,
+    PrintQueueResponse, PrintJobStatistics, PrintJobSearchResponse
+)
+from app.models.printing import PrintJob
+
+router = APIRouter()
+
+
+# Print Job Creation
+@router.post("/jobs", response_model=PrintJobResponse, summary="Create Print Job")
+async def create_print_job(
+    request: PrintJobCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.create"))
+):
+    """
+    Create a new print job from approved application(s)
+    
+    This endpoint:
+    1. Validates application is ready for printing
+    2. Retrieves all person's licenses (excluding learners permits)
+    3. Generates card number and PDF files
+    4. Adds job to print queue
+    """
+    try:
+        # Get primary application
+        application = crud_application.get(db, id=request.application_id)
+        if not application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found"
+            )
+        
+        # Validate application is ready for printing
+        if application.status not in [ApplicationStatus.APPROVED]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Application status must be APPROVED, currently {application.status}"
+            )
+        
+        # Get person details
+        person = crud_person.get(db, id=application.person_id)
+        if not person:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Person not found"
+            )
+        
+        # Get all licenses for person (excluding learners permits)
+        person_licenses = crud_license.get_by_person_id(
+            db, 
+            person_id=application.person_id,
+            active_only=True
+        )
+        
+        # Filter out learners permits (they don't go on cards)
+        card_licenses = [
+            license for license in person_licenses 
+            if license.category != LicenseCategory.LEARNERS_PERMIT
+        ]
+        
+        if not card_licenses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid licenses found for card printing"
+            )
+        
+        # Generate card number
+        from app.models.card import CardNumberGenerator
+        location_code = application.location.code if application.location else "T01"
+        sequence_number = CardNumberGenerator.get_next_sequence_number(db, location_code)
+        card_number = CardNumberGenerator.generate_card_number(
+            location_code, sequence_number, 
+            card_type="STANDARD"
+        )
+        
+        # Prepare license data for card generation
+        license_data = {
+            "licenses": [
+                {
+                    "id": str(license.id),
+                    "category": license.category.value,
+                    "issue_date": license.issue_date.isoformat(),
+                    "expiry_date": license.expiry_date.isoformat() if license.expiry_date else None,
+                    "restrictions": license.restrictions,
+                    "status": license.status.value
+                }
+                for license in card_licenses
+            ],
+            "total_licenses": len(card_licenses),
+            "card_template": request.card_template
+        }
+        
+        # Prepare person data for card generation
+        person_data = {
+            "id": str(person.id),
+            "first_name": person.first_name,
+            "last_name": person.last_name,
+            "date_of_birth": person.date_of_birth.isoformat(),
+            "id_number": person.id_number,
+            "nationality": person.nationality,
+            "photo_path": person.photo_path,
+            "signature_path": person.signature_path,
+            "address": {
+                "street": person.current_address.street if person.current_address else "",
+                "city": person.current_address.city if person.current_address else "",
+                "province": person.current_address.province if person.current_address else "",
+                "postal_code": person.current_address.postal_code if person.current_address else ""
+            }
+        }
+        
+        # Create print job
+        print_job = crud_print_job.create_print_job(
+            db=db,
+            application_id=request.application_id,
+            person_id=application.person_id,
+            print_location_id=application.location_id,
+            card_number=card_number,
+            license_data=license_data,
+            person_data=person_data,
+            current_user=current_user,
+            additional_application_ids=request.additional_application_ids
+        )
+        
+        # Update application status
+        application.status = ApplicationStatus.SENT_TO_PRINTER
+        application.print_job_id = print_job.id
+        db.commit()
+        
+        return PrintJobResponse.from_orm(print_job)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create print job: {str(e)}"
+        )
+
+
+# Queue Management
+@router.get("/queue/{location_id}", response_model=PrintQueueResponse, summary="Get Print Queue")
+async def get_print_queue(
+    location_id: UUID = Path(..., description="Location ID"),
+    status: Optional[List[PrintJobStatus]] = Query(None, description="Filter by job status"),
+    limit: int = Query(50, le=100, description="Maximum number of jobs to return"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.read"))
+):
+    """
+    Get print queue for a location
+    
+    Shows jobs ordered by priority and FIFO submission time.
+    Location-based access control applies.
+    """
+    # Check user has access to this location
+    if not current_user.can_access_location(location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this location's print queue"
+        )
+    
+    # Get queue jobs
+    jobs = crud_print_job.get_print_queue(
+        db=db,
+        location_id=location_id,
+        status=status,
+        limit=limit
+    )
+    
+    # Get queue statistics
+    queue = crud_print_queue.get_or_create_queue(db, location_id)
+    
+    # Separate jobs by status
+    queued_jobs = [job for job in jobs if job.status == PrintJobStatus.QUEUED]
+    in_progress_jobs = [job for job in jobs if job.status in [
+        PrintJobStatus.ASSIGNED, PrintJobStatus.PRINTING, PrintJobStatus.PRINTED, PrintJobStatus.QUALITY_CHECK
+    ]]
+    
+    # Count completed today
+    today = datetime.utcnow().date()
+    completed_today = len([
+        job for job in jobs 
+        if job.status == PrintJobStatus.COMPLETED and 
+        job.completed_at and job.completed_at.date() == today
+    ])
+    
+    return PrintQueueResponse(
+        location_id=location_id,
+        location_name=queue.location.name if queue.location else None,
+        current_queue_size=queue.current_queue_size,
+        total_jobs_processed=queue.total_jobs_processed,
+        average_processing_time_minutes=float(queue.average_processing_time_minutes) if queue.average_processing_time_minutes else None,
+        last_updated=queue.last_updated,
+        queued_jobs=[PrintJobResponse.from_orm(job) for job in queued_jobs],
+        in_progress_jobs=[PrintJobResponse.from_orm(job) for job in in_progress_jobs],
+        completed_today=completed_today
+    )
+
+
+@router.post("/jobs/{job_id}/move-to-top", response_model=PrintJobResponse, summary="Move Job to Top of Queue")
+async def move_job_to_top(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: PrintJobQueueMoveRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.queue_manage"))
+):
+    """
+    Move a print job to the top of the queue
+    
+    This is used for urgent situations and requires a reason.
+    Only jobs in QUEUED or ASSIGNED status can be moved.
+    """
+    print_job = crud_print_job.move_to_top_of_queue(
+        db=db,
+        job_id=job_id,
+        reason=request.reason,
+        current_user=current_user
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+# Job Processing Workflow
+@router.post("/jobs/{job_id}/assign", response_model=PrintJobResponse, summary="Assign Job to Printer")
+async def assign_job_to_printer(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: PrintJobAssignRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.assign"))
+):
+    """
+    Assign a print job to a printer operator
+    
+    Moves job from QUEUED to ASSIGNED status.
+    """
+    print_job = crud_print_job.assign_to_printer(
+        db=db,
+        job_id=job_id,
+        printer_user_id=request.printer_user_id,
+        current_user=current_user
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+@router.post("/jobs/{job_id}/start", response_model=PrintJobResponse, summary="Start Printing")
+async def start_printing_job(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: PrintJobStartRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.print"))
+):
+    """
+    Start the printing process for a job
+    
+    Moves job from ASSIGNED to PRINTING status.
+    Requires PDF files to be generated first.
+    """
+    print_job = crud_print_job.start_printing(
+        db=db,
+        job_id=job_id,
+        current_user=current_user,
+        printer_hardware_id=request.printer_hardware_id
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+@router.post("/jobs/{job_id}/complete", response_model=PrintJobResponse, summary="Complete Printing")
+async def complete_printing_job(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: PrintJobCompleteRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.print"))
+):
+    """
+    Mark printing as completed
+    
+    Moves job from PRINTING to PRINTED status.
+    Job then moves to quality check phase.
+    """
+    print_job = crud_print_job.complete_printing(
+        db=db,
+        job_id=job_id,
+        current_user=current_user,
+        production_notes=request.production_notes
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+# Quality Assurance
+@router.post("/jobs/{job_id}/qa-start", response_model=PrintJobResponse, summary="Start Quality Check")
+async def start_quality_check(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.qa"))
+):
+    """
+    Start quality assurance review
+    
+    Moves job from PRINTED to QUALITY_CHECK status.
+    """
+    print_job = crud_print_job.start_quality_check(
+        db=db,
+        job_id=job_id,
+        current_user=current_user
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+@router.post("/jobs/{job_id}/qa-complete", response_model=PrintJobResponse, summary="Complete Quality Check")
+async def complete_quality_check(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: QualityCheckRequest = ...,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.qa"))
+):
+    """
+    Complete quality assurance review
+    
+    If QA passes: moves to COMPLETED and updates applications to READY_FOR_COLLECTION
+    If QA fails: creates reprint job that goes to top of queue
+    """
+    print_job = crud_print_job.complete_quality_check(
+        db=db,
+        job_id=job_id,
+        qa_result=request.qa_result,
+        qa_notes=request.qa_notes,
+        current_user=current_user
+    )
+    
+    return PrintJobResponse.from_orm(print_job)
+
+
+# Job Information
+@router.get("/jobs/{job_id}", response_model=PrintJobDetailResponse, summary="Get Print Job Details")
+async def get_print_job(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.read"))
+):
+    """
+    Get detailed information about a print job
+    
+    Includes full job history, status changes, and associated data.
+    """
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Print job not found"
+        )
+    
+    # Check user has access to this job's location
+    if not current_user.can_access_location(print_job.print_location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this print job"
+        )
+    
+    return PrintJobDetailResponse.from_orm(print_job)
+
+
+@router.get("/jobs", response_model=PrintJobSearchResponse, summary="Search Print Jobs")
+async def search_print_jobs(
+    filters: PrintJobSearchFilters = Depends(),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.read"))
+):
+    """
+    Search print jobs with filtering and pagination
+    
+    Supports filtering by location, status, person, application, and date ranges.
+    Results are filtered based on user's location access permissions.
+    """
+    jobs = crud_print_job.get_jobs_by_location_and_user(
+        db=db,
+        user=current_user,
+        status=filters.status,
+        limit=page_size * 10  # Get more to allow for filtering
+    )
+    
+    # Apply additional filters
+    if filters.person_id:
+        jobs = [job for job in jobs if job.person_id == filters.person_id]
+    
+    if filters.application_id:
+        jobs = [
+            job for job in jobs 
+            if any(ja.application_id == filters.application_id for ja in job.job_applications)
+        ]
+    
+    if filters.job_number:
+        jobs = [job for job in jobs if filters.job_number.lower() in job.job_number.lower()]
+    
+    if filters.date_from:
+        jobs = [job for job in jobs if job.submitted_at >= filters.date_from]
+    
+    if filters.date_to:
+        jobs = [job for job in jobs if job.submitted_at <= filters.date_to]
+    
+    # Pagination
+    total_count = len(jobs)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    page_jobs = jobs[start_idx:end_idx]
+    
+    return PrintJobSearchResponse(
+        jobs=[PrintJobResponse.from_orm(job) for job in page_jobs],
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        has_next_page=end_idx < total_count,
+        has_previous_page=page > 1
+    )
+
+
+# Statistics and Reporting
+@router.get("/statistics/{location_id}", response_model=PrintJobStatistics, summary="Get Print Job Statistics")
+async def get_print_statistics(
+    location_id: UUID = Path(..., description="Location ID"),
+    days: int = Query(30, ge=1, le=365, description="Number of days for statistics"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.read"))
+):
+    """
+    Get print job statistics for a location
+    
+    Provides counts, completion rates, and performance metrics.
+    """
+    # Check user has access to this location
+    if not current_user.can_access_location(location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this location's statistics"
+        )
+    
+    # Calculate date range
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+    
+    # Get jobs in date range
+    from sqlalchemy import and_
+    jobs = db.query(PrintJob).filter(
+        and_(
+            PrintJob.print_location_id == location_id,
+            PrintJob.submitted_at >= start_date,
+            PrintJob.submitted_at <= end_date
+        )
+    ).all()
+    
+    # Calculate statistics
+    total_jobs = len(jobs)
+    status_counts = {}
+    for status in PrintJobStatus:
+        status_counts[status.value] = len([job for job in jobs if job.status == status])
+    
+    # QA statistics
+    qa_jobs = [job for job in jobs if job.quality_check_result]
+    qa_pass_rate = 0.0
+    if qa_jobs:
+        passed_jobs = len([job for job in qa_jobs if job.quality_check_result == QualityCheckResult.PASSED])
+        qa_pass_rate = (passed_jobs / len(qa_jobs)) * 100
+    
+    # Average completion time
+    completed_jobs = [
+        job for job in jobs 
+        if job.status == PrintJobStatus.COMPLETED and job.completed_at and job.submitted_at
+    ]
+    avg_completion_time = None
+    if completed_jobs:
+        total_minutes = sum([
+            (job.completed_at - job.submitted_at).total_seconds() / 60 
+            for job in completed_jobs
+        ])
+        avg_completion_time = total_minutes / len(completed_jobs) / 60  # Convert to hours
+    
+    # Daily counts
+    today = datetime.utcnow().date()
+    jobs_completed_today = len([
+        job for job in jobs 
+        if job.status == PrintJobStatus.COMPLETED and 
+        job.completed_at and job.completed_at.date() == today
+    ])
+    jobs_submitted_today = len([
+        job for job in jobs 
+        if job.submitted_at.date() == today
+    ])
+    
+    return PrintJobStatistics(
+        location_id=location_id,
+        total_jobs=total_jobs,
+        queued_jobs=status_counts.get("QUEUED", 0),
+        in_progress_jobs=status_counts.get("ASSIGNED", 0) + status_counts.get("PRINTING", 0) + status_counts.get("PRINTED", 0) + status_counts.get("QUALITY_CHECK", 0),
+        completed_jobs=status_counts.get("COMPLETED", 0),
+        failed_jobs=status_counts.get("FAILED", 0),
+        reprint_jobs=len([job for job in jobs if job.original_print_job_id]),
+        qa_pass_rate=round(qa_pass_rate, 2),
+        average_completion_time_hours=round(avg_completion_time, 2) if avg_completion_time else None,
+        jobs_completed_today=jobs_completed_today,
+        jobs_submitted_today=jobs_submitted_today,
+        period_start=start_date,
+        period_end=end_date
+    ) 
