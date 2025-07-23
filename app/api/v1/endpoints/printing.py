@@ -21,7 +21,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.crud.crud_printing import crud_print_job, crud_print_queue
 from app.crud.crud_application import crud_application
 from app.crud.crud_license import crud_license
-from app.crud.crud_person import crud_person
+from app.crud.crud_person import person as crud_person
 from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
