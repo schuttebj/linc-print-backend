@@ -176,10 +176,11 @@ def process_payment(
                 detail=f"Application {application_id} not found"
             )
         
-        if application.status != ApplicationStatus.SUBMITTED:
+        # Check if application is in a payable status
+        if application.status not in [ApplicationStatus.SUBMITTED, ApplicationStatus.CARD_PAYMENT_PENDING]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Application {application.application_number} is not in SUBMITTED status"
+                detail=f"Application {application.application_number} is not in a payable status (currently {application.status})"
             )
         
         # Calculate fees for this application

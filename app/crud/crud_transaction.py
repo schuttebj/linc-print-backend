@@ -218,11 +218,14 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
         return f"{prefix}{new_num:04d}"
     
     def get_payable_applications(self, db: Session, person_id: uuid.UUID) -> List[Application]:
-        """Get applications that can be paid for (SUBMITTED status)"""
+        """Get applications that can be paid for"""
         return db.query(Application).filter(
             and_(
                 Application.person_id == person_id,
-                Application.status == ApplicationStatus.SUBMITTED
+                or_(
+                    Application.status == ApplicationStatus.SUBMITTED,  # First payment (test fees)
+                    Application.status == ApplicationStatus.CARD_PAYMENT_PENDING  # Second payment (card fees)
+                )
             )
         ).options(joinedload(Application.person)).all()
     
