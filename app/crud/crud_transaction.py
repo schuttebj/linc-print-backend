@@ -17,7 +17,7 @@ from app.models.transaction import (
     DEFAULT_FEE_STRUCTURE
 )
 from app.models.application import Application, ApplicationStatus
-from app.models.enums import ApplicationType, LicenseCategory
+from app.models.enums import ApplicationType, LicenseCategory, TestResult
 from app.schemas.transaction import (
     TransactionCreate, TransactionUpdate, TransactionItemCreate,
     CardOrderCreate, CardOrderUpdate, FeeStructureCreate, FeeStructureUpdate
@@ -151,13 +151,40 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
                 application = db.query(Application).filter(
                     Application.id == item.application_id
                 ).first()
-                if application and application.status == ApplicationStatus.SUBMITTED:
-                    print(f"DEBUG: Updating application {application.application_number} from {application.status} to PAID")
-                    application.status = ApplicationStatus.PAID
+                if application:
+                    print(f"DEBUG: Processing application {application.application_number} - Type: {application.application_type}, Status: {application.status}")
+                    
+                    # Handle different payment types for different application types
+                    if application.application_type == ApplicationType.NEW_LICENSE:
+                        # NEW_LICENSE has staged payments: test first, then card
+                        if not application.test_payment_completed and application.status == ApplicationStatus.SUBMITTED:
+                            # First payment: test fees
+                            application.test_payment_completed = True
+                            application.test_payment_date = datetime.utcnow()
+                            application.status = ApplicationStatus.PAID
+                            print(f"DEBUG: NEW_LICENSE test payment completed for {application.application_number}")
+                        elif application.test_result == TestResult.PASSED and application.status == ApplicationStatus.CARD_PAYMENT_PENDING:
+                            # Second payment: card fees (after passing test)
+                            application.card_payment_completed = True
+                            application.card_payment_date = datetime.utcnow()
+                            application.status = ApplicationStatus.APPROVED
+                            print(f"DEBUG: NEW_LICENSE card payment completed for {application.application_number}")
+                    elif application.application_type == ApplicationType.LEARNERS_PERMIT:
+                        # LEARNERS_PERMIT has single payment for test
+                        if application.status == ApplicationStatus.SUBMITTED:
+                            application.test_payment_completed = True
+                            application.test_payment_date = datetime.utcnow()
+                            application.status = ApplicationStatus.PAID
+                            print(f"DEBUG: LEARNERS_PERMIT payment completed for {application.application_number}")
+                    else:
+                        # Other application types (RENEWAL, REPLACEMENT, etc.) have single payment for everything
+                        if application.status == ApplicationStatus.SUBMITTED:
+                            application.card_payment_completed = True
+                            application.card_payment_date = datetime.utcnow()
+                            application.status = ApplicationStatus.APPROVED
+                            print(f"DEBUG: Single payment completed for {application.application_number}")
+                    
                     application.updated_at = datetime.utcnow()
-                    print(f"DEBUG: Application {application.application_number} status set to {application.status}")
-                elif application:
-                    print(f"DEBUG: Application {application.application_number} not updated - current status: {application.status}")
                 else:
                     print(f"DEBUG: No application found for item {item.id}")
             

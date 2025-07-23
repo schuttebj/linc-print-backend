@@ -149,13 +149,32 @@ async def handle_h11_errors(request: Request, exc: Exception):
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
+    """
+    Health check endpoint with database connection test
+    Useful for debugging Render PostgreSQL connection issues
+    """
+    from app.core.database import test_database_connection
+    
+    # Test database connection
+    db_connected, db_message = test_database_connection()
+    
+    health_status = {
+        "status": "healthy" if db_connected else "unhealthy",
         "version": settings.VERSION,
         "system": "Madagascar License System",
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "database": {
+            "connected": db_connected,
+            "message": db_message
+        }
     }
+    
+    # Return 503 if database is not connected
+    if not db_connected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=health_status)
+    
+    return health_status
 
 
 # Root endpoint

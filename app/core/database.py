@@ -12,12 +12,12 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Create database engine
+# Create database engine with Render-optimized settings
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_size=5,  # Reduced for Render free tier
+    max_overflow=10,  # Reduced for Render free tier  
+    pool_timeout=30,
     pool_pre_ping=True,  # Verify connections before use
     echo=settings.DEBUG,  # Log SQL queries in debug mode
 )
@@ -39,6 +39,17 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def test_database_connection():
+    """Test database connection and return status (useful for health checks)"""
+    try:
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        return True, "Database connection successful"
+    except Exception as e:
+        return False, f"Database connection failed: {str(e)}"
 
 
 def create_tables():
@@ -160,6 +171,9 @@ def drop_tables():
                 conn.execute(text("DROP TYPE IF EXISTS applicationstatus CASCADE"))
                 conn.execute(text("DROP TYPE IF EXISTS userstatus CASCADE"))
                 conn.execute(text("DROP TYPE IF EXISTS madagascaridtype CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS printjobstatus CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS printjobpriority CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS qualitycheckresult CASCADE"))
                 
                 conn.commit()
                 print(f"Successfully dropped {len(tables)} tables with CASCADE") 

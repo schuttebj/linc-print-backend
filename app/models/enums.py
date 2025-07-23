@@ -179,6 +179,7 @@ class ApplicationStatus(PythonEnum):
     PASSED = "PASSED"                         # Test completed successfully
     FAILED = "FAILED"                         # Test failed (terminal - requires new application)
     ABSENT = "ABSENT"                         # Did not attend test (terminal - requires new application)
+    CARD_PAYMENT_PENDING = "CARD_PAYMENT_PENDING"  # Test passed, awaiting card payment (NEW_LICENSE only)
     APPROVED = "APPROVED"                     # Application approved, ready for printing
     SENT_TO_PRINTER = "SENT_TO_PRINTER"      # Printing job created
     CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM

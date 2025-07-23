@@ -1713,12 +1713,15 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
             ApplicationStatus.APPROVED, ApplicationStatus.ON_HOLD, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.PASSED: [
-            ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
+            ApplicationStatus.CARD_PAYMENT_PENDING, ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.FAILED: [],  # Terminal - requires new application
         ApplicationStatus.ABSENT: [],  # Terminal - requires new application
         ApplicationStatus.ON_HOLD: [
             ApplicationStatus.PAID, ApplicationStatus.CANCELLED
+        ],
+        ApplicationStatus.CARD_PAYMENT_PENDING: [
+            ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
         ],
         ApplicationStatus.APPROVED: [
             ApplicationStatus.SENT_TO_PRINTER, ApplicationStatus.CANCELLED
@@ -2752,5 +2755,70 @@ def _validate_restrictions_for_application_type(application_type: str, restricti
             return False
     
     return True
+
+
+@router.post("/{application_id}/mark-card-payment-pending", response_model=ApplicationSchema)
+def mark_application_card_payment_pending(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+) -> ApplicationSchema:
+    """
+    Mark NEW_LICENSE application as requiring card payment after passing test
+    
+    Requires: applications.authorize permission or EXAMINER role
+    """
+    if not (current_user.has_permission("applications.authorize") or 
+            current_user.role_hierarchy == RoleHierarchy.EXAMINER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to update application status"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this application"
+        )
+    
+    # Validate this is a NEW_LICENSE application that has passed
+    if application.application_type != ApplicationType.NEW_LICENSE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only NEW_LICENSE applications can be marked as card payment pending"
+        )
+    
+    if application.status != ApplicationStatus.PASSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application must be in PASSED status, currently {application.status}"
+        )
+    
+    if application.test_result != TestResult.PASSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Application must have passed the test before requiring card payment"
+        )
+    
+    # Update status to card payment pending
+    updated_application = crud_application.update_status(
+        db=db,
+        application_id=application_id,
+        new_status=ApplicationStatus.CARD_PAYMENT_PENDING,
+        changed_by=current_user.id,
+        reason="Test passed, awaiting card payment",
+        notes="Automatically marked as card payment pending after test approval"
+    )
+    
+    return ApplicationSchema.from_orm(updated_application)
 
  

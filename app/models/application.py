@@ -320,18 +320,22 @@ class Application(BaseModel):
     def can_order_card(self) -> bool:
         """Check if card can be ordered for this application"""
         if self.application_type == ApplicationType.RENEWAL:
-            # Renewals: card can be ordered automatically with payment
-            return self.card_payment_completed
+            # Renewals: card can be ordered when application is approved (includes payment)
+            return self.status == ApplicationStatus.APPROVED
         
         elif self.application_type == ApplicationType.NEW_LICENSE:
-            # New licenses: card can only be ordered after passing test and paying
-            return (self.test_payment_completed and 
-                   self.test_result == TestResult.PASSED and 
+            # New licenses: card can only be ordered after passing test, paying card fee, and being approved
+            return (self.test_result == TestResult.PASSED and 
+                   self.status == ApplicationStatus.APPROVED and
                    self.card_payment_completed)
         
         elif self.application_type == ApplicationType.REPLACEMENT:
-            # Replacements: card can be ordered with payment
-            return self.card_payment_completed
+            # Replacements: card can be ordered when approved (includes payment)
+            return self.status == ApplicationStatus.APPROVED
+        
+        elif self.application_type == ApplicationType.LEARNERS_PERMIT:
+            # Learners permits: card can be ordered when approved
+            return self.status == ApplicationStatus.APPROVED
         
         return False
 
