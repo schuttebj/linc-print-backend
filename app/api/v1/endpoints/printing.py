@@ -8,11 +8,16 @@ from uuid import UUID
 from datetime import datetime, timedelta
 import base64
 import logging
+import os
+import shutil
+from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
-from app.api.deps import get_db, get_current_user, require_permission
+from app.core.database import get_db
+from app.api.v1.endpoints.auth import get_current_user
 from app.crud.crud_printing import crud_print_job, crud_print_queue
 from app.crud.crud_application import crud_application
 from app.crud.crud_license import crud_license
@@ -21,18 +26,39 @@ from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
+from app.models.card import CardNumberGenerator
 from app.models.enums import ApplicationStatus, LicenseCategory
-from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
     PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
     PrintJobCompleteRequest, QualityCheckRequest, PrintJobSearchFilters,
     PrintQueueResponse, PrintJobStatistics, PrintJobSearchResponse
 )
-from app.models.printing import PrintJob
+from app.services.card_file_manager import card_file_manager
+from app.services.card_generator import madagascar_card_generator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def check_permission(user: User, permission: str) -> bool:
+    """Check if user has specific permission"""
+    if user.is_superuser:
+        return True
+    return user.has_permission(permission)
+
+
+def require_permission(permission: str):
+    """Decorator to require specific permission"""
+    def decorator(current_user: User = Depends(get_current_user)):
+        if not check_permission(current_user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission}"
+            )
+        return current_user
+    return decorator
 
 
 # Print Job Creation
@@ -95,7 +121,6 @@ async def create_print_job(
             )
         
         # Generate card number
-        from app.models.card import CardNumberGenerator
         location_code = application.location.code if application.location else "T01"
         sequence_number = CardNumberGenerator.get_next_sequence_number(db, location_code)
         card_number = CardNumberGenerator.generate_card_number(
@@ -491,7 +516,6 @@ async def get_print_statistics(
     start_date = end_date - timedelta(days=days)
     
     # Get jobs in date range
-    from sqlalchemy import and_
     jobs = db.query(PrintJob).filter(
         and_(
             PrintJob.print_location_id == location_id,
@@ -584,8 +608,6 @@ async def get_print_job_front_card(
         )
     
     try:
-        from app.services.card_file_manager import card_file_manager
-        
         # Get file content from disk
         file_content = card_file_manager.get_file_content(
             print_job_id=str(print_job.id),
@@ -638,8 +660,6 @@ async def get_print_job_back_card(
         )
     
     try:
-        from app.services.card_file_manager import card_file_manager
-        
         # Get file content from disk
         file_content = card_file_manager.get_file_content(
             print_job_id=str(print_job.id),
@@ -692,8 +712,6 @@ async def get_print_job_combined_pdf(
         )
     
     try:
-        from app.services.card_file_manager import card_file_manager
-        
         # Get file content from disk
         file_content = card_file_manager.get_file_content(
             print_job_id=str(print_job.id),
@@ -743,8 +761,6 @@ async def regenerate_print_job_files(
         )
     
     try:
-        from app.services.card_generator import madagascar_card_generator
-        
         # Prepare data for card generation
         print_job_data = {
             "license_data": print_job.license_data,
@@ -813,8 +829,6 @@ async def get_storage_bloat_report(
     - Overall storage health and optimization opportunities
     """
     try:
-        from app.services.card_file_manager import card_file_manager
-        
         # Get comprehensive bloat analysis
         bloat_report = card_file_manager.get_directory_bloat_report()
         
@@ -872,29 +886,13 @@ async def force_cleanup_empty_directories(
     Use this to eliminate accumulated empty folder bloat.
     """
     try:
-        from app.services.card_file_manager import card_file_manager
-        import os
-        
-        directories_removed = 0
-        cleanup_paths = []
-        
-        # Walk through storage and identify empty directories
-        cards_path = card_file_manager.cards_path
-        
-        if not cards_path.exists():
-            return {
-                "status": "success",
-                "message": "No card storage directory found",
-                "directories_removed": 0
-            }
-        
         # Collect all empty directories (bottom-up for safe removal)
         empty_dirs = []
-        for root, dirs, files in os.walk(cards_path, topdown=False):
-            root_path = Path(root)
+        for root, dirs, files in os.walk(card_file_manager.cards_path, topdown=False):
+            root_path = FilePath(root)
             
             # Skip the main cards directory
-            if root_path == cards_path:
+            if root_path == card_file_manager.cards_path:
                 continue
                 
             # Check if directory is empty
@@ -908,17 +906,15 @@ async def force_cleanup_empty_directories(
         for empty_dir in empty_dirs:
             try:
                 empty_dir.rmdir()
-                directories_removed += 1
-                cleanup_paths.append(str(empty_dir))
                 logger.info(f"🗑️  Removed empty directory: {empty_dir}")
             except (PermissionError, OSError) as e:
                 logger.warning(f"⚠️  Could not remove directory {empty_dir}: {e}")
         
         return {
             "status": "success",
-            "message": f"Removed {directories_removed} empty directories",
-            "directories_removed": directories_removed,
-            "cleanup_paths": cleanup_paths,
+            "message": f"Removed {len(empty_dirs)} empty directories",
+            "directories_removed": len(empty_dirs),
+            "cleanup_paths": [str(d) for d in empty_dirs],
             "bloat_eliminated": True
         }
         
@@ -944,8 +940,6 @@ async def verify_print_job_cleanup(
         print_job = crud_print_job.get(db, id=job_id)
         if not print_job:
             raise HTTPException(status_code=404, detail="Print job not found")
-        
-        from app.services.card_file_manager import card_file_manager
         
         # Verify cleanup status
         verification = card_file_manager.verify_complete_cleanup(
