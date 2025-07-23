@@ -6,8 +6,10 @@ Handles card printing workflow, queue management, and production tracking
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime, timedelta
+import base64
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, require_permission
@@ -20,7 +22,7 @@ from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
 from app.models.enums import ApplicationStatus, LicenseCategory
-from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
     PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
@@ -29,6 +31,7 @@ from app.schemas.printing import (
 )
 from app.models.printing import PrintJob
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -340,23 +343,42 @@ async def complete_quality_check(
     job_id: UUID = Path(..., description="Print Job ID"),
     request: QualityCheckRequest = ...,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("printing.qa"))
+    current_user: User = Depends(require_permission("printing.quality_check"))
 ):
     """
     Complete quality assurance review
     
-    If QA passes: moves to COMPLETED and updates applications to READY_FOR_COLLECTION
-    If QA fails: creates reprint job that goes to top of queue
+    IMPORTANT: When QA passes (PASSED result), card files are automatically deleted from disk
+    to save storage space. The database record is kept with metadata about the deletion.
+    
+    If QA passes: moves to COMPLETED, deletes files, updates applications to READY_FOR_COLLECTION
+    If QA fails: creates reprint job that goes to top of queue, keeps files for reprint
     """
-    print_job = crud_print_job.complete_quality_check(
+    # Get the print job first
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Print job not found"
+        )
+    
+    # Validate job state
+    if print_job.status != PrintJobStatus.QUALITY_CHECK:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job must be in QUALITY_CHECK status to complete QA. Current status: {print_job.status}"
+        )
+    
+    # Complete QA using updated CRUD method
+    updated_print_job = crud_print_job.complete_quality_check(
         db=db,
-        job_id=job_id,
+        print_job=print_job,
         qa_result=request.qa_result,
-        qa_notes=request.qa_notes,
+        qa_notes=request.qa_notes or "",
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return PrintJobResponse.from_orm(updated_print_job)
 
 
 # Job Information
@@ -531,3 +553,436 @@ async def get_print_statistics(
         period_start=start_date,
         period_end=end_date
     ) 
+
+
+@router.get("/jobs/{job_id}/files/front")
+async def get_print_job_front_card(
+    job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Response:
+    """Get front card image/PDF for print job"""
+    
+    # Check permissions
+    if not current_user.has_permission("printing.read"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get print job
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+    
+    # Check if files were generated (may have been deleted after QA)
+    if not print_job.generation_metadata or not print_job.generation_metadata.get("files_saved_to_disk"):
+        raise HTTPException(status_code=404, detail="Card files were not generated")
+    
+    # Check if files still exist (deleted after QA completion)
+    if print_job.generation_metadata.get("files_deleted_after_qa"):
+        raise HTTPException(
+            status_code=410, 
+            detail="Card files have been deleted after QA completion"
+        )
+    
+    try:
+        from app.services.card_file_manager import card_file_manager
+        
+        # Get file content from disk
+        file_content = card_file_manager.get_file_content(
+            print_job_id=str(print_job.id),
+            file_type="front_image",
+            created_at=print_job.submitted_at
+        )
+        
+        if not file_content:
+            raise HTTPException(status_code=404, detail="Front card image not found on disk")
+        
+        return Response(
+            content=file_content,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f"attachment; filename=card_front_{print_job.job_number}.png",
+                "Content-Length": str(len(file_content))
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving front card for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving card file")
+
+
+@router.get("/jobs/{job_id}/files/back")
+async def get_print_job_back_card(
+    job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Response:
+    """Get back card image/PDF for print job"""
+    
+    # Check permissions
+    if not current_user.has_permission("printing.read"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get print job
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+    
+    # Check if files were generated and still exist
+    if not print_job.generation_metadata or not print_job.generation_metadata.get("files_saved_to_disk"):
+        raise HTTPException(status_code=404, detail="Card files were not generated")
+    
+    if print_job.generation_metadata.get("files_deleted_after_qa"):
+        raise HTTPException(
+            status_code=410, 
+            detail="Card files have been deleted after QA completion"
+        )
+    
+    try:
+        from app.services.card_file_manager import card_file_manager
+        
+        # Get file content from disk
+        file_content = card_file_manager.get_file_content(
+            print_job_id=str(print_job.id),
+            file_type="back_image", 
+            created_at=print_job.submitted_at
+        )
+        
+        if not file_content:
+            raise HTTPException(status_code=404, detail="Back card image not found on disk")
+        
+        return Response(
+            content=file_content,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f"attachment; filename=card_back_{print_job.job_number}.png",
+                "Content-Length": str(len(file_content))
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving back card for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving card file")
+
+
+@router.get("/jobs/{job_id}/files/combined-pdf")
+async def get_print_job_combined_pdf(
+    job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Response:
+    """Get combined PDF (front + back) for print job"""
+    
+    # Check permissions
+    if not current_user.has_permission("printing.read"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get print job
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+    
+    # Check if files were generated and still exist
+    if not print_job.generation_metadata or not print_job.generation_metadata.get("files_saved_to_disk"):
+        raise HTTPException(status_code=404, detail="Card files were not generated")
+    
+    if print_job.generation_metadata.get("files_deleted_after_qa"):
+        raise HTTPException(
+            status_code=410, 
+            detail="Card files have been deleted after QA completion"
+        )
+    
+    try:
+        from app.services.card_file_manager import card_file_manager
+        
+        # Get file content from disk
+        file_content = card_file_manager.get_file_content(
+            print_job_id=str(print_job.id),
+            file_type="combined_pdf",
+            created_at=print_job.submitted_at
+        )
+        
+        if not file_content:
+            raise HTTPException(status_code=404, detail="Combined PDF not found on disk")
+        
+        return Response(
+            content=file_content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=card_{print_job.job_number}.pdf",
+                "Content-Length": str(len(file_content))
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving combined PDF for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving PDF file")
+
+
+@router.post("/jobs/{job_id}/regenerate-files")
+async def regenerate_print_job_files(
+    job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> PrintJobResponse:
+    """Regenerate card files for print job"""
+    
+    # Check permissions
+    if not current_user.has_permission("printing.create"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    # Get print job
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+    
+    # Only allow regeneration for jobs that haven't started printing
+    if print_job.status not in [PrintJobStatus.QUEUED, PrintJobStatus.ASSIGNED]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot regenerate files for jobs that have started printing"
+        )
+    
+    try:
+        from app.services.card_generator import madagascar_card_generator
+        
+        # Prepare data for card generation
+        print_job_data = {
+            "license_data": print_job.license_data,
+            "person_data": print_job.person_data,
+            "print_job_id": str(print_job.id),
+            "job_number": print_job.job_number,
+            "card_number": print_job.card_number
+        }
+        
+        # Generate card files
+        card_files = madagascar_card_generator.generate_card_files(print_job_data)
+        
+        # Update print job with new file data
+        print_job.pdf_files_generated = True
+        print_job.generation_metadata = {
+            "generator_version": card_files.get("generator_version"),
+            "generation_timestamp": card_files.get("generation_timestamp"),
+            "regenerated_by": str(current_user.id),
+            "regenerated_at": datetime.utcnow().isoformat(),
+            "file_sizes": {
+                "front_image": len(card_files.get("front_image", "")),
+                "back_image": len(card_files.get("back_image", "")),
+                "combined_pdf": len(card_files.get("combined_pdf", ""))
+            }
+        }
+        
+        # Store new card files
+        print_job.card_files_data = card_files
+        
+        # Log regeneration in status history
+        status_history = PrintJobStatusHistory(
+            print_job_id=print_job.id,
+            from_status=print_job.status,
+            to_status=print_job.status,  # Keep same status
+            changed_by_user_id=current_user.id,
+            change_reason="Files regenerated",
+            change_notes=f"Card files regenerated by {current_user.email}"
+        )
+        db.add(status_history)
+        
+        db.commit()
+        db.refresh(print_job)
+        
+        # Convert to response format
+        return PrintJobResponse.from_orm(print_job)
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error regenerating files for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate files: {str(e)}") 
+
+
+# Enhanced Storage Management
+@router.get("/storage/bloat-report", summary="Get Storage Bloat Analysis")
+async def get_storage_bloat_report(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.view_statistics"))
+):
+    """
+    Analyze storage for potential bloat and cleanup opportunities
+    
+    Identifies:
+    - Empty directories that should be removed
+    - Orphaned files without database records
+    - Large directories that may indicate cleanup failures
+    - Overall storage health and optimization opportunities
+    """
+    try:
+        from app.services.card_file_manager import card_file_manager
+        
+        # Get comprehensive bloat analysis
+        bloat_report = card_file_manager.get_directory_bloat_report()
+        
+        # Get database records for cross-reference
+        total_jobs = db.query(PrintJob).count()
+        jobs_with_active_files = db.query(PrintJob).filter(
+            PrintJob.pdf_files_generated == True,
+            PrintJob.generation_metadata['files_deleted_after_qa'].astext != 'true'
+        ).count()
+        
+        cleanup_failures = db.query(PrintJob).filter(
+            PrintJob.generation_metadata['cleanup_failed'].astext == 'true'
+        ).count()
+        
+        manual_cleanup_needed = db.query(PrintJob).filter(
+            PrintJob.generation_metadata['manual_cleanup_needed'].astext == 'true'
+        ).count()
+        
+        return {
+            "bloat_analysis": bloat_report,
+            "database_health": {
+                "total_print_jobs": total_jobs,
+                "jobs_with_active_files": jobs_with_active_files,
+                "cleanup_failures": cleanup_failures,
+                "manual_cleanup_needed": manual_cleanup_needed,
+                "cleanup_success_rate": ((total_jobs - cleanup_failures) / total_jobs * 100) if total_jobs > 0 else 100
+            },
+            "health_indicators": {
+                "storage_optimized": not bloat_report.get("bloat_detected", True),
+                "cleanup_working": cleanup_failures < (total_jobs * 0.05),  # Less than 5% failures
+                "no_manual_intervention_needed": manual_cleanup_needed == 0,
+                "overall_health": "Excellent" if not bloat_report.get("bloat_detected") and cleanup_failures == 0 else "Good" if cleanup_failures < 10 else "Needs Attention"
+            },
+            "recommendations": bloat_report.get("cleanup_recommendations", [])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating bloat report: {e}")
+        raise HTTPException(status_code=500, detail="Error analyzing storage bloat")
+
+
+@router.post("/storage/force-cleanup-empty-dirs", summary="Force Cleanup of Empty Directories")
+async def force_cleanup_empty_directories(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.delete"))
+):
+    """
+    Force cleanup of all empty directories in the card storage structure
+    
+    This maintenance operation removes directory bloat by cleaning up:
+    - Empty day directories (DD)
+    - Empty month directories (MM)  
+    - Empty year directories (YYYY)
+    
+    Use this to eliminate accumulated empty folder bloat.
+    """
+    try:
+        from app.services.card_file_manager import card_file_manager
+        import os
+        
+        directories_removed = 0
+        cleanup_paths = []
+        
+        # Walk through storage and identify empty directories
+        cards_path = card_file_manager.cards_path
+        
+        if not cards_path.exists():
+            return {
+                "status": "success",
+                "message": "No card storage directory found",
+                "directories_removed": 0
+            }
+        
+        # Collect all empty directories (bottom-up for safe removal)
+        empty_dirs = []
+        for root, dirs, files in os.walk(cards_path, topdown=False):
+            root_path = Path(root)
+            
+            # Skip the main cards directory
+            if root_path == cards_path:
+                continue
+                
+            # Check if directory is empty
+            try:
+                if not any(root_path.iterdir()):
+                    empty_dirs.append(root_path)
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Cannot check directory {root_path}: {e}")
+        
+        # Remove empty directories
+        for empty_dir in empty_dirs:
+            try:
+                empty_dir.rmdir()
+                directories_removed += 1
+                cleanup_paths.append(str(empty_dir))
+                logger.info(f"🗑️  Removed empty directory: {empty_dir}")
+            except (PermissionError, OSError) as e:
+                logger.warning(f"⚠️  Could not remove directory {empty_dir}: {e}")
+        
+        return {
+            "status": "success",
+            "message": f"Removed {directories_removed} empty directories",
+            "directories_removed": directories_removed,
+            "cleanup_paths": cleanup_paths,
+            "bloat_eliminated": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during force empty directory cleanup: {e}")
+        raise HTTPException(status_code=500, detail=f"Force cleanup failed: {str(e)}")
+
+
+@router.get("/storage/verify-cleanup/{job_id}", summary="Verify Complete Cleanup for Print Job")
+async def verify_print_job_cleanup(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.view_statistics"))
+):
+    """
+    Verify that a specific print job's files and folders have been completely removed
+    
+    This endpoint helps ensure that QA completion properly cleaned up all files
+    and prevents storage bloat from incomplete cleanup operations.
+    """
+    try:
+        # Get print job from database
+        print_job = crud_print_job.get(db, id=job_id)
+        if not print_job:
+            raise HTTPException(status_code=404, detail="Print job not found")
+        
+        from app.services.card_file_manager import card_file_manager
+        
+        # Verify cleanup status
+        verification = card_file_manager.verify_complete_cleanup(
+            print_job_id=str(print_job.id),
+            created_at=print_job.submitted_at
+        )
+        
+        # Get database cleanup metadata
+        db_cleanup_status = print_job.generation_metadata or {}
+        qa_completed = print_job.quality_check_result is not None
+        should_be_cleaned = (qa_completed and 
+                           print_job.quality_check_result == QualityCheckResult.PASSED)
+        
+        return {
+            "print_job_id": str(job_id),
+            "verification_result": verification,
+            "database_status": {
+                "qa_completed": qa_completed,
+                "qa_result": print_job.quality_check_result,
+                "should_be_cleaned": should_be_cleaned,
+                "files_deleted_after_qa": db_cleanup_status.get("files_deleted_after_qa", False),
+                "folder_completely_removed": db_cleanup_status.get("folder_completely_removed", False),
+                "cleanup_failed": db_cleanup_status.get("cleanup_failed", False),
+                "manual_cleanup_needed": db_cleanup_status.get("manual_cleanup_needed", False)
+            },
+            "consistency_check": {
+                "cleanup_matches_expectation": (
+                    verification.get("completely_removed", False) == should_be_cleaned
+                ),
+                "database_metadata_accurate": (
+                    db_cleanup_status.get("folder_completely_removed", False) == 
+                    verification.get("completely_removed", False)
+                ),
+                "no_bloat_detected": verification.get("status") == "CLEANUP_COMPLETE"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error verifying cleanup for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error verifying cleanup status") 

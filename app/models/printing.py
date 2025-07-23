@@ -105,6 +105,10 @@ class PrintJob(BaseModel):
     pdf_back_path = Column(String(500), nullable=True, comment="Path to back PDF file")
     pdf_combined_path = Column(String(500), nullable=True, comment="Path to combined PDF file")
     
+    # Card generation metadata
+    generation_metadata = Column(JSON, nullable=True, comment="Card generation metadata including version, file info, and cleanup status")
+    card_files_data = Column(JSON, nullable=True, comment="DEPRECATED: Generated card files (now stored on disk). Field kept for migration compatibility.")
+    
     # Production metadata
     production_batch_id = Column(String(50), nullable=True, comment="Production batch identifier")
     production_notes = Column(Text, nullable=True, comment="Production process notes")

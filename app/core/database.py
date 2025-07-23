@@ -46,10 +46,11 @@ def create_tables():
     from app.models.base import Base
     from app.models.enums import LicenseCategory
     from app.models.transaction import FeeType
+    from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult
     from sqlalchemy import text
     
     # Import all models to ensure they're registered with Base.metadata
-    from app.models import user, person, application, transaction, license, card
+    from app.models import user, person, application, transaction, license, card, printing
     
     print("🔧 Creating database enums before tables...")
     
@@ -78,6 +79,42 @@ def create_tables():
         conn.execute(text(f"CREATE TYPE feetype AS ENUM ('{fee_values_str}')"))
         print(f"✅ Created feetype enum with {len(fee_type_values)} values")
         
+        # Create PrintJobStatus enum
+        print("📋 Creating PrintJobStatus enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS printjobstatus CASCADE"))
+        except Exception:
+            pass
+        
+        print_status_values = [status.value for status in PrintJobStatus]
+        status_values_str = "', '".join(print_status_values)
+        conn.execute(text(f"CREATE TYPE printjobstatus AS ENUM ('{status_values_str}')"))
+        print(f"✅ Created printjobstatus enum with {len(print_status_values)} values")
+        
+        # Create PrintJobPriority enum
+        print("📋 Creating PrintJobPriority enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS printjobpriority CASCADE"))
+        except Exception:
+            pass
+        
+        priority_values = [priority.value for priority in PrintJobPriority]
+        priority_values_str = "', '".join(priority_values)
+        conn.execute(text(f"CREATE TYPE printjobpriority AS ENUM ('{priority_values_str}')"))
+        print(f"✅ Created printjobpriority enum with {len(priority_values)} values")
+        
+        # Create QualityCheckResult enum
+        print("📋 Creating QualityCheckResult enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS qualitycheckresult CASCADE"))
+        except Exception:
+            pass
+        
+        qa_values = [result.value for result in QualityCheckResult]
+        qa_values_str = "', '".join(qa_values)
+        conn.execute(text(f"CREATE TYPE qualitycheckresult AS ENUM ('{qa_values_str}')"))
+        print(f"✅ Created qualitycheckresult enum with {len(qa_values)} values")
+        
         conn.commit()
     
     print("🔧 Creating all database tables...")
@@ -92,7 +129,7 @@ def drop_tables():
     from sqlalchemy import text
     
     # Import all models to ensure they're registered with Base.metadata
-    from app.models import user, person, application, transaction, license, card
+    from app.models import user, person, application, transaction, license, card, printing
     
     # First try the normal approach
     try:

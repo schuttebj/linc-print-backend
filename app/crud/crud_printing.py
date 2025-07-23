@@ -132,6 +132,56 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             # Update queue size
             queue_manager.increment_queue_size(db, print_location_id)
             
+            # Generate card files immediately after job creation
+            try:
+                from app.services.card_generator import madagascar_card_generator
+                
+                # Prepare data for card generation
+                print_job_data = {
+                    "license_data": license_data,
+                    "person_data": person_data,
+                    "print_job_id": str(print_job.id),
+                    "job_number": job_number,
+                    "card_number": card_number
+                }
+                
+                # Generate card files and save to disk
+                generation_result = madagascar_card_generator.generate_card_files(print_job_data)
+                
+                # Update print job with file paths and metadata (no base64 data stored)
+                print_job.pdf_files_generated = generation_result.get("files_generated", False)
+                print_job.pdf_front_path = generation_result.get("file_paths", {}).get("front_image_path")
+                print_job.pdf_back_path = generation_result.get("file_paths", {}).get("back_image_path")
+                print_job.pdf_combined_path = generation_result.get("file_paths", {}).get("combined_pdf_path")
+                
+                # Store generation metadata (file sizes, timestamps, etc.)
+                print_job.generation_metadata = {
+                    "generator_version": generation_result.get("generator_version"),
+                    "generation_timestamp": generation_result.get("generation_timestamp"),
+                    "file_sizes": generation_result.get("file_sizes", {}),
+                    "files_saved_to_disk": True,
+                    "total_size_mb": generation_result.get("file_sizes", {}).get("total_bytes", 0) / 1024 / 1024
+                }
+                
+                # Remove card_files_data field - files are now on disk
+                print_job.card_files_data = None
+                
+                logger.info(f"Generated and saved card files for print job {print_job.id} - Total size: {generation_result.get('file_sizes', {}).get('total_bytes', 0):,} bytes")
+                
+            except Exception as card_error:
+                # Log card generation error but don't fail the print job creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Card generation failed for print job {print_job.id}: {card_error}")
+                
+                # Mark as failed generation but keep job in queue for manual retry
+                print_job.pdf_files_generated = False
+                print_job.generation_metadata = {
+                    "error": str(card_error),
+                    "error_timestamp": datetime.utcnow().isoformat(),
+                    "files_saved_to_disk": False
+                }
+            
             db.commit()
             db.refresh(print_job)
             
@@ -392,67 +442,136 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         self,
         db: Session,
         *,
-        job_id: UUID,
+        print_job: PrintJob,
         qa_result: QualityCheckResult,
-        qa_notes: Optional[str],
+        qa_notes: str,
         current_user: User
     ) -> PrintJob:
-        """Complete quality assurance and either approve or request reprint"""
-        print_job = self.get(db, id=job_id)
-        if not print_job:
-            raise ValueError("Print job not found")
+        """
+        Complete quality assurance check for a print job
         
-        if print_job.status != PrintJobStatus.QUALITY_CHECK:
-            raise ValueError(f"Cannot complete QA for job in status {print_job.status}")
-        
-        # Update QA fields
-        print_job.quality_check_completed_at = datetime.utcnow()
-        print_job.quality_check_result = qa_result
-        print_job.quality_check_notes = qa_notes
-        
-        if qa_result == QualityCheckResult.PASSED:
-            # QA passed - mark as completed
-            print_job.status = PrintJobStatus.COMPLETED
-            print_job.completed_at = datetime.utcnow()
-            print_job.collection_ready_at = datetime.utcnow()
+        When QA passes (PASSED result), files are deleted from disk to save storage.
+        When QA fails, files are kept for reprint processing.
+        """
+        try:
+            # Update QA fields
+            print_job.quality_check_result = qa_result
+            print_job.quality_check_notes = qa_notes
+            print_job.quality_check_by_user_id = current_user.id
+            print_job.quality_check_completed_at = datetime.utcnow()
             
-            # Update associated applications to READY_FOR_COLLECTION
-            for job_app in print_job.job_applications:
-                application = job_app.application
-                application.status = ApplicationStatus.READY_FOR_COLLECTION
-                application.collection_ready_at = datetime.utcnow()
-                application.print_job_id = print_job.id
+            # Update status based on QA result
+            if qa_result == QualityCheckResult.PASSED:
+                print_job.status = PrintJobStatus.COMPLETED
+                print_job.completed_at = datetime.utcnow()
+                
+                # Clean up files after successful QA - they're no longer needed
+                try:
+                    from app.services.card_file_manager import card_file_manager
+                    
+                    # COMPLETE FOLDER REMOVAL after QA passes
+                    cleanup_result = card_file_manager.delete_print_job_files(
+                        print_job_id=str(print_job.id),
+                        created_at=print_job.submitted_at
+                    )
+                    
+                    if cleanup_result["status"] == "success":
+                        # Verify complete cleanup to ensure no bloat remains
+                        verification = card_file_manager.verify_complete_cleanup(
+                            print_job_id=str(print_job.id),
+                            created_at=print_job.submitted_at
+                        )
+                        
+                        # Update metadata to reflect complete folder cleanup
+                        if print_job.generation_metadata:
+                            print_job.generation_metadata.update({
+                                "files_deleted_at": datetime.utcnow().isoformat(),
+                                "files_deleted_after_qa": True,
+                                "folder_completely_removed": cleanup_result.get("folder_removed", False),
+                                "cleanup_result": {
+                                    "files_deleted": cleanup_result["files_deleted"],
+                                    "bytes_freed": cleanup_result["bytes_freed"],
+                                    "folder_path": cleanup_result.get("folder_path"),
+                                    "empty_dirs_cleaned": cleanup_result.get("empty_dirs_cleaned", 0),
+                                    "total_cleanup_items": cleanup_result.get("total_cleanup_items", 0)
+                                },
+                                "cleanup_verification": {
+                                    "completely_removed": verification.get("completely_removed", False),
+                                    "verification_timestamp": verification.get("timestamp"),
+                                    "no_bloat_remaining": verification.get("status") == "CLEANUP_COMPLETE"
+                                }
+                            })
+                        
+                        # Clear ALL file paths since entire folder is deleted
+                        print_job.pdf_front_path = None
+                        print_job.pdf_back_path = None
+                        print_job.pdf_combined_path = None
+                        print_job.pdf_files_generated = False  # Files no longer available
+                        
+                        logger.info(f"✅ QA PASSED - COMPLETE CLEANUP: Deleted {cleanup_result['files_deleted']} files + folder structure ({cleanup_result['bytes_freed']:,} bytes freed) for print job {print_job.id}")
+                        
+                        if not verification.get("completely_removed", False):
+                            logger.warning(f"⚠️  QA CLEANUP WARNING: Verification shows incomplete cleanup for print job {print_job.id}")
+                        
+                    else:
+                        logger.error(f"❌ QA PASSED but complete folder cleanup FAILED for print job {print_job.id}: {cleanup_result.get('message')}")
+                        # Still mark as completed but note the cleanup failure
+                        if print_job.generation_metadata:
+                            print_job.generation_metadata.update({
+                                "cleanup_failed": True,
+                                "cleanup_error": cleanup_result.get("message"),
+                                "manual_cleanup_needed": True
+                            })
+                        
+                except Exception as cleanup_error:
+                    logger.error(f"❌ CRITICAL: Error during complete folder cleanup after QA for print job {print_job.id}: {cleanup_error}")
+                    # Don't fail the QA completion but flag for manual attention
+                    if print_job.generation_metadata:
+                        print_job.generation_metadata.update({
+                            "cleanup_failed": True,
+                            "cleanup_error": str(cleanup_error),
+                            "manual_cleanup_needed": True,
+                            "cleanup_failure_timestamp": datetime.utcnow().isoformat()
+                        })
             
-            status_change_reason = "Quality check passed - ready for collection"
+            else:
+                # QA failed - determine appropriate reprint status
+                if qa_result == QualityCheckResult.FAILED_PRINTING:
+                    print_job.status = PrintJobStatus.REPRINT_REQUIRED
+                    print_job.priority = PrintJobPriority.HIGH
+                elif qa_result == QualityCheckResult.FAILED_DATA:
+                    print_job.status = PrintJobStatus.REPRINT_REQUIRED
+                    print_job.priority = PrintJobPriority.URGENT
+                elif qa_result == QualityCheckResult.FAILED_DAMAGE:
+                    print_job.status = PrintJobStatus.REPRINT_REQUIRED
+                    print_job.priority = PrintJobPriority.URGENT
+                else:
+                    print_job.status = PrintJobStatus.REPRINT_REQUIRED
+                    print_job.priority = PrintJobPriority.HIGH
+                
+                # Keep files for reprint - they'll be cleaned up when reprint QA passes
+                logger.info(f"QA FAILED ({qa_result}): Keeping files for reprint - print job {print_job.id}")
             
-        else:
-            # QA failed - request reprint
-            print_job.status = PrintJobStatus.REPRINT_REQUIRED
-            status_change_reason = f"Quality check failed: {qa_result.value}"
-            
-            # Create reprint job automatically
-            reprint_job = self.create_reprint_job(
-                db=db,
-                original_job_id=job_id,
-                reprint_reason=f"QA Failed: {qa_result.value} - {qa_notes or 'No additional notes'}",
-                current_user=current_user
+            # Create status history entry
+            status_history = PrintJobStatusHistory(
+                print_job_id=print_job.id,
+                from_status=PrintJobStatus.QUALITY_CHECK,
+                to_status=print_job.status,
+                changed_by_user_id=current_user.id,
+                change_reason=f"Quality check completed: {qa_result}",
+                change_notes=qa_notes[:500] if qa_notes else None  # Limit notes length
             )
-        
-        # Create status history
-        status_history = PrintJobStatusHistory(
-            print_job_id=print_job.id,
-            from_status=PrintJobStatus.QUALITY_CHECK,
-            to_status=print_job.status,
-            changed_by_user_id=current_user.id,
-            change_reason=status_change_reason,
-            change_notes=qa_notes or f"QA Result: {qa_result.value}"
-        )
-        db.add(status_history)
-        
-        db.commit()
-        db.refresh(print_job)
-        
-        return print_job
+            db.add(status_history)
+            
+            db.commit()
+            db.refresh(print_job)
+            
+            return print_job
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error completing quality check for print job {print_job.id}: {e}")
+            raise Exception(f"Failed to complete quality check: {str(e)}")
 
     def create_reprint_job(
         self,

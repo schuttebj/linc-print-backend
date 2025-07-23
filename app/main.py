@@ -468,6 +468,27 @@ async def initialize_users():
                 ("printing.manage_queue", "Manage Print Queue", "Manage printing queue", "printing", "print_job", "manage_queue"),
                 ("printing.monitor_status", "Monitor Printer Status", "Monitor printer status", "printing", "printer", "monitor_status"),
                 
+                # Enhanced Printing and Card Management Permissions
+                ("printing.create", "Create Print Jobs", "Create new print jobs for card ordering", "printing", "print_job", "create"),
+                ("printing.read", "View Print Jobs", "View print job details and queue", "printing", "print_job", "read"),
+                ("printing.update", "Update Print Jobs", "Update print job information", "printing", "print_job", "update"),
+                ("printing.delete", "Delete Print Jobs", "Cancel or delete print jobs", "printing", "print_job", "delete"),
+                ("printing.assign", "Assign Print Jobs", "Assign print jobs to operators", "printing", "print_job", "assign"),
+                ("printing.start", "Start Printing", "Begin printing process for jobs", "printing", "print_job", "start"),
+                ("printing.complete", "Complete Printing", "Mark print jobs as completed", "printing", "print_job", "complete"),
+                ("printing.quality_check", "Quality Assurance", "Perform quality checks on printed cards", "printing", "print_job", "quality_check"),
+                ("printing.move_to_top", "Priority Queue Management", "Move jobs to top of queue", "printing", "print_job", "move_to_top"),
+                ("printing.regenerate_files", "Regenerate Card Files", "Regenerate PDF files for print jobs", "printing", "print_job", "regenerate_files"),
+                ("printing.view_statistics", "View Print Statistics", "View printing performance and statistics", "printing", "print_job", "view_statistics"),
+                
+                # Card Management Permissions
+                ("cards.create", "Create Cards", "Create new card records", "cards", "card", "create"),
+                ("cards.read", "View Cards", "View card information and status", "cards", "card", "read"),
+                ("cards.update", "Update Cards", "Update card information", "cards", "card", "update"),
+                ("cards.delete", "Delete Cards", "Delete card records", "cards", "card", "delete"),
+                ("cards.order", "Order Cards", "Order cards for printing", "cards", "card", "order"),
+                ("cards.track_status", "Track Card Status", "Monitor card production status", "cards", "card", "track_status"),
+                
                 # Provincial Management Permissions (NEW)
                 ("provinces.manage_users", "Manage Provincial Users", "Manage users across entire province", "provinces", "province", "manage_users"),
                 ("provinces.view_statistics", "View Provincial Statistics", "View statistics for entire province", "provinces", "province", "view_statistics"),
@@ -517,6 +538,8 @@ async def initialize_users():
             clerk_permissions = [
                 "license_applications.create", "license_applications.read", "license_applications.update",
                 "printing.local_print", "printing.monitor_status",
+                # Enhanced printing and card management for clerks
+                "printing.create", "printing.read", "cards.order", "cards.read", "cards.track_status",
                 # Person management (essential for license applications)
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
@@ -536,6 +559,9 @@ async def initialize_users():
                 "persons.delete", "person_aliases.delete", "person_addresses.delete",
                 # Additional transaction management for supervisors
                 "transactions.update", "transactions.manage",
+                # Enhanced printing and card management for supervisors
+                "printing.update", "printing.delete", "printing.move_to_top", "printing.view_statistics",
+                "cards.create", "cards.update", "cards.delete",
                 # Location management for supervisors
                 "locations.read", "locations.update", "locations.view_statistics",
                 # Enhanced reporting for supervisors
@@ -559,6 +585,10 @@ async def initialize_users():
             printer_permissions = [
                 "printing.local_print", "printing.cross_location_print",
                 "printing.manage_queue", "printing.monitor_status",
+                # Enhanced printer permissions for full print workflow
+                "printing.read", "printing.assign", "printing.start", "printing.complete",
+                "printing.quality_check", "printing.regenerate_files", "printing.view_statistics",
+                "cards.read", "cards.track_status",
                 # Basic role viewing (needed for user interface)
                 "roles.read", "users.read"
             ]
