@@ -27,6 +27,12 @@ python-dateutil==2.8.2
 # Image Processing
 pillow==10.1.0
 
+# Barcode Generation
+pdf417gen==0.7.1
+
+# PDF Generation
+reportlab==4.0.7
+
 # Logging
 structlog==23.2.0
 
