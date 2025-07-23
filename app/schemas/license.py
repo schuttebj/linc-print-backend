@@ -250,7 +250,7 @@ class LicenseResponse(BaseModel):
     issued_by_user_id: UUID
     
     # Restrictions
-    restrictions: List[str] = Field(default_factory=list)
+    restrictions: Optional[Union[List[str], Dict[str, List[str]]]] = Field(default_factory=list, description="License restrictions - supports both old (list) and new (structured dict) formats")
     medical_restrictions: List[str] = Field(default_factory=list)
     
     # Professional permit
@@ -282,9 +282,22 @@ class LicenseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    @validator('restrictions', 'medical_restrictions', 'professional_permit_categories', pre=True)
+    @validator('restrictions', pre=True)
     def convert_none_to_empty_list(cls, v):
-        """Convert None values to empty lists"""
+        """Convert None values to empty lists and handle new dict format"""
+        if v is None:
+            return []
+        # If it's already a dict (new format), return as-is
+        if isinstance(v, dict):
+            return v
+        # If it's a list (old format), return as-is  
+        if isinstance(v, list):
+            return v
+        return []
+    
+    @validator('medical_restrictions', 'professional_permit_categories', pre=True)
+    def convert_none_to_empty_list_simple(cls, v):
+        """Convert None values to empty lists for simple list fields"""
         return v if v is not None else []
     
     class Config:
