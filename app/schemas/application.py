@@ -385,9 +385,40 @@ class ApplicationInDBBase(ApplicationBase):
     updated_at: Optional[datetime] = None
     created_by: Optional[uuid.UUID] = None
     updated_by: Optional[uuid.UUID] = None
+    
+    # Computed fields
+    can_order_card: bool = Field(default=False, description="Whether card can be ordered for this application")
 
     class Config:
         from_attributes = True
+        
+    @validator('can_order_card', always=True)
+    def compute_can_order_card(cls, v, values):
+        """Compute if card can be ordered for this application"""
+        application_type = values.get('application_type')
+        status = values.get('status') 
+        test_result = values.get('test_result')
+        card_payment_completed = values.get('card_payment_completed', False)
+        
+        if application_type == ApplicationType.RENEWAL:
+            # Renewals: card can be ordered when application is approved (includes payment)
+            return status == ApplicationStatus.APPROVED
+        
+        elif application_type == ApplicationType.NEW_LICENSE:
+            # New licenses: card can only be ordered after passing test, paying card fee, and being approved
+            return (test_result == TestResult.PASSED and 
+                   status == ApplicationStatus.APPROVED and
+                   card_payment_completed)
+        
+        elif application_type == ApplicationType.REPLACEMENT:
+            # Replacements: card can be ordered when approved (includes payment)
+            return status == ApplicationStatus.APPROVED
+        
+        elif application_type == ApplicationType.LEARNERS_PERMIT:
+            # Learners permits: card can be ordered when approved
+            return status == ApplicationStatus.APPROVED
+        
+        return False
 
 
 class Application(ApplicationInDBBase):

@@ -101,7 +101,7 @@ class CRUDCard(CRUDBase[Card, CardCreate, CardUpdate]):
             )
         
         # Get application licenses
-        licenses = db.query(License).filter(License.application_id == application_id).all()
+        licenses = db.query(License).filter(License.created_from_application_id == application_id).all()
         if not licenses:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
