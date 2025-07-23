@@ -2388,7 +2388,7 @@ def search_person_for_approval(
     
     # Find person by ID number through their alias (document)
     # First try to find the alias by document number
-    from app.crud import person_alias
+    from app.crud import person as crud_person, person_alias
     found_person_alias = person_alias.get_by_document_number(
         db=db, 
         document_number=id_number.strip(),
@@ -2409,7 +2409,6 @@ def search_person_for_approval(
         )
     
     # Get the person from the alias
-    from app.crud import crud_person
     person = crud_person.get(db=db, id=found_person_alias.person_id)
     if not person:
         raise HTTPException(
