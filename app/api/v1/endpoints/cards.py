@@ -250,15 +250,14 @@ async def search_cards(
             collection_reference=collection_reference
         )
         
-        # Search cards using CRUD - for now return empty results
-        cards = []
-        total = 0
+        # Search cards using CRUD
+        cards, total = crud_card.search_cards(db=db, filters=filters)
         
         # Calculate pagination info
         pages = (total + size - 1) // size if total > 0 else 1
         
         return CardListResponse(
-            cards=cards,
+            cards=[CardResponse.from_orm(card) for card in cards],
             total=total,
             page=page,
             size=size,
