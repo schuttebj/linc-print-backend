@@ -184,8 +184,6 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                 
             except Exception as card_error:
                 # Log card generation error but don't fail the print job creation
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Card generation failed for print job {print_job.id}: {card_error}")
                 
                 # Mark as failed generation but keep job in queue for manual retry
