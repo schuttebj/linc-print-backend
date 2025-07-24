@@ -44,6 +44,56 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def serialize_print_job_response(print_job: PrintJob) -> PrintJobResponse:
+    """
+    Helper function to properly serialize PrintJob to PrintJobResponse
+    Handles the applications field serialization manually to avoid Pydantic errors
+    """
+    # Prepare applications data manually
+    applications_data = []
+    if hasattr(print_job, 'job_applications') and print_job.job_applications:
+        for job_app in print_job.job_applications:
+            app_data = {
+                "application_id": job_app.application_id,
+                "application_number": job_app.application.application_number if job_app.application else "Unknown",
+                "application_type": job_app.application.application_type.value if job_app.application else "Unknown",
+                "is_primary": job_app.is_primary,
+                "added_at": job_app.added_at
+            }
+            applications_data.append(app_data)
+    
+    # Create response data manually to avoid Pydantic serialization issues
+    response_data = {
+        "id": print_job.id,
+        "job_number": print_job.job_number,
+        "status": print_job.status,
+        "priority": print_job.priority,
+        "queue_position": print_job.queue_position,
+        "person_id": print_job.person_id,
+        "person_name": f"{print_job.person.first_name} {print_job.person.surname}" if print_job.person else None,
+        "print_location_id": print_job.print_location_id,
+        "print_location_name": print_job.print_location.name if print_job.print_location else None,
+        "assigned_to_user_id": print_job.assigned_to_user_id,
+        "assigned_to_user_name": f"{print_job.assigned_to_user.first_name} {print_job.assigned_to_user.last_name}" if print_job.assigned_to_user else None,
+        "card_number": print_job.card_number,
+        "card_template": print_job.card_template,
+        "submitted_at": print_job.submitted_at,
+        "assigned_at": print_job.assigned_at,
+        "printing_started_at": print_job.printing_started_at,
+        "printing_completed_at": print_job.printing_completed_at,
+        "completed_at": print_job.completed_at,
+        "quality_check_result": print_job.quality_check_result,
+        "quality_check_notes": print_job.quality_check_notes,
+        "pdf_files_generated": print_job.pdf_files_generated,
+        "original_print_job_id": print_job.original_print_job_id,
+        "reprint_reason": print_job.reprint_reason,
+        "reprint_count": print_job.reprint_count,
+        "applications": applications_data
+    }
+    
+    return PrintJobResponse(**response_data)
+
+
 def check_permission(user: User, permission: str) -> bool:
     """Check if user has specific permission"""
     if user.is_superuser:
@@ -722,8 +772,8 @@ async def get_print_queue(
         total_jobs_processed=print_queue.total_jobs_processed,
         average_processing_time_minutes=float(print_queue.average_processing_time_minutes) if print_queue.average_processing_time_minutes else None,
         last_updated=print_queue.last_updated,
-        queued_jobs=[PrintJobResponse.from_orm(job) for job in queued_jobs],
-        in_progress_jobs=[PrintJobResponse.from_orm(job) for job in in_progress_jobs],
+        queued_jobs=[serialize_print_job_response(job) for job in queued_jobs],
+        in_progress_jobs=[serialize_print_job_response(job) for job in in_progress_jobs],
         completed_today=completed_today
     )
 
@@ -748,7 +798,7 @@ async def move_job_to_top(
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 # Job Processing Workflow
@@ -771,7 +821,7 @@ async def assign_job_to_printer(
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 @router.post("/jobs/{job_id}/start", response_model=PrintJobResponse, summary="Start Printing")
@@ -810,7 +860,7 @@ async def start_printing_job(
         printer_hardware_id=request.printer_hardware_id
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 @router.post("/jobs/{job_id}/complete", response_model=PrintJobResponse, summary="Complete Printing")
@@ -833,7 +883,7 @@ async def complete_printing_job(
         production_notes=request.production_notes
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 # Quality Assurance
@@ -854,7 +904,7 @@ async def start_quality_check(
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 @router.post("/jobs/{job_id}/quality-check", response_model=PrintJobResponse, summary="Quality Check")
@@ -893,7 +943,7 @@ async def quality_check_job(
         current_user=current_user
     )
     
-    return PrintJobResponse.from_orm(print_job)
+    return serialize_print_job_response(print_job)
 
 
 # Job Information
@@ -972,7 +1022,7 @@ async def search_print_jobs(
     page_jobs = jobs[start_idx:end_idx]
     
     return PrintJobSearchResponse(
-        jobs=[PrintJobResponse.from_orm(job) for job in page_jobs],
+        jobs=[serialize_print_job_response(job) for job in page_jobs],
         total_count=total_count,
         page=page,
         page_size=page_size,
@@ -1295,7 +1345,7 @@ async def regenerate_print_job_files(
         db.refresh(print_job)
         
         # Convert to response format
-        return PrintJobResponse.from_orm(print_job)
+        return serialize_print_job_response(print_job)
         
     except Exception as e:
         db.rollback()
