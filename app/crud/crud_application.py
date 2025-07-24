@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, asc, func, cast, String, extract
 from datetime import datetime, timedelta
 import uuid
+from uuid import UUID
 
 from app.crud.base import CRUDBase
 from app.models.application import (
@@ -131,6 +132,27 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
             next_sequence = 1
         
         return f"{prefix}-{next_sequence:04d}"
+    
+    def get_by_person_id(
+        self,
+        db: Session,
+        *,
+        person_id: UUID,
+        status_filter: Optional[List[ApplicationStatus]] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[Application]:
+        """Get applications for a person with optional status filtering"""
+        query = db.query(Application).options(
+            joinedload(Application.person),
+            joinedload(Application.location),
+            joinedload(Application.assigned_to_user)
+        ).filter(Application.person_id == person_id)
+        
+        if status_filter:
+            query = query.filter(Application.status.in_(status_filter))
+        
+        return query.order_by(desc(Application.application_date)).offset(skip).limit(limit).all()
     
     def search_applications(
         self, 
