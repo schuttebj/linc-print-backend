@@ -79,17 +79,26 @@ async def create_print_job(
     5. Adds job to print queue
     """
     try:
+        logger.info(f"=== Starting print job creation ===")
+        logger.info(f"Request data: application_id={request.application_id}, location_id={request.location_id}, card_template={request.card_template}")
+        logger.info(f"Current user: {current_user.id} ({current_user.username})")
+        
         # Get primary application
+        logger.info(f"Looking up application with ID: {request.application_id}")
         application = crud_application.get(db, id=request.application_id)
         if not application:
+            logger.error(f"Application not found with ID: {request.application_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Application not found"
+                detail=f"Application not found with ID: {request.application_id}"
             )
+        
+        logger.info(f"Found application: {application.application_number} (status: {application.status})")
         
         # Determine print location (admin users can specify location, others use application location)
         if request.location_id:
             # Admin user specified a print location
+            logger.info(f"Admin user specified print location: {request.location_id}")
             print_location_id = request.location_id
             
             # Validate user has access to the specified print location
@@ -135,19 +144,23 @@ async def create_print_job(
             )
         
         # Get all licenses for person (excluding learners permits)
+        logger.info(f"Getting licenses for person {application.person_id}")
         person_licenses = crud_license.get_by_person_id(
             db, 
             person_id=application.person_id,
             active_only=True
         )
+        logger.info(f"Found {len(person_licenses)} total licenses for person {application.person_id}")
         
         # Filter out learners permits (they don't go on cards)
         card_licenses = [
             license for license in person_licenses 
             if license.category != LicenseCategory.LEARNERS_PERMIT
         ]
+        logger.info(f"Found {len(card_licenses)} card-eligible licenses (excluding learners permits)")
         
         if not card_licenses:
+            logger.error(f"No valid licenses found for card printing - person {application.person_id} has {len(person_licenses)} total licenses but none are card-eligible")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No valid licenses found for card printing"
@@ -155,14 +168,17 @@ async def create_print_job(
         
         # Generate card number
         # Use the print location (not application location) for card number generation
+        logger.info(f"Looking up print location with ID: {print_location_id}")
         from app.crud.crud_location import location as crud_location
         print_location = crud_location.get(db, id=print_location_id)
         if not print_location:
+            logger.error(f"Print location not found with ID: {print_location_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Print location not found"
+                detail=f"Print location not found with ID: {print_location_id}"
             )
-            
+        
+        logger.info(f"Found print location: {print_location.name} (code: {print_location.code})")
         location_code = print_location.code
         logger.info(f"Generating card number with location code: {location_code}")
         sequence_number = CardNumberGenerator.get_next_sequence_number(db, location_code)
