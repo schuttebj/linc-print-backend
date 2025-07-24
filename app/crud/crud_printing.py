@@ -87,8 +87,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             
             # Get queue position
             logger.info(f"Getting queue position for location {print_location_id}")
-            queue_manager = CRUDPrintQueue()
-            queue_position = queue_manager.get_next_queue_position(db, print_location_id)
+            queue_position = crud_print_queue.get_next_queue_position(db, print_location_id)
             logger.info(f"Queue position: {queue_position}")
             
             # Create print job
@@ -141,7 +140,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             
             # Update queue size
             logger.info(f"Updating queue size")
-            queue_manager.increment_queue_size(db, print_location_id)
+            crud_print_queue.increment_queue_size(db, print_location_id)
             
             # Generate card files immediately after job creation
             try:
