@@ -28,9 +28,9 @@ from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
-from app.models.card import CardNumberGenerator, Card, CardType, CardStatus, CardLicense
+from app.models.card import CardNumberGenerator, Card, CardType, CardStatus, CardLicense, ProductionStatus
 from app.models.enums import ApplicationStatus, LicenseCategory
-from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication, ProductionStatus
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
     PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
