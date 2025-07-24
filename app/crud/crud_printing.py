@@ -20,6 +20,7 @@ from app.models.printing import (
 from app.models.license import License
 from app.models.application import Application
 from app.models.user import User, Location
+from app.models.enums import UserType
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -685,16 +686,16 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         )
         
         # Apply location-based filtering based on user type
-        if user.user_type == "LOCATION_USER":
+        if user.user_type == UserType.LOCATION_USER:
             # Location users can only see jobs for their location
-            if user.location_id:
-                query = query.filter(PrintJob.print_location_id == user.location_id)
-        elif user.user_type == "PROVINCIAL_ADMIN":
+            if user.primary_location_id:
+                query = query.filter(PrintJob.print_location_id == user.primary_location_id)
+        elif user.user_type == UserType.PROVINCIAL_ADMIN:
             # Provincial admins can see jobs for any location in their province
-            if user.province_code:
+            if user.scope_province:
                 from app.models.user import Location
                 province_locations = db.query(Location.id).filter(
-                    Location.province_code == user.province_code
+                    Location.province_code == user.scope_province
                 ).subquery()
                 query = query.filter(PrintJob.print_location_id.in_(province_locations))
         # National and system admins can see all jobs (no filter)
