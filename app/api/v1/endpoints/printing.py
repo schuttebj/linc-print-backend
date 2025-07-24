@@ -61,6 +61,150 @@ def require_permission(permission: str):
     return decorator
 
 
+@router.get("/card-ordering/search/{id_number}", summary="Search Person for Card Ordering")
+async def search_person_for_card_ordering(
+    id_number: str = Path(..., description="Person's ID number"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.create"))
+):
+    """
+    Search for a person by ID number and return all data needed for card ordering:
+    - Person details
+    - All licenses (with eligibility status)
+    - Applications ready for card ordering
+    - Print eligibility status
+    """
+    try:
+        # Search for person by ID number
+        logger.info(f"Searching for person with ID number: {id_number}")
+        person = crud_person.get_by_id_number(db, id_number=id_number)
+        if not person:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No person found with ID number: {id_number}"
+            )
+        
+        logger.info(f"Found person: {person.first_name} {person.last_name} (ID: {person.id})")
+        
+        # Get all licenses for this person
+        all_licenses = crud_license.get_by_person_id(db, person_id=person.id, active_only=True)
+        logger.info(f"Found {len(all_licenses)} active licenses for person")
+        
+        # Filter licenses into card-eligible and non-eligible
+        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
+        card_eligible_licenses = [
+            license for license in all_licenses 
+            if license.category not in learners_categories
+        ]
+        learners_permits = [
+            license for license in all_licenses 
+            if license.category in learners_categories
+        ]
+        
+        logger.info(f"Card-eligible licenses: {len(card_eligible_licenses)}, Learners permits: {len(learners_permits)}")
+        
+        # Get applications that could be used for card ordering
+        approved_applications = crud_application.get_by_person_id(
+            db, 
+            person_id=person.id,
+            status_filter=[ApplicationStatus.APPROVED]
+        )
+        logger.info(f"Found {len(approved_applications)} approved applications")
+        
+        # Check print eligibility
+        can_order_card = len(card_eligible_licenses) > 0
+        eligibility_issues = []
+        
+        if len(card_eligible_licenses) == 0:
+            eligibility_issues.append("No card-eligible licenses found")
+        if len(approved_applications) == 0:
+            eligibility_issues.append("No approved applications found")
+        
+        # Get accessible print locations for current user
+        accessible_locations = []
+        if current_user.is_superuser or current_user.user_type.value in ["SYSTEM_USER", "NATIONAL_ADMIN"]:
+            from app.crud.crud_location import location as crud_location
+            accessible_locations = crud_location.get_operational_locations(db)
+        elif current_user.user_type.value == "PROVINCIAL_ADMIN":
+            from app.crud.crud_location import location as crud_location
+            accessible_locations = crud_location.get_by_province(db, province_code=current_user.scope_province)
+        elif current_user.primary_location_id:
+            from app.crud.crud_location import location as crud_location
+            location = crud_location.get(db, id=current_user.primary_location_id)
+            if location:
+                accessible_locations = [location]
+        
+        return {
+            "person": {
+                "id": str(person.id),
+                "first_name": person.first_name,
+                "last_name": person.last_name,
+                "id_number": person.id_number,
+                "birth_date": person.birth_date.isoformat() if person.birth_date else None,
+                "nationality": person.nationality,
+                "photo_path": person.photo_path,
+                "signature_path": person.signature_path
+            },
+            "card_eligible_licenses": [
+                {
+                    "id": str(license.id),
+                    "category": license.category.value,
+                    "status": license.status.value,
+                    "issue_date": license.issue_date.isoformat(),
+                    "expiry_date": license.expiry_date.isoformat() if license.expiry_date else None,
+                    "restrictions": license.restrictions,
+                    "medical_restrictions": license.medical_restrictions,
+                    "issuing_location_id": str(license.issuing_location_id)
+                }
+                for license in card_eligible_licenses
+            ],
+            "learners_permits": [
+                {
+                    "id": str(license.id),
+                    "category": license.category.value,
+                    "status": license.status.value,
+                    "issue_date": license.issue_date.isoformat(),
+                    "expiry_date": license.expiry_date.isoformat() if license.expiry_date else None
+                }
+                for license in learners_permits
+            ],
+            "approved_applications": [
+                {
+                    "id": str(app.id),
+                    "application_number": app.application_number,
+                    "application_type": app.application_type.value,
+                    "status": app.status.value,
+                    "application_date": app.application_date.isoformat(),
+                    "approval_date": app.approval_date.isoformat() if app.approval_date else None
+                }
+                for app in approved_applications
+            ],
+            "print_eligibility": {
+                "can_order_card": can_order_card,
+                "issues": eligibility_issues,
+                "total_licenses": len(all_licenses),
+                "card_eligible_count": len(card_eligible_licenses),
+                "learners_permit_count": len(learners_permits)
+            },
+            "accessible_print_locations": [
+                {
+                    "id": str(location.id),
+                    "name": location.name,
+                    "code": location.code,
+                    "province_code": location.province_code
+                }
+                for location in accessible_locations
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching person for card ordering: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to search person for card ordering: {str(e)}"
+        )
+
+
 # Print Job Creation
 @router.post("/jobs", response_model=PrintJobResponse, summary="Create Print Job")
 async def create_print_job(

@@ -188,7 +188,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         query = db.query(License).filter(License.person_id == person_id)
         
         if active_only:
-            query = query.filter(License.is_active == True)
+            from app.models.license import LicenseStatus
+            query = query.filter(License.status == LicenseStatus.ACTIVE)
             
         return query.order_by(desc(License.issue_date)).offset(skip).limit(limit).all()
 
