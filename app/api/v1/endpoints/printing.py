@@ -283,9 +283,15 @@ async def create_print_job(
         logger.info(f"Request data: application_id={request.application_id}, location_id={request.location_id}, card_template={request.card_template}")
         logger.info(f"Current user: {current_user.id} ({current_user.username})")
         
-        # Get primary application
+        # Get primary application with biometric data
         logger.info(f"Looking up application with ID: {request.application_id}")
-        application = crud_application.get(db, id=request.application_id)
+        from sqlalchemy.orm import joinedload
+        application = db.query(Application).options(
+            joinedload(Application.biometric_data),
+            joinedload(Application.person),
+            joinedload(Application.location)
+        ).filter(Application.id == request.application_id).first()
+        
         if not application:
             logger.error(f"Application not found with ID: {request.application_id}")
             raise HTTPException(
@@ -335,13 +341,36 @@ async def create_print_job(
                 detail=f"Application status must be APPROVED, currently {application.status}"
             )
         
-        # Get person details
-        person = crud_person.get(db, id=application.person_id)
+        # Get person details with all related data (aliases and addresses)
+        person = crud_person.get_with_details(db, id=application.person_id)
         if not person:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Person not found"
             )
+        
+        # Extract biometric data from the application for card printing
+        biometric_data = {
+            "photo_url": None,
+            "photo_path": None,
+            "signature_url": None,
+            "signature_path": None,
+            "fingerprint_url": None,
+            "fingerprint_path": None
+        }
+        
+        # Look through application biometric data
+        if hasattr(application, 'biometric_data') and application.biometric_data:
+            for bio_data in application.biometric_data:
+                if bio_data.data_type == "PHOTO":
+                    biometric_data["photo_url"] = bio_data.file_url
+                    biometric_data["photo_path"] = bio_data.file_path
+                elif bio_data.data_type == "SIGNATURE":
+                    biometric_data["signature_url"] = bio_data.file_url
+                    biometric_data["signature_path"] = bio_data.file_path
+                elif bio_data.data_type == "FINGERPRINT":
+                    biometric_data["fingerprint_url"] = bio_data.file_url
+                    biometric_data["fingerprint_path"] = bio_data.file_path
         
         # Get all licenses for person (excluding learners permits)
         logger.info(f"Getting licenses for person {application.person_id}")
@@ -411,20 +440,48 @@ async def create_print_job(
         
         # Prepare person data for card generation
         logger.info(f"Preparing person data for person {person.id}")
+        
+        # Get person ID number from their primary alias
+        person_id_number = None
+        if person.aliases:
+            primary_alias = next((alias for alias in person.aliases if alias.is_primary), person.aliases[0] if person.aliases else None)
+            if primary_alias:
+                person_id_number = primary_alias.document_number
+        
+        # Get primary address if available
+        primary_address = None
+        if person.addresses:
+            primary_address = next((addr for addr in person.addresses if addr.is_primary), person.addresses[0] if person.addresses else None)
+        
         person_data = {
             "id": str(person.id),
             "first_name": person.first_name,
-            "last_name": person.last_name,
-            "date_of_birth": person.date_of_birth.isoformat(),
-            "id_number": person.id_number,
-            "nationality": person.nationality,
-            "photo_path": person.photo_path,
-            "signature_path": person.signature_path,
+            "last_name": person.surname,  # Use surname field from Person model
+            "middle_name": person.middle_name,
+            "date_of_birth": person.birth_date.isoformat() if person.birth_date else None,
+            "id_number": person_id_number,  # Use ID number from alias
+            "nationality_code": person.nationality_code,  # Use nationality_code field
+            "person_nature": person.person_nature,  # Gender info
+            "email_address": person.email_address,
+            "cell_phone": person.cell_phone,
+            "is_active": person.is_active,
+            # Address information
             "address": {
-                "street": person.current_address.street if person.current_address else "",
-                "city": person.current_address.city if person.current_address else "",
-                "province": person.current_address.province if person.current_address else "",
-                "postal_code": person.current_address.postal_code if person.current_address else ""
+                "street_line1": primary_address.street_line1 if primary_address else "",
+                "street_line2": primary_address.street_line2 if primary_address else "",
+                "locality": primary_address.locality if primary_address else "",
+                "town": primary_address.town if primary_address else "",
+                "postal_code": primary_address.postal_code if primary_address else "",
+                "province_code": primary_address.province_code if primary_address else ""
+            },
+            # Biometric data (from applications, not person directly)
+            "biometric_data": {
+                "photo_url": biometric_data.get("photo_url"),
+                "photo_path": biometric_data.get("photo_path"),
+                "signature_url": biometric_data.get("signature_url"),
+                "signature_path": biometric_data.get("signature_path"),
+                "fingerprint_url": biometric_data.get("fingerprint_url"),
+                "fingerprint_path": biometric_data.get("fingerprint_path")
             }
         }
         
