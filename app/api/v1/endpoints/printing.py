@@ -26,7 +26,7 @@ from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
-from app.models.card import CardNumberGenerator
+from app.models.card import CardNumberGenerator, Card, CardType
 from app.models.enums import ApplicationStatus, LicenseCategory
 from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob
 from app.schemas.printing import (
@@ -383,9 +383,11 @@ async def create_print_job(
         location_code = print_location.code
         logger.info(f"Generating card number with location code: {location_code}")
         sequence_number = CardNumberGenerator.get_next_sequence_number(db, location_code)
-        card_number = CardNumberGenerator.generate_card_number(
+        
+        # Import CardType enum and use Card.generate_card_number (not CardNumberGenerator.generate_card_number)
+        card_number = Card.generate_card_number(
             location_code, sequence_number, 
-            card_type="STANDARD"
+            card_type=CardType.STANDARD  # Use CardType enum, not string
         )
         logger.info(f"Generated card number: {card_number}")
         
