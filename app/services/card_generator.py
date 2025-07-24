@@ -1,12 +1,13 @@
 """
 Madagascar License Card Generation Service
-Adapted from AMPRO license generation system for Madagascar driver's licenses
+Unified AMPRO-based system with production file management
 """
 
 import io
 import base64
 import json
 import os
+import csv
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, date
@@ -17,11 +18,12 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import pdf417gen
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import mm
+
+from app.services.card_file_manager import card_file_manager
 
 logger = logging.getLogger(__name__)
 
-# ---------- CONSTANTS ----------
+# ---------- AMPRO CONSTANTS ----------
 DPI = 300
 MM_TO_INCH = 1/25.4
 CARD_W_MM = 85.60
@@ -29,7 +31,7 @@ CARD_H_MM = 54.00
 CARD_W_PX = int(CARD_W_MM * MM_TO_INCH * DPI)   # 1012
 CARD_H_PX = int(CARD_H_MM * MM_TO_INCH * DPI)   # 638
 
-# Font sizes (in points) - Optimized for readability
+# Font sizes (in points) - Same as AMPRO
 FONT_SIZES = {
     "title": 36,
     "subtitle": 24,
@@ -39,25 +41,25 @@ FONT_SIZES = {
     "tiny": 12,
 }
 
-# Colors for Madagascar license design
+# Colors - Adapted for Madagascar
 COLORS = {
-    "mg_red": (196, 40, 28),          # Madagascar flag red
-    "mg_green": (0, 122, 51),         # Madagascar flag green  
-    "mg_white": (255, 255, 255),      # Madagascar flag white
-    "text_dark": (33, 33, 33),        # Dark text
-    "text_light": (255, 255, 255),    # Light text
-    "security_overlay": (255, 240, 245), # Light pink security background
-    "border": (100, 100, 100),        # Border color
+    "white": (255, 255, 255),
+    "black": (0, 0, 0),
+    "red": (220, 38, 48),      # Madagascar flag red
+    "green": (0, 158, 73),     # Madagascar flag green
+    "dark_blue": (0, 32, 91),  # Dark blue for official text
+    "gray": (128, 128, 128),
+    "light_gray": (240, 240, 240),
 }
 
-# Grid system constants for layout
+# Grid system constants (Same as AMPRO)
 GUTTER_PX = 23.6
 BLEED_PX = 23.6  # 2mm bleed
 GRID_COLS = 6
 GRID_ROWS = 6
 
 def calculate_grid_positions():
-    """Calculate grid cell positions based on 6x6 grid system"""
+    """Calculate grid cell positions based on 6x6 grid system (Same as AMPRO)"""
     available_width = CARD_W_PX - (2 * BLEED_PX) - (5 * GUTTER_PX)
     available_height = CARD_H_PX - (2 * BLEED_PX) - (5 * GUTTER_PX)
     
@@ -74,418 +76,495 @@ def calculate_grid_positions():
     
     return grid_positions, cell_width, cell_height
 
-# Layout coordinates for front side
+# Calculate grid positions
 GRID_POSITIONS, CELL_WIDTH, CELL_HEIGHT = calculate_grid_positions()
 
-FRONT_COORDINATES = {
-    "photo": GRID_POSITIONS["r2c1"],  # Photo in top-left grid area (extended to r5c2)
-    "title_x": GRID_POSITIONS["r1c3"][0],
-    "title_y": GRID_POSITIONS["r1c3"][1],
-    "info_start_y": GRID_POSITIONS["r2c3"][1],
-    "labels_column_x": GRID_POSITIONS["r2c3"][0],
-    "values_column_x": GRID_POSITIONS["r2c5"][0],
-    "line_height": 35,
-    "signature_area": GRID_POSITIONS["r5c5"],  # Bottom right for signature
-    "barcode_area": GRID_POSITIONS["r4c1"],   # Bottom left for barcode
-}
+# Load coordinates from CSV file (Same system as AMPRO)
+def load_coordinates_from_csv():
+    """Load coordinate mappings from CSV file"""
+    coordinates = {}
+    csv_path = os.path.join(os.path.dirname(__file__), "..", "assets", "sa_license_coordinates.csv")
+    
+    try:
+        with open(csv_path, 'r') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                element = row['Element']
+                if element and row['X'] and row['Y']:  # Skip rows without coordinates
+                    coordinates[element] = {
+                        'side': row['Side'],
+                        'x': int(row['X']) if row['X'].isdigit() else None,
+                        'y': int(row['Y']) if row['Y'].isdigit() else None,
+                        'width': int(row['Width']) if row['Width'] and row['Width'].isdigit() else None,
+                        'height': int(row['Height']) if row['Height'] and row['Height'].isdigit() else None,
+                        'description': row['Description'],
+                        'units': row['Units']
+                    }
+    except Exception as e:
+        logger.warning(f"Could not load coordinates CSV: {e}, using fallback coordinates")
+        # Fallback coordinates if CSV not available
+        coordinates = {
+            'photo': {'side': 'front', 'x': 40, 'y': 58, 'width': 213, 'height': 260},
+            'surname': {'side': 'front', 'x': 530, 'y': 80},
+            'names': {'side': 'front', 'x': 530, 'y': 125},
+            'id_number': {'side': 'front', 'x': 530, 'y': 170},
+            'date_of_birth': {'side': 'front', 'x': 530, 'y': 215},
+            'issue_date': {'side': 'front', 'x': 530, 'y': 260},
+            'expiry_date': {'side': 'front', 'x': 530, 'y': 305},
+            'license_number': {'side': 'front', 'x': 530, 'y': 350},
+            'category': {'side': 'front', 'x': 530, 'y': 395},
+            'restrictions': {'side': 'front', 'x': 530, 'y': 440},
+            'signature': {'side': 'front', 'x': 530, 'y': 485, 'width': 355, 'height': 55},
+            'barcode': {'side': 'back', 'x': 30, 'y': 340, 'width': 458, 'height': 38},
+        }
+    
+    return coordinates
 
-# Layout coordinates for back side
-BACK_COORDINATES = {
-    "restrictions_start_y": GRID_POSITIONS["r2c1"][1],
-    "restrictions_x": GRID_POSITIONS["r2c1"][0],
-    "issuing_authority_y": GRID_POSITIONS["r5c1"][1],
-    "issuing_authority_x": GRID_POSITIONS["r5c1"][0],
-    "watermark_center": (CARD_W_PX // 2, CARD_H_PX // 2),
-}
+# Load coordinates
+COORDINATES = load_coordinates_from_csv()
 
 class MadagascarCardGenerator:
     """
-    Main card generator for Madagascar driver's licenses
-    Adapted from AMPRO's SA license generator
+    Unified Madagascar License Card Generator using AMPRO design system
+    Combines image generation and production file management
     """
     
     def __init__(self):
-        """Initialize the card generator with fonts and assets"""
+        self.base_path = os.path.dirname(os.path.abspath(__file__))
+        self.assets_path = os.path.join(self.base_path, "..", "assets")
         self.fonts = self._load_fonts()
-        self.assets_loaded = False
-        self.version = "1.0-MG"
-        
+        self.version = "3.0-MG-AMPRO-UNIFIED"
+    
     def _load_fonts(self) -> Dict[str, ImageFont.FreeTypeFont]:
-        """Load fonts with fallback to default fonts"""
+        """Load fonts with fallbacks (Same as AMPRO)"""
         fonts = {}
         
-        # Font paths to try (in order of preference)
+        # Font search paths
         font_paths = [
-            # Primary fonts
-            "SourceSansPro-Regular.ttf",
-            "SourceSansPro-Bold.ttf",
-            # Fallback fonts
-            "arial.ttf",
-            "Arial.ttf",
-            "DejaVuSans.ttf",
-            # System paths (Linux/Windows)
-            "/System/Library/Fonts/Arial.ttf",  # macOS
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
-            "C:/Windows/Fonts/arial.ttf",  # Windows
+            # Custom fonts directory
+            os.path.join(self.assets_path, "fonts"),
+            # System fonts
+            "C:/Windows/Fonts",  # Windows
+            "/System/Library/Fonts",  # macOS
+            "/usr/share/fonts/truetype/dejavu",  # Linux
         ]
         
-        def load_font_with_fallback(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-            """Load font with size, trying multiple paths"""
-            for font_path in font_paths:
-                try:
-                    # Skip regular fonts if we need bold, and vice versa
-                    if bold and "Regular" in font_path:
-                        continue
-                    if not bold and "Bold" in font_path:
-                        continue
-                        
-                    return ImageFont.truetype(font_path, size)
-                except (IOError, OSError):
-                    continue
-            
-            # Final fallback to default font
-            try:
-                return ImageFont.load_default()
-            except:
-                return ImageFont.load_default()
+        # Bold font options for labels
+        bold_font_options = [
+            "SourceSansPro-Bold.ttf",
+            "ARIALBD.TTF",
+            "dejavu-sans.bold.ttf",
+            "Arial-Bold.ttf",
+            "DejaVuSans-Bold.ttf",
+        ]
         
-        # Load fonts for different purposes
-        fonts["title"] = load_font_with_fallback(FONT_SIZES["title"], bold=True)
-        fonts["subtitle"] = load_font_with_fallback(FONT_SIZES["subtitle"], bold=True)
-        fonts["field_label"] = load_font_with_fallback(FONT_SIZES["field_label"], bold=True)
-        fonts["field_value"] = load_font_with_fallback(FONT_SIZES["field_value"], bold=False)
-        fonts["small"] = load_font_with_fallback(FONT_SIZES["small"], bold=False)
-        fonts["tiny"] = load_font_with_fallback(FONT_SIZES["tiny"], bold=False)
+        # Regular font options for values
+        regular_font_options = [
+            "SourceSansPro-Regular.ttf",
+            "arial.ttf",
+            "Arial.ttf", 
+            "DejaVuSans.ttf",
+        ]
+        
+        # Load fonts for each size
+        for font_name, size in FONT_SIZES.items():
+            font_loaded = False
+            
+            # Determine if this is a label font (uses bold)
+            is_label_font = font_name in ["field_label", "title", "subtitle"]
+            font_options = bold_font_options if is_label_font else regular_font_options
+            
+            for font_path in font_paths:
+                if font_loaded:
+                    break
+                    
+                for font_file in font_options:
+                    try:
+                        full_path = os.path.join(font_path, font_file)
+                        if os.path.exists(full_path):
+                            fonts[font_name] = ImageFont.truetype(full_path, size)
+                            logger.info(f"Loaded font {font_name}: {full_path}")
+                            font_loaded = True
+                            break
+                    except Exception as e:
+                        continue
+            
+            # Fallback to default font if no custom font found
+            if not font_loaded:
+                try:
+                    fonts[font_name] = ImageFont.load_default()
+                    logger.warning(f"Using default font for {font_name}")
+                except:
+                    # Ultimate fallback
+                    fonts[font_name] = None
+                    logger.error(f"Could not load any font for {font_name}")
         
         return fonts
-
-    def _create_security_background(self, width: int, height: int) -> Image.Image:
-        """Create security background pattern for Madagascar license"""
-        # Create base image with white background
-        img = Image.new('RGB', (width, height), COLORS["mg_white"])
-        draw = ImageDraw.Draw(img)
+    
+    def _create_security_background(self, width: int, height: int, side: str = "front") -> Image.Image:
+        """Create security background pattern using AMPRO assets"""
+        # Try to load the exact AMPRO template first
+        if side == "front":
+            template_path = os.path.join(self.assets_path, "overlays", "Card_BG_Front.png")
+        else:
+            template_path = os.path.join(self.assets_path, "overlays", "Card_BG_Back.png")
+            
+        if os.path.exists(template_path):
+            try:
+                background = Image.open(template_path).convert('RGBA')
+                # Resize to exact dimensions if needed
+                if background.size != (width, height):
+                    background = background.resize((width, height), Image.Resampling.LANCZOS)
+                logger.info(f"Loaded {side} background template: {template_path}")
+                return background
+            except Exception as e:
+                logger.warning(f"Could not load {side} template: {e}")
         
-        # Add subtle security pattern
-        pattern_color = COLORS["security_overlay"]
+        # Fallback: Create white background
+        background = Image.new('RGBA', (width, height), COLORS["white"] + (255,))
+        return background
+    
+    def _create_watermark_pattern(self, width: int, height: int, text: str = "MADAGASCAR") -> Image.Image:
+        """Create diagonal watermark pattern using AMPRO assets"""
+        # Try to load watermark from AMPRO assets first
+        watermark_path = os.path.join(self.assets_path, "overlays", "watermark_pattern.png")
+        if os.path.exists(watermark_path):
+            try:
+                watermark = Image.open(watermark_path).convert('RGBA')
+                # Resize to exact dimensions if needed
+                if watermark.size != (width, height):
+                    watermark = watermark.resize((width, height), Image.Resampling.LANCZOS)
+                logger.info(f"Loaded watermark from AMPRO assets: {watermark_path}")
+                return watermark
+            except Exception as e:
+                logger.warning(f"Could not load watermark overlay: {e}")
         
-        # Diagonal lines pattern
-        line_spacing = 20
-        for i in range(0, width + height, line_spacing):
-            draw.line([(i, 0), (i - height, height)], fill=pattern_color, width=1)
+        # Fallback: Create programmatic watermark with "MADAGASCAR"
+        logger.info(f"Creating programmatic Madagascar watermark: {width}x{height}")
         
-        # Add Madagascar flag colors as header
-        header_height = 40
-        stripe_height = header_height // 3
+        pattern_width = width * 2
+        pattern_height = height * 2
+        watermark = Image.new('RGBA', (pattern_width, pattern_height), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(watermark)
         
-        # Red stripe
-        draw.rectangle([0, 0, width, stripe_height], fill=COLORS["mg_red"])
-        # White stripe  
-        draw.rectangle([0, stripe_height, width, stripe_height * 2], fill=COLORS["mg_white"])
-        # Green stripe
-        draw.rectangle([0, stripe_height * 2, width, header_height], fill=COLORS["mg_green"])
+        font = self.fonts["title"]
         
-        return img
-
+        # Calculate text dimensions
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        # Create diagonal pattern
+        spacing_x = text_width + 60
+        spacing_y = text_height + 40
+        
+        # Madagascar colors - use green for watermark
+        watermark_color = COLORS["green"] + (60,)
+        
+        # Draw diagonal pattern
+        for y in range(-text_height, pattern_height + text_height, spacing_y):
+            for x in range(-text_width, pattern_width + text_width, spacing_x):
+                # Rotate text 45 degrees
+                rotated_x = x + (y * 0.5)
+                draw.text((rotated_x, y), text, fill=watermark_color, font=font)
+        
+        # Crop to desired size
+        watermark = watermark.crop((0, 0, width, height))
+        return watermark
+    
     def _process_photo_data(self, photo_data: Optional[str]) -> Optional[Image.Image]:
-        """Process base64 photo data into PIL Image"""
+        """Process photo data for license (Same as AMPRO)"""
         if not photo_data:
             return None
-            
+        
         try:
-            # Remove data URL prefix if present
-            if photo_data.startswith('data:image'):
+            # Handle base64 data
+            if photo_data.startswith('data:'):
                 photo_data = photo_data.split(',')[1]
             
-            # Decode base64 image
-            image_bytes = base64.b64decode(photo_data)
-            photo = Image.open(io.BytesIO(image_bytes))
+            # Decode base64
+            photo_bytes = base64.b64decode(photo_data)
             
-            # Convert to RGB if necessary
+            # Open image
+            photo = Image.open(io.BytesIO(photo_bytes))
+            
+            # Convert to RGB if needed
             if photo.mode != 'RGB':
                 photo = photo.convert('RGB')
             
-            # Enhance image quality
-            enhancer = ImageEnhance.Contrast(photo)
-            photo = enhancer.enhance(1.1)
+            # ISO specifications for photo (Same as AMPRO)
+            target_width = 213   # 18mm at 300 DPI
+            target_height = 260  # 22mm at 300 DPI
             
-            enhancer = ImageEnhance.Sharpness(photo)
-            photo = enhancer.enhance(1.2)
+            # Resize maintaining aspect ratio
+            photo.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
             
-            return photo
+            # Create final image with exact dimensions
+            final_photo = Image.new('RGB', (target_width, target_height), (255, 255, 255))
+            
+            # Center the photo
+            x_offset = (target_width - photo.width) // 2
+            y_offset = (target_height - photo.height) // 2
+            final_photo.paste(photo, (x_offset, y_offset))
+            
+            return final_photo
             
         except Exception as e:
-            logger.error(f"Error processing photo data: {e}")
+            logger.error(f"Error processing photo: {e}")
             return None
-
-    def _generate_pdf417_barcode(self, data: str, width: int, height: int) -> Image.Image:
-        """Generate PDF417 barcode for license data"""
+    
+    def _generate_pdf417_barcode(self, data: str) -> Image.Image:
+        """Generate PDF417 barcode (Same as AMPRO)"""
         try:
-            # Create PDF417 barcode
-            codes = pdf417gen.encode(
-                data,
-                security_level=5,  # High security level
-                columns=6,  # Number of columns
-            )
+            # Generate PDF417 barcode
+            codes = pdf417gen.encode(data, security_level=2)
+            image = pdf417gen.render_image(codes, scale=3, ratio=3)
             
-            # Convert to image
-            image = pdf417gen.render_image(codes, scale=2, ratio=3)
-            
-            # Resize to fit the specified dimensions
-            if image.size != (width, height):
-                image = image.resize((width, height), Image.Resampling.LANCZOS)
+            # Convert to RGB
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             
             return image
             
         except Exception as e:
             logger.error(f"Error generating PDF417 barcode: {e}")
-            # Return placeholder image
-            placeholder = Image.new('RGB', (width, height), COLORS["mg_white"])
-            draw = ImageDraw.Draw(placeholder)
-            draw.rectangle([0, 0, width-1, height-1], outline=COLORS["border"], width=2)
-            draw.text((width//2, height//2), "BARCODE", fill=COLORS["text_dark"], 
-                     font=self.fonts["small"], anchor="mm")
-            return placeholder
-
-    def generate_front(self, license_data: Dict[str, Any], person_data: Dict[str, Any], 
-                      photo_data: Optional[str] = None) -> str:
-        """Generate front side of Madagascar license card"""
-        
-        # Create base image with security background
-        license_img = self._create_security_background(CARD_W_PX, CARD_H_PX)
-        draw = ImageDraw.Draw(license_img)
-        
-        # Process and add photo
-        photo = self._process_photo_data(photo_data)
-        photo_pos = FRONT_COORDINATES["photo"]
-        
-        # Extend photo area to cover r2c1 to r5c2 (larger photo area)
-        photo_width = int(CELL_WIDTH * 2 + GUTTER_PX)
-        photo_height = int(CELL_HEIGHT * 3 + GUTTER_PX * 2)
-        
-        if photo:
-            # Resize photo to fit the area
-            photo_resized = photo.resize((photo_width, photo_height), Image.Resampling.LANCZOS)
-            license_img.paste(photo_resized, (photo_pos[0], photo_pos[1]))
-        else:
-            # Photo placeholder
-            draw.rectangle([photo_pos[0], photo_pos[1], 
-                          photo_pos[0] + photo_width, photo_pos[1] + photo_height], 
-                         fill=(240, 240, 240), outline=COLORS["border"], width=2)
-            photo_center_x = photo_pos[0] + photo_width // 2
-            photo_center_y = photo_pos[1] + photo_height // 2
-            draw.text((photo_center_x, photo_center_y), "PHOTO", 
-                     fill=COLORS["text_dark"], font=self.fonts["field_value"], anchor="mm")
-        
-        # Title section
-        title_x = FRONT_COORDINATES["title_x"]
-        title_y = FRONT_COORDINATES["title_y"]
-        
-        draw.text((title_x, title_y), "REPUBLIQUE DE MADAGASCAR", 
-                 fill=COLORS["mg_red"], font=self.fonts["title"])
-        draw.text((title_x, title_y + 40), "PERMIS DE CONDUIRE", 
-                 fill=COLORS["mg_green"], font=self.fonts["subtitle"])
-        
-        # Personal information section
-        labels_x = FRONT_COORDINATES["labels_column_x"]
-        values_x = FRONT_COORDINATES["values_column_x"]
-        info_y = FRONT_COORDINATES["info_start_y"]
-        line_height = FRONT_COORDINATES["line_height"]
-        
-        # License information fields
-        info_fields = [
-            ("1. NOM/LAST NAME", person_data.get("last_name", "").upper()),
-            ("2. PRÉNOMS/FIRST NAME", person_data.get("first_name", "").upper()),
-            ("3. DATE DE NAISSANCE/DOB", self._format_date(person_data.get("birth_date"))),
-            ("4. LIEU DE NAISSANCE/POB", person_data.get("birth_place", "MADAGASCAR")),
-            ("5. CATÉGORIES/CATEGORIES", self._format_license_categories(license_data.get("categories", []))),
-            ("9. NOM PERMIS/LICENSE NO", license_data.get("license_number", "")),
-        ]
-        
-        current_y = info_y
-        for label, value in info_fields:
-            # Draw label
-            draw.text((labels_x, current_y), label, 
-                     fill=COLORS["text_dark"], font=self.fonts["field_label"])
-            
-            # Draw value
-            draw.text((labels_x, current_y + 22), str(value), 
-                     fill=COLORS["text_dark"], font=self.fonts["field_value"])
-            
-            current_y += line_height
-        
-        # Barcode area
-        barcode_data = self._prepare_barcode_data(license_data, person_data)
-        barcode_pos = FRONT_COORDINATES["barcode_area"]
-        barcode_img = self._generate_pdf417_barcode(barcode_data, 150, 60)
-        license_img.paste(barcode_img, (barcode_pos[0], barcode_pos[1]))
-        
-        # Convert to base64 for return
-        buffer = io.BytesIO()
-        license_img.save(buffer, format="PNG", dpi=(DPI, DPI))
-        buffer.seek(0)
-        
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    def generate_back(self, license_data: Dict[str, Any], person_data: Dict[str, Any]) -> str:
-        """Generate back side of Madagascar license card"""
-        
-        # Create base image with security background
-        license_img = self._create_security_background(CARD_W_PX, CARD_H_PX)
-        draw = ImageDraw.Draw(license_img)
-        
-        # Add watermark
-        self._add_watermark(draw, "MADAGASIKARA")
-        
-        # Restrictions section
-        restrictions_x = BACK_COORDINATES["restrictions_x"]
-        restrictions_y = BACK_COORDINATES["restrictions_start_y"]
-        
-        draw.text((restrictions_x, restrictions_y), "RESTRICTIONS/RESTRICTIONS:", 
-                 fill=COLORS["text_dark"], font=self.fonts["field_label"])
-        
-        # Format restrictions for display
-        restrictions_text = self._format_restrictions(license_data.get("restrictions", {}))
-        
-        # Multi-line restrictions text
-        current_y = restrictions_y + 30
-        line_height = 25
-        
-        for line in restrictions_text.split('\n'):
-            if line.strip():
-                draw.text((restrictions_x, current_y), line.strip(), 
-                         fill=COLORS["text_dark"], font=self.fonts["small"])
-                current_y += line_height
-        
-        # Issuing authority section
-        auth_x = BACK_COORDINATES["issuing_authority_x"]
-        auth_y = BACK_COORDINATES["issuing_authority_y"]
-        
-        draw.text((auth_x, auth_y), "DÉLIVRÉ PAR/ISSUED BY:", 
-                 fill=COLORS["text_dark"], font=self.fonts["field_label"])
-        draw.text((auth_x, auth_y + 25), "MINISTÈRE DES TRANSPORTS", 
-                 fill=COLORS["text_dark"], font=self.fonts["small"])
-        draw.text((auth_x, auth_y + 45), "RÉPUBLIQUE DE MADAGASCAR", 
-                 fill=COLORS["text_dark"], font=self.fonts["small"])
-        
-        # Issue and expiry dates
-        issue_date = self._format_date(license_data.get("issue_date"))
-        expiry_date = self._format_date(license_data.get("expiry_date"))
-        
-        draw.text((auth_x + 300, auth_y), f"DÉLIVRÉ LE/ISSUED: {issue_date}", 
-                 fill=COLORS["text_dark"], font=self.fonts["small"])
-        draw.text((auth_x + 300, auth_y + 25), f"VALABLE JUSQU'AU/VALID UNTIL: {expiry_date}", 
-                 fill=COLORS["text_dark"], font=self.fonts["small"])
-        
-        # Convert to base64 for return
-        buffer = io.BytesIO()
-        license_img.save(buffer, format="PNG", dpi=(DPI, DPI))
-        buffer.seek(0)
-        
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    def _add_watermark(self, draw: ImageDraw.Draw, text: str):
-        """Add diagonal watermark text to the background"""
-        center_x, center_y = BACK_COORDINATES["watermark_center"]
-        
-        # Create semi-transparent watermark
-        for i in range(-2, 3):
-            for j in range(-2, 3):
-                x = center_x + i * 200
-                y = center_y + j * 100
-                draw.text((x, y), text, fill=(200, 200, 200, 100), 
-                         font=self.fonts["title"], anchor="mm")
-
-    def _format_license_categories(self, categories: List[str]) -> str:
-        """Format license categories for display, excluding learners permits"""
-        if not categories:
-            return ""
-        
-        # Filter out learners permits (not printed on cards)
-        card_categories = [cat for cat in categories if cat != "LEARNERS_PERMIT"]
-        
-        return ", ".join(card_categories)
-
-    def _format_restrictions(self, restrictions: Dict[str, List[str]]) -> str:
-        """Format restrictions for display on card back"""
-        if not restrictions:
-            return "AUCUNE/NONE"
-        
-        formatted_lines = []
-        
-        # Driver restrictions
-        driver_restrictions = restrictions.get("driver_restrictions", [])
-        if driver_restrictions:
-            # Filter out "00" codes (no restrictions)
-            filtered_driver = [r for r in driver_restrictions if r != "00"]
-            if filtered_driver:
-                formatted_lines.append(f"CONDUCTEUR/DRIVER: {', '.join(filtered_driver)}")
-        
-        # Vehicle restrictions  
-        vehicle_restrictions = restrictions.get("vehicle_restrictions", [])
-        if vehicle_restrictions:
-            # Filter out "00" codes (no restrictions)
-            filtered_vehicle = [r for r in vehicle_restrictions if r != "00"]
-            if filtered_vehicle:
-                formatted_lines.append(f"VÉHICULE/VEHICLE: {', '.join(filtered_vehicle)}")
-        
-        return "\n".join(formatted_lines) if formatted_lines else "AUCUNE/NONE"
-
-    def _format_date(self, date_input) -> str:
-        """Format date for display on license"""
-        if not date_input:
-            return ""
-        
+            # Fallback: Create simple text
+            img = Image.new('RGB', (400, 50), COLORS["white"])
+            draw = ImageDraw.Draw(img)
+            font = self.fonts["small"]
+            draw.text((10, 10), "BARCODE DATA", fill=COLORS["black"], font=font)
+            return img
+    
+    def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[str]:
+        """Extract photo data from person data with multiple fallback paths"""
         try:
-            if isinstance(date_input, str):
-                # Parse ISO date string
-                if 'T' in date_input:
-                    date_obj = datetime.fromisoformat(date_input.replace('Z', '+00:00')).date()
-                else:
-                    date_obj = datetime.strptime(date_input, '%Y-%m-%d').date()
-            elif isinstance(date_input, datetime):
-                date_obj = date_input.date()
-            elif isinstance(date_input, date):
-                date_obj = date_input
-            else:
-                return str(date_input)
+            # Try different ways to get photo data
+            photo_paths = [
+                person_data.get("photo_data"),
+                person_data.get("photo_path"),
+                person_data.get("biometric_data", {}).get("photo_path"),
+                person_data.get("biometric_data", {}).get("photo_url"),
+            ]
             
-            # Format as DD.MM.YYYY (European style common in Madagascar)
-            return date_obj.strftime('%d.%m.%Y')
+            for photo_path in photo_paths:
+                if photo_path:
+                    logger.info(f"Found photo data source: {type(photo_path)} ({len(str(photo_path))[:100]}...)")
+                    
+                    # If it's already base64 data, return it
+                    if isinstance(photo_path, str) and (photo_path.startswith('data:') or len(photo_path) > 1000):
+                        return photo_path
+                    
+                    # If it's a file path, try to read the file
+                    elif isinstance(photo_path, str) and (photo_path.endswith(('.jpg', '.jpeg', '.png')) or '/' in photo_path):
+                        # This might be a file path - we'd need file manager to read it
+                        logger.info(f"Photo appears to be file path: {photo_path}")
+                        # For now, return None and let it use placeholder
+                        return None
+            
+            logger.info("No photo data found, will use placeholder")
+            return None
             
         except Exception as e:
-            logger.error(f"Error formatting date {date_input}: {e}")
-            return str(date_input)
-
-    def _prepare_barcode_data(self, license_data: Dict[str, Any], person_data: Dict[str, Any]) -> str:
-        """Prepare data string for PDF417 barcode"""
-        # Create compact data string with essential information
-        barcode_data = {
-            "license_number": license_data.get("license_number", ""),
-            "name": f"{person_data.get('first_name', '')} {person_data.get('last_name', '')}",
-            "birth_date": person_data.get("birth_date", ""),
-            "categories": license_data.get("categories", []),
-            "issue_date": license_data.get("issue_date", ""),
-            "expiry_date": license_data.get("expiry_date", ""),
-            "country": "MG"  # Madagascar country code
-        }
-        
-        # Convert to JSON string for barcode
-        return json.dumps(barcode_data, separators=(',', ':'))
-
-
-class MadagascarCardProductionGenerator:
-    """
-    Production-ready wrapper for Madagascar card generation with file management
-    Adapted from AMPRO's ProductionLicenseGenerator
-    """
+            logger.error(f"Error extracting photo: {e}")
+            return None
     
-    def __init__(self):
-        self.card_generator = MadagascarCardGenerator()
-        self.version = "1.0-MG-PROD"
+    def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[str] = None) -> str:
+        """Generate Madagascar license front side using AMPRO design system"""
         
+        # Create base image with AMPRO background template
+        license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "front")
+        draw = ImageDraw.Draw(license_img)
+        
+        # Process and add photo using exact AMPRO coordinates
+        photo = self._process_photo_data(photo_data)
+        photo_coords = COORDINATES.get('photo', {'x': 40, 'y': 58, 'width': 213, 'height': 260})
+        
+        if photo:
+            # Use exact AMPRO positioning
+            photo_x = photo_coords['x']
+            photo_y = photo_coords['y']
+            photo_w = photo_coords['width']
+            photo_h = photo_coords['height']
+            
+            # Resize photo to fit the exact area
+            photo_resized = photo.resize((photo_w, photo_h), Image.Resampling.LANCZOS)
+            license_img.paste(photo_resized, (photo_x, photo_y))
+        else:
+            # Photo placeholder with border (Same as AMPRO)
+            photo_x = photo_coords['x']
+            photo_y = photo_coords['y']
+            photo_w = photo_coords['width']
+            photo_h = photo_coords['height']
+            
+            draw.rectangle([photo_x, photo_y, photo_x + photo_w, photo_y + photo_h], 
+                         fill=(240, 240, 240), outline=(180, 180, 180), width=2)
+            photo_center_x = photo_x + photo_w // 2
+            photo_center_y = photo_y + photo_h // 2
+            draw.text((photo_center_x, photo_center_y), "SARY", 
+                     fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
+        
+        # Add Madagascar header/title
+        draw.text((CARD_W_PX // 2, 30), "REPOBLIKAN'I MADAGASIKARA", 
+                 fill=COLORS["dark_blue"], font=self.fonts["title"], anchor="mm")
+        draw.text((CARD_W_PX // 2, 60), "FAHAZOAN-DÀLANA MITONDRA FIARA", 
+                 fill=COLORS["black"], font=self.fonts["subtitle"], anchor="mm")
+        
+        # Information fields using exact AMPRO coordinates but with Madagascar labels
+        info_fields = [
+            ("ANARANA FIANAKAVIANA", license_data.get('surname', 'N/A'), 'surname'),
+            ("ANARANA", license_data.get('first_name', 'N/A'), 'names'),
+            ("DATY NAHATERAHANA", license_data.get('birth_date', 'N/A'), 'date_of_birth'),
+            ("TAONA", license_data.get('gender', 'N/A'), 'gender'),
+            ("LAHARANA ID", license_data.get('id_number', 'N/A'), 'id_number'),
+            ("MIANKINA", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}", 'issue_date'),
+            ("NAVOAKA TANY", license_data.get('issuing_location', 'Madagasikara'), 'expiry_date'),
+            ("LAHARANA FAHAZOAN-DALANA", license_data.get('license_number', 'N/A'), 'license_number'),
+            ("SOKAJY", license_data.get('category', 'N/A'), 'category'),
+            ("FETRA", license_data.get('restrictions', '0'), 'restrictions'),
+        ]
+        
+        # Draw information fields using exact AMPRO coordinates
+        for label, value, coord_key in info_fields:
+            coords = COORDINATES.get(coord_key, {'x': 530, 'y': 80})
+            x_pos = coords['x']
+            y_pos = coords['y']
+            
+            # Draw label (in Malagasy)
+            draw.text((x_pos - 200, y_pos), label, 
+                     fill=COLORS["black"], font=self.fonts["field_label"])
+            
+            # Draw value
+            draw.text((x_pos, y_pos), str(value), 
+                     fill=COLORS["black"], font=self.fonts["field_value"])
+        
+        # Add signature area using exact AMPRO coordinates
+        sig_coords = COORDINATES.get('signature', {'x': 530, 'y': 485, 'width': 355, 'height': 55})
+        sig_x = sig_coords['x']
+        sig_y = sig_coords['y']
+        sig_w = sig_coords['width']
+        sig_h = sig_coords['height']
+        
+        # Draw signature border
+        draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
+                      outline=COLORS["black"], width=1)
+        
+        # Signature label in Malagasy
+        draw.text((sig_x, sig_y - 25), "SONIA", 
+                 fill=COLORS["black"], font=self.fonts["field_label"])
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        # Convert back to RGB for compatibility
+        if license_img.mode == 'RGBA':
+            rgb_img = Image.new('RGB', license_img.size, (255, 255, 255))
+            rgb_img.paste(license_img, mask=license_img.split()[-1] if len(license_img.split()) == 4 else None)
+            license_img = rgb_img
+        
+        license_img.save(buffer, format="PNG", dpi=(DPI, DPI))
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+    
+    def generate_back(self, license_data: Dict[str, Any]) -> str:
+        """Generate Madagascar license back side using AMPRO design system"""
+        
+        # Create base image with AMPRO back background
+        license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "back")
+        draw = ImageDraw.Draw(license_img)
+        
+        # Generate and add PDF417 barcode using exact AMPRO coordinates
+        barcode_data = json.dumps({
+            "license_number": license_data.get('license_number'),
+            "id_number": license_data.get('id_number'),
+            "category": license_data.get('category'),
+            "expiry_date": str(license_data.get('expiry_date')),
+            "issue_date": str(license_data.get('issue_date')),
+            "country": "Madagascar"
+        })
+        
+        barcode_img = self._generate_pdf417_barcode(barcode_data)
+        barcode_coords = COORDINATES.get('barcode', {'x': 30, 'y': 340, 'width': 458, 'height': 38})
+        
+        # Use exact AMPRO positioning
+        barcode_x = barcode_coords['x']
+        barcode_y = barcode_coords['y']
+        barcode_w = barcode_coords['width']
+        barcode_h = barcode_coords['height']
+        
+        # Resize barcode to fit the exact area
+        barcode_resized = barcode_img.resize((barcode_w, barcode_h), Image.Resampling.LANCZOS)
+        license_img.paste(barcode_resized, (barcode_x, barcode_y))
+        
+        # Add license categories information (Madagascar specific)
+        categories_text = [
+            "SOKAJY:",
+            "A1 - Môtô hatramin'ny 50cc",
+            "A - Môtô ambonin'ny 50cc", 
+            "B - Fiara maivana",
+            "C - Kamiao sy bus",
+            "D - Tracteur sy fiara fampiasaina amin'ny asa"
+        ]
+        
+        # Draw categories using coordinates
+        start_y = 100
+        for i, text in enumerate(categories_text):
+            y_pos = start_y + (i * 25)
+            font = self.fonts["field_label"] if i == 0 else self.fonts["small"]
+            color = COLORS["dark_blue"] if i == 0 else COLORS["black"]
+            draw.text((30, y_pos), text, fill=color, font=font)
+        
+        # Add restrictions information in Malagasy
+        restrictions_y = 300
+        draw.text((30, restrictions_y), "FETRA:", 
+                 fill=COLORS["dark_blue"], font=self.fonts["field_label"])
+        draw.text((30, restrictions_y + 25), "0 - Tsy misy fetra", 
+                 fill=COLORS["black"], font=self.fonts["small"])
+        draw.text((30, restrictions_y + 45), "1 - Mila solomaso", 
+                 fill=COLORS["black"], font=self.fonts["small"])
+        
+        # Add government authority info
+        authority_y = CARD_H_PX - 80
+        draw.text((30, authority_y), "MINISITERAN'NY FIARAKODIA", 
+                 fill=COLORS["dark_blue"], font=self.fonts["small"])
+        draw.text((30, authority_y + 20), "sy ny FITATERANA", 
+                 fill=COLORS["dark_blue"], font=self.fonts["small"])
+        
+        # Add Madagascar flag colors as accent (small rectangles)
+        flag_y = CARD_H_PX - 100
+        # White stripe (already background)
+        draw.rectangle([CARD_W_PX - 100, flag_y, CARD_W_PX - 80, flag_y + 60], fill=COLORS["white"])
+        # Red stripe
+        draw.rectangle([CARD_W_PX - 80, flag_y, CARD_W_PX - 60, flag_y + 60], fill=COLORS["red"])
+        # Green stripe  
+        draw.rectangle([CARD_W_PX - 60, flag_y, CARD_W_PX - 40, flag_y + 60], fill=COLORS["green"])
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        # Convert back to RGB for compatibility
+        if license_img.mode == 'RGBA':
+            rgb_img = Image.new('RGB', license_img.size, (255, 255, 255))
+            rgb_img.paste(license_img, mask=license_img.split()[-1] if len(license_img.split()) == 4 else None)
+            license_img = rgb_img
+        
+        license_img.save(buffer, format="PNG", dpi=(DPI, DPI))
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+    
+    def generate_watermark_template(self, width: int, height: int, text: str = "MADAGASCAR") -> str:
+        """Generate watermark template using AMPRO system"""
+        watermark_img = self._create_watermark_pattern(width, height, text)
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        # Convert back to RGB for compatibility
+        if watermark_img.mode == 'RGBA':
+            rgb_img = Image.new('RGB', watermark_img.size, (255, 255, 255))
+            rgb_img.paste(watermark_img, mask=watermark_img.split()[-1] if len(watermark_img.split()) == 4 else None)
+            watermark_img = rgb_img
+        
+        watermark_img.save(buffer, format="PNG", dpi=(DPI, DPI))
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+    
     def generate_card_files(self, print_job_data: Dict[str, Any]) -> Dict[str, str]:
         """
-        Generate complete card package (front, back, combined PDF) for print job
+        Generate complete card package with proper LINC data mapping
         
         Args:
             print_job_data: Print job information including license_data and person_data
@@ -494,41 +573,51 @@ class MadagascarCardProductionGenerator:
             Dictionary with file paths and metadata
         """
         try:
+            # Extract data from print job
             license_data = print_job_data.get("license_data", {})
             person_data = print_job_data.get("person_data", {})
-            photo_data = person_data.get("photo_path")  # Base64 photo data
             print_job_id = print_job_data.get("print_job_id")
             
-            # Generate front and back images
-            front_base64 = self.card_generator.generate_front(
-                license_data, person_data, photo_data
-            )
-            back_base64 = self.card_generator.generate_back(
-                license_data, person_data
+            logger.info(f"Generating card files for print job {print_job_id} using unified AMPRO system")
+            logger.info(f"License data keys: {list(license_data.keys())}")
+            logger.info(f"Person data keys: {list(person_data.keys())}")
+            
+            # Convert LINC data format to AMPRO format
+            ampro_license_data = self._convert_linc_to_ampro_format(license_data, person_data)
+            
+            # Extract photo data with multiple fallback paths
+            photo_data = self._extract_photo_from_person_data(person_data)
+            
+            # Generate front and back images using integrated AMPRO system
+            front_base64 = self.generate_front(ampro_license_data, photo_data)
+            back_base64 = self.generate_back(ampro_license_data)
+            
+            # Generate watermark
+            watermark_base64 = self.generate_watermark_template(
+                width=1012, height=638, text="MADAGASCAR"
             )
             
             # Convert base64 to bytes for PDF generation
             front_bytes = base64.b64decode(front_base64)
             back_bytes = base64.b64decode(back_base64)
+            watermark_bytes = base64.b64decode(watermark_base64)
             
             # Generate PDFs
-            front_pdf = self._generate_pdf(front_bytes, "Madagascar License - Front")
-            back_pdf = self._generate_pdf(back_bytes, "Madagascar License - Back")
-            combined_pdf = self._generate_combined_pdf(front_bytes, back_bytes, license_data)
+            front_pdf = self._generate_pdf_from_image(front_bytes, "Madagascar License - Front")
+            back_pdf = self._generate_pdf_from_image(back_bytes, "Madagascar License - Back")
+            combined_pdf = self._generate_combined_pdf(front_bytes, back_bytes, ampro_license_data)
             
             # Prepare file data for saving to disk
             card_files_data = {
                 "front_image": front_base64,
                 "back_image": back_base64,
+                "watermark_image": watermark_base64,
                 "front_pdf": base64.b64encode(front_pdf).decode('utf-8'),
                 "back_pdf": base64.b64encode(back_pdf).decode('utf-8'),
                 "combined_pdf": base64.b64encode(combined_pdf).decode('utf-8')
             }
             
-            # Save files to disk using file manager
-            from app.services.card_file_manager import card_file_manager
-            from datetime import datetime
-            
+            # Save files to disk using card file manager
             file_paths = card_file_manager.save_card_files(
                 print_job_id=print_job_id,
                 card_files_data=card_files_data,
@@ -536,41 +625,173 @@ class MadagascarCardProductionGenerator:
             )
             
             # Return file paths and metadata (no base64 data for database storage)
-            return {
+            result = {
                 "file_paths": file_paths,
-                "card_number": license_data.get("card_number", ""),
-                "license_number": license_data.get("license_number", ""),
+                "card_number": ampro_license_data.get("card_number", ""),
+                "license_number": ampro_license_data.get("license_number", ""),
                 "generation_timestamp": datetime.utcnow().isoformat(),
                 "generator_version": self.version,
                 "files_generated": True,
+                "files_saved_to_disk": True,
+                "ampro_system_used": True,
                 "file_sizes": {
                     "front_image_bytes": len(front_bytes),
                     "back_image_bytes": len(back_bytes),
+                    "watermark_image_bytes": len(watermark_bytes),
                     "front_pdf_bytes": len(front_pdf),
                     "back_pdf_bytes": len(back_pdf),
                     "combined_pdf_bytes": len(combined_pdf),
-                    "total_bytes": len(front_bytes) + len(back_bytes) + len(front_pdf) + len(back_pdf) + len(combined_pdf)
+                    "total_bytes": (len(front_bytes) + len(back_bytes) + len(watermark_bytes) + 
+                                   len(front_pdf) + len(back_pdf) + len(combined_pdf))
                 }
             }
             
+            logger.info(f"Successfully generated card files for print job {print_job_id} "
+                       f"({result['file_sizes']['total_bytes']:,} bytes total)")
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"Error generating card files: {e}")
+            logger.error(f"Error generating card files for print job {print_job_data.get('print_job_id')}: {e}")
             raise Exception(f"Card generation failed: {str(e)}")
-
-    def _generate_pdf(self, image_bytes: bytes, title: str) -> bytes:
-        """Generate PDF from image bytes"""
+    
+    def _convert_linc_to_ampro_format(self, license_data: Dict[str, Any], person_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert LINC data format to AMPRO format with comprehensive mapping
+        This ensures all LINC fields are properly mapped to AMPRO expectations
+        """
+        
+        # Helper function to safely extract license categories 
+        def extract_categories(license_data):
+            # Try different paths for license categories
+            if "licenses" in license_data and isinstance(license_data["licenses"], list):
+                # Extract categories from licenses array
+                categories = []
+                for license in license_data["licenses"]:
+                    if "category" in license:
+                        categories.append(license["category"])
+                return categories
+            elif "category" in license_data:
+                # Single category
+                return [license_data["category"]]
+            elif "categories" in license_data:
+                # Direct categories array
+                return license_data["categories"]
+            else:
+                return ["B"]  # Default fallback
+        
+        # Helper function to safely extract license numbers
+        def extract_license_number(license_data):
+            # Try different paths for license number
+            paths = [
+                license_data.get("license_number"),
+                license_data.get("card_number"),
+                # Extract from first license in array
+                (license_data.get("licenses", [{}])[0].get("id") if license_data.get("licenses") else None),
+            ]
+            
+            for path in paths:
+                if path:
+                    return str(path)
+            
+            return "MG000000000"  # Default fallback
+        
+        # Helper function to safely extract dates
+        def extract_dates(license_data):
+            issue_date = None
+            expiry_date = None
+            
+            # Try to extract from licenses array first
+            if "licenses" in license_data and isinstance(license_data["licenses"], list):
+                for license in license_data["licenses"]:
+                    if license.get("issue_date"):
+                        issue_date = license["issue_date"]
+                    if license.get("expiry_date"):
+                        expiry_date = license["expiry_date"]
+                    if issue_date and expiry_date:
+                        break
+            
+            # Fallback to direct fields
+            if not issue_date:
+                issue_date = license_data.get("issue_date")
+            if not expiry_date:
+                expiry_date = license_data.get("expiry_date")
+            
+            return issue_date, expiry_date
+        
+        # Convert dates to string format
+        def format_date(date_val):
+            if isinstance(date_val, datetime):
+                return date_val.strftime('%Y-%m-%d')
+            elif isinstance(date_val, date):
+                return date_val.strftime('%Y-%m-%d')
+            return str(date_val) if date_val else ""
+        
+        # Extract license categories
+        categories = extract_categories(license_data)
+        category_str = ", ".join(categories) if isinstance(categories, list) else str(categories)
+        
+        # Extract dates
+        issue_date, expiry_date = extract_dates(license_data)
+        
+        # Extract person information with fallbacks
+        first_name = person_data.get('first_name') or person_data.get('name') or 'N/A'
+        last_name = person_data.get('last_name') or person_data.get('surname') or 'N/A'
+        birth_date = person_data.get('birth_date') or person_data.get('date_of_birth') or person_data.get('dob')
+        id_number = person_data.get('id_number') or person_data.get('person_id') or 'N/A'
+        
+        # Create AMPRO-compatible data structure
+        ampro_data = {
+            # Person information
+            'first_name': first_name,
+            'last_name': last_name,
+            'surname': last_name,  # AMPRO uses 'surname'
+            'names': first_name,   # AMPRO uses 'names'
+            'birth_date': format_date(birth_date),
+            'date_of_birth': format_date(birth_date),
+            'gender': person_data.get('gender') or person_data.get('person_nature') or 'M',
+            'id_number': id_number,
+            
+            # License information
+            'license_number': extract_license_number(license_data),
+            'category': category_str,
+            'categories': categories,
+            'restrictions': license_data.get('restrictions', '0'),
+            'issue_date': format_date(issue_date),
+            'expiry_date': format_date(expiry_date),
+            'first_issue_date': format_date(license_data.get('first_issue_date', issue_date)),
+            'issued_location': 'Madagascar',
+            'issuing_location': 'Madagascar',
+            
+            # Additional metadata
+            'country': 'Madagascar',
+            'card_number': license_data.get('card_number', ''),
+        }
+        
+        logger.info(f"Converted LINC data to AMPRO format:")
+        logger.info(f"  - Name: {ampro_data['first_name']} {ampro_data['last_name']}")
+        logger.info(f"  - License: {ampro_data['license_number']}")
+        logger.info(f"  - Categories: {ampro_data['category']}")
+        logger.info(f"  - ID Number: {ampro_data['id_number']}")
+        logger.info(f"  - Birth Date: {ampro_data['birth_date']}")
+        
+        return ampro_data
+    
+    def _generate_pdf_from_image(self, image_bytes: bytes, title: str) -> bytes:
+        """Generate PDF from image bytes using ReportLab"""
         pdf_buffer = io.BytesIO()
         
         # Create PDF with exact card dimensions
-        page_width = CARD_W_PX * 72 / 300  # Convert to points (72 DPI)
-        page_height = CARD_H_PX * 72 / 300
+        page_width = 1012 * 72 / 300  # Convert pixels to points (72 DPI)
+        page_height = 638 * 72 / 300
         
         c = canvas.Canvas(pdf_buffer, pagesize=(page_width, page_height))
         c.setTitle(title)
-        c.setAuthor("Madagascar License System")
+        c.setAuthor("Madagascar License System - AMPRO")
         c.setSubject("Official Madagascar Driver's License")
+        c.setCreator("Madagascar License System v3.0")
         
-        # Create temporary image for PDF
+        # Create temporary image file for ReportLab
         temp_img_path = f"/tmp/temp_img_{uuid.uuid4()}.png"
         try:
             with open(temp_img_path, 'wb') as f:
@@ -593,20 +814,21 @@ class MadagascarCardProductionGenerator:
                 pass
         
         return pdf_buffer.getvalue()
-
+    
     def _generate_combined_pdf(self, front_bytes: bytes, back_bytes: bytes, 
                               license_data: Dict[str, Any]) -> bytes:
-        """Generate combined PDF with both front and back"""
+        """Generate combined PDF with both front and back using ReportLab"""
         pdf_buffer = io.BytesIO()
         
         # Create PDF with exact card dimensions
-        page_width = CARD_W_PX * 72 / 300  # Convert to points (72 DPI)
-        page_height = CARD_H_PX * 72 / 300
+        page_width = 1012 * 72 / 300  # Convert pixels to points (72 DPI)
+        page_height = 638 * 72 / 300
         
         c = canvas.Canvas(pdf_buffer, pagesize=(page_width, page_height))
         c.setTitle(f"Madagascar Driver's License - {license_data.get('license_number', '')}")
-        c.setAuthor("Madagascar License System")
+        c.setAuthor("Madagascar License System - AMPRO")
         c.setSubject("Official Madagascar Driver's License")
+        c.setCreator("Madagascar License System v3.0")
         
         # Create temporary files
         front_temp = f"/tmp/temp_front_{uuid.uuid4()}.png"
@@ -647,5 +869,25 @@ class MadagascarCardProductionGenerator:
         return pdf_buffer.getvalue()
 
 
-# Service instance for dependency injection
-madagascar_card_generator = MadagascarCardProductionGenerator() 
+def get_license_specifications() -> Dict[str, Any]:
+    """Get Madagascar license specifications and coordinates"""
+    return {
+        "dimensions": {
+            "width_mm": CARD_W_MM,
+            "height_mm": CARD_H_MM,
+            "width_px": CARD_W_PX,
+            "height_px": CARD_H_PX,
+            "dpi": DPI,
+        },
+        "coordinates": COORDINATES,
+        "font_sizes": FONT_SIZES,
+        "colors": COLORS,
+    }
+
+
+# Service instances for dependency injection
+madagascar_card_generator = MadagascarCardGenerator()
+
+# Legacy compatibility aliases
+card_generator = madagascar_card_generator
+madagascar_license_generator = madagascar_card_generator 

@@ -1,0 +1,24 @@
+Element,Side,X,Y,Width,Height,Description,Units
+photo,front,40,58,213,260,Photo area (18x22mm),pixels
+surname,front,530,80,,,Surname text field,pixels
+names,front,530,125,,,Names text field,pixels
+id_number,front,530,170,,,ID Number text field,pixels
+date_of_birth,front,530,215,,,Date of Birth text field,pixels
+issue_date,front,530,260,,,Issue Date text field,pixels
+expiry_date,front,530,305,,,Expiry Date text field,pixels
+license_number,front,530,350,,,License Number text field,pixels
+category,front,530,395,,,Category text field,pixels
+restrictions,front,530,440,,,Restrictions text field,pixels
+signature,front,530,485,355,55,Signature box,pixels
+emblem,front,20,20,100,60,Government emblem,pixels
+title,front,506,30,,,Title center position,pixels
+subtitle,front,506,55,,,Subtitle center position,pixels
+barcode,back,30,340,458,38,PDF417 barcode area,pixels
+fingerprint,back,50,450,120,120,Fingerprint area,pixels
+categories_start,back,30,100,,,License categories start,pixels
+restrictions_header,back,30,30,,,Restrictions header,pixels
+card_width,,,,1012,,Card width at 300 DPI,pixels
+card_height,,,,638,,Card height at 300 DPI,pixels
+card_width_mm,,,,85.60,,Card width,millimeters
+card_height_mm,,,,54.00,,Card height,millimeters
+dpi,,,,300,,Resolution,dots per inch 

@@ -1,0 +1,6 @@
+# This file ensures the overlays directory is tracked in git
+# Add your overlay pattern files here:
+# - security_background.png
+# - watermark_pattern.png  
+# - holographic_strip.png
+# - microtext_pattern.png 

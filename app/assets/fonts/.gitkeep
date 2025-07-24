@@ -1,0 +1,6 @@
+# This file ensures the fonts directory is tracked in git
+# Add your font files here:
+# - SourceSansPro-Bold.ttf
+# - SourceSansPro-Regular.ttf
+# - Arial-Bold.ttf (if available)
+# - DejaVuSans-Bold.ttf (Linux fallback) 
