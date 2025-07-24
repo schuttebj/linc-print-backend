@@ -15,6 +15,8 @@ from pathlib import Path as FilePath
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
@@ -28,7 +30,7 @@ from app.models.application import Application
 from app.models.license import License
 from app.models.card import CardNumberGenerator, Card, CardType
 from app.models.enums import ApplicationStatus, LicenseCategory
-from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
     PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
@@ -505,7 +507,55 @@ async def create_print_job(
         application.print_job_id = print_job.id
         db.commit()
         
-        return PrintJobResponse.from_orm(print_job)
+        # Reload print job with all necessary relationships for response
+        db.refresh(print_job)
+        print_job_with_relations = db.query(PrintJob).options(
+            selectinload(PrintJob.job_applications).selectinload(PrintJobApplication.application),
+            selectinload(PrintJob.person),
+            selectinload(PrintJob.print_location),
+            selectinload(PrintJob.primary_application)
+        ).filter(PrintJob.id == print_job.id).first()
+        
+        # Manually construct the response to match schema expectations
+        applications_data = []
+        for job_app in print_job_with_relations.job_applications:
+            app_data = {
+                "application_id": job_app.application_id,
+                "application_number": job_app.application.application_number,
+                "application_type": job_app.application.application_type.value,
+                "is_primary": job_app.is_primary,
+                "added_at": job_app.added_at
+            }
+            applications_data.append(app_data)
+        
+        # Create response data manually to avoid Pydantic serialization issues
+        response_data = {
+            "id": print_job_with_relations.id,
+            "job_number": print_job_with_relations.job_number,
+            "status": print_job_with_relations.status,
+            "priority": print_job_with_relations.priority,
+            "queue_position": print_job_with_relations.queue_position,
+            "person_id": print_job_with_relations.person_id,
+            "person_name": f"{print_job_with_relations.person.first_name} {print_job_with_relations.person.surname}" if print_job_with_relations.person else None,
+            "print_location_id": print_job_with_relations.print_location_id,
+            "print_location_name": print_job_with_relations.print_location.name if print_job_with_relations.print_location else None,
+            "card_number": print_job_with_relations.card_number,
+            "card_template": print_job_with_relations.card_template,
+            "submitted_at": print_job_with_relations.submitted_at,
+            "assigned_at": print_job_with_relations.assigned_at,
+            "printing_started_at": print_job_with_relations.printing_started_at,
+            "printing_completed_at": print_job_with_relations.printing_completed_at,
+            "completed_at": print_job_with_relations.completed_at,
+            "quality_check_result": print_job_with_relations.quality_check_result,
+            "quality_check_notes": print_job_with_relations.quality_check_notes,
+            "pdf_files_generated": print_job_with_relations.pdf_files_generated,
+            "original_print_job_id": print_job_with_relations.original_print_job_id,
+            "reprint_reason": print_job_with_relations.reprint_reason,
+            "reprint_count": print_job_with_relations.reprint_count,
+            "applications": applications_data
+        }
+        
+        return PrintJobResponse(**response_data)
         
     except Exception as e:
         logger.error(f"Print job creation failed: {str(e)}", exc_info=True)
