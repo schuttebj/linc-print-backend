@@ -391,27 +391,6 @@ class CRUDPersonAlias(CRUDBase[PersonAlias, PersonAliasCreate, PersonAliasUpdate
             query = query.filter(PersonAlias.document_type == document_type)
         return query.first()
     
-    def get_by_id_number(
-        self, 
-        db: Session, 
-        *, 
-        id_number: str
-    ) -> Optional[Person]:
-        """Find person by ID number (searches through PersonAlias)"""
-        # Search for the alias with the given ID number
-        alias = db.query(PersonAlias).filter(
-            PersonAlias.document_number == id_number.upper()
-        ).first()
-        
-        if alias:
-            # Return the person associated with this alias
-            return db.query(Person).options(
-                joinedload(Person.aliases),
-                joinedload(Person.addresses)
-            ).filter(Person.id == alias.person_id).first()
-        
-        return None
-    
     def get_person_aliases(self, db: Session, *, person_id: UUID) -> List[PersonAlias]:
         """Get all aliases for a person"""
         return db.query(PersonAlias).filter(PersonAlias.person_id == person_id).all()

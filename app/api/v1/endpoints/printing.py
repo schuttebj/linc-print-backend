@@ -77,14 +77,37 @@ async def search_person_for_card_ordering(
     try:
         # Search for person by ID number
         logger.info(f"Searching for person with ID number: {id_number}")
-        person = crud_person.get_by_id_number(db, id_number=id_number)
-        if not person:
+        
+        # Find person by ID number through their alias (document) - same pattern as approval/POS
+        from app.crud import person_alias
+        found_person_alias = person_alias.get_by_document_number(
+            db=db, 
+            document_number=id_number.strip(),
+            document_type="MADAGASCAR_ID"  # National ID document type
+        )
+        
+        # If not found as MADAGASCAR_ID, try without document type filter
+        if not found_person_alias:
+            found_person_alias = person_alias.get_by_document_number(
+                db=db, 
+                document_number=id_number.strip()
+            )
+        
+        if not found_person_alias:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No person found with ID number: {id_number}"
             )
         
-        logger.info(f"Found person: {person.first_name} {person.last_name} (ID: {person.id})")
+        # Get the person from the alias
+        person = crud_person.get(db=db, id=found_person_alias.person_id)
+        if not person:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Person record not found"
+            )
+        
+        logger.info(f"Found person: {person.first_name} {person.surname} (ID: {person.id})")
         
         # Get all licenses for this person
         all_licenses = crud_license.get_by_person_id(db, person_id=person.id, active_only=True)
@@ -138,10 +161,10 @@ async def search_person_for_card_ordering(
             "person": {
                 "id": str(person.id),
                 "first_name": person.first_name,
-                "last_name": person.last_name,
-                "id_number": person.id_number,
+                "last_name": person.surname,  # Use surname field from Person model
+                "id_number": found_person_alias.document_number,  # Use the actual ID number from alias
                 "birth_date": person.birth_date.isoformat() if person.birth_date else None,
-                "nationality": person.nationality,
+                "nationality": person.nationality_code,  # Use nationality_code field
                 "photo_path": person.photo_path,
                 "signature_path": person.signature_path
             },
