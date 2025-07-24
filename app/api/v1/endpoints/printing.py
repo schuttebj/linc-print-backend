@@ -154,14 +154,26 @@ async def create_print_job(
             )
         
         # Generate card number
-        location_code = application.location.code if application.location else "T01"
+        # Use the print location (not application location) for card number generation
+        from app.crud.crud_location import location as crud_location
+        print_location = crud_location.get(db, id=print_location_id)
+        if not print_location:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Print location not found"
+            )
+            
+        location_code = print_location.code
+        logger.info(f"Generating card number with location code: {location_code}")
         sequence_number = CardNumberGenerator.get_next_sequence_number(db, location_code)
         card_number = CardNumberGenerator.generate_card_number(
             location_code, sequence_number, 
             card_type="STANDARD"
         )
+        logger.info(f"Generated card number: {card_number}")
         
         # Prepare license data for card generation
+        logger.info(f"Preparing license data for {len(card_licenses)} licenses")
         license_data = {
             "licenses": [
                 {
@@ -179,6 +191,7 @@ async def create_print_job(
         }
         
         # Prepare person data for card generation
+        logger.info(f"Preparing person data for person {person.id}")
         person_data = {
             "id": str(person.id),
             "first_name": person.first_name,
@@ -197,6 +210,7 @@ async def create_print_job(
         }
         
         # Create print job
+        logger.info(f"Calling create_print_job with application_id={request.application_id}, print_location_id={print_location_id}")
         print_job = crud_print_job.create_print_job(
             db=db,
             application_id=request.application_id,
@@ -208,6 +222,7 @@ async def create_print_job(
             current_user=current_user,
             additional_application_ids=request.additional_application_ids
         )
+        logger.info(f"Print job created successfully with ID: {print_job.id}")
         
         # Update application status
         application.status = ApplicationStatus.SENT_TO_PRINTER
@@ -217,9 +232,11 @@ async def create_print_job(
         return PrintJobResponse.from_orm(print_job)
         
     except Exception as e:
+        logger.error(f"Print job creation failed: {str(e)}", exc_info=True)
+        error_details = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create print job: {str(e)}"
+            detail=f"Failed to create print job: {error_details}"
         )
 
 

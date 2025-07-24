@@ -83,15 +83,18 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         """
         try:
             # Generate job number
+            logger.info(f"Starting print job creation for application {application_id}")
             job_number = self.generate_job_number(db, print_location_id)
             logger.info(f"Generated job number: {job_number}")
             
             # Get queue position
+            logger.info(f"Getting queue position for location {print_location_id}")
             queue_manager = CRUDPrintQueue()
             queue_position = queue_manager.get_next_queue_position(db, print_location_id)
             logger.info(f"Queue position: {queue_position}")
             
             # Create print job
+            logger.info(f"Creating print job database record")
             print_job = PrintJob(
                 job_number=job_number,
                 status=PrintJobStatus.QUEUED,
@@ -112,6 +115,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             logger.info(f"Created print job with ID: {print_job.id}")
             
             # Create application associations
+            logger.info(f"Creating application associations")
             application_ids = [application_id]
             if additional_application_ids:
                 application_ids.extend(additional_application_ids)
@@ -126,6 +130,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                 db.add(job_app)
             
             # Create initial status history
+            logger.info(f"Creating status history")
             status_history = PrintJobStatusHistory(
                 print_job_id=print_job.id,
                 from_status=None,
@@ -137,10 +142,12 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             db.add(status_history)
             
             # Update queue size
+            logger.info(f"Updating queue size")
             queue_manager.increment_queue_size(db, print_location_id)
             
             # Generate card files immediately after job creation
             try:
+                logger.info(f"Starting card generation for print job {print_job.id}")
                 from app.services.card_generator import madagascar_card_generator
                 
                 # Prepare data for card generation
@@ -152,9 +159,11 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                     "card_number": card_number
                 }
                 
+                logger.info(f"Calling card generator for print job {print_job.id}")
                 # Generate card files and save to disk
                 generation_result = madagascar_card_generator.generate_card_files(print_job_data)
                 
+                logger.info(f"Card generation completed for print job {print_job.id}")
                 # Update print job with file paths and metadata (no base64 data stored)
                 print_job.pdf_files_generated = generation_result.get("files_generated", False)
                 print_job.pdf_front_path = generation_result.get("file_paths", {}).get("front_image_path")
@@ -196,7 +205,8 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             
         except Exception as e:
             db.rollback()
-            raise Exception(f"Failed to create print job: {str(e)}")
+            logger.error(f"Failed to create print job: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to create print job: {str(e) if str(e) else repr(e)}")
 
     def get_print_queue(
         self,
