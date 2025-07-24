@@ -29,6 +29,7 @@ class PrintJobCreateRequest(BaseModel):
     additional_application_ids: Optional[List[UUID]] = Field(None, description="Additional applications to include")
     card_template: str = Field("MADAGASCAR_STANDARD", description="Card design template")
     production_notes: Optional[str] = Field(None, description="Initial production notes")
+    location_id: Optional[UUID] = Field(None, description="Location to handle the print job (for admin users)")
 
     @validator('additional_application_ids')
     def validate_additional_apps(cls, v):

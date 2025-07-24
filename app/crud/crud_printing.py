@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
 from decimal import Decimal
+import logging
 
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, desc, asc, and_, or_
@@ -20,6 +21,9 @@ from app.models.application import Application
 from app.models.license import License
 from app.models.user import User
 from app.models.enums import ApplicationStatus, LicenseCategory
+
+
+logger = logging.getLogger(__name__)
 
 
 class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):

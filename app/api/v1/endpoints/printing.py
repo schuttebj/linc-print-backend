@@ -87,12 +87,37 @@ async def create_print_job(
                 detail="Application not found"
             )
         
-        # Validate user has access to the application's location
-        if not current_user.can_access_location(application.location_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to create print jobs for this location"
-            )
+        # Determine print location (admin users can specify location, others use application location)
+        if request.location_id:
+            # Admin user specified a print location
+            print_location_id = request.location_id
+            
+            # Validate user has access to the specified print location
+            if not current_user.can_access_location(print_location_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to create print jobs for the specified location"
+                )
+            
+            # Get the print location to validate it exists
+            from app.crud.crud_location import location as crud_location
+            print_location = crud_location.get(db, id=print_location_id)
+            if not print_location:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Specified print location not found"
+                )
+                
+        else:
+            # Use application's location as print location
+            print_location_id = application.location_id
+            
+            # Validate user has access to the application's location
+            if not current_user.can_access_location(application.location_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to create print jobs for this location"
+                )
         
         # Validate application is ready for printing
         if application.status not in [ApplicationStatus.APPROVED]:
@@ -176,7 +201,7 @@ async def create_print_job(
             db=db,
             application_id=request.application_id,
             person_id=application.person_id,
-            print_location_id=application.location_id,
+            print_location_id=print_location_id,
             card_number=card_number,
             license_data=license_data,
             person_data=person_data,
