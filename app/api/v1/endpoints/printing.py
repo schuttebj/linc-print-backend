@@ -94,6 +94,67 @@ def serialize_print_job_response(print_job: PrintJob) -> PrintJobResponse:
     return PrintJobResponse(**response_data)
 
 
+def serialize_print_job_detail_response(print_job: PrintJob) -> PrintJobDetailResponse:
+    """
+    Helper function to properly serialize PrintJob to PrintJobDetailResponse
+    Extends the basic response with detailed fields and manual serialization
+    """
+    # Start with the basic serialization
+    basic_data = serialize_print_job_response(print_job).__dict__
+    
+    # Add detailed fields manually
+    detail_data = {
+        **basic_data,
+        
+        # User information with proper name resolution
+        "assigned_to_user_id": print_job.assigned_to_user_id,
+        "assigned_to_user_name": print_job.assigned_to_user.full_name if print_job.assigned_to_user else None,
+        "quality_check_by_user_id": print_job.quality_check_by_user_id,
+        "quality_check_by_user_name": print_job.quality_check_by_user.full_name if print_job.quality_check_by_user else None,
+        
+        # Detailed timing
+        "quality_check_started_at": print_job.quality_check_started_at,
+        "quality_check_completed_at": print_job.quality_check_completed_at,
+        "collection_ready_at": print_job.collection_ready_at,
+        
+        # Production details
+        "production_batch_id": print_job.production_batch_id,
+        "production_notes": print_job.production_notes,
+        "printer_hardware_id": print_job.printer_hardware_id,
+        
+        # File paths
+        "pdf_front_path": print_job.pdf_front_path,
+        "pdf_back_path": print_job.pdf_back_path,
+        "pdf_combined_path": print_job.pdf_combined_path,
+        
+        # Queue management (if available)
+        "queue_changes": getattr(print_job, 'queue_changes', None),
+        
+        # Licenses (if available)
+        "licenses": getattr(print_job, 'licenses', []),
+    }
+    
+    # Manually prepare status history
+    status_history_data = []
+    if hasattr(print_job, 'status_history') and print_job.status_history:
+        for history in print_job.status_history:
+            history_data = {
+                "id": history.id,
+                "from_status": history.from_status,
+                "to_status": history.to_status,
+                "changed_at": history.changed_at,
+                "changed_by_user_name": history.changed_by_user.full_name if history.changed_by_user else "System",
+                "change_reason": history.change_reason,
+                "change_notes": history.change_notes,
+            }
+            status_history_data.append(history_data)
+    
+    detail_data["status_history"] = status_history_data
+    
+    # Create response object manually
+    return PrintJobDetailResponse(**detail_data)
+
+
 def check_permission(user: User, permission: str) -> bool:
     """Check if user has specific permission"""
     if user.is_superuser:
@@ -958,7 +1019,17 @@ async def get_print_job(
     
     Includes full job history, status changes, and associated data.
     """
-    print_job = crud_print_job.get(db, id=job_id)
+    # Load print job with all necessary relationships for detailed response
+    print_job = db.query(PrintJob).options(
+        selectinload(PrintJob.person),
+        selectinload(PrintJob.primary_application),
+        selectinload(PrintJob.print_location),
+        selectinload(PrintJob.assigned_to_user),
+        selectinload(PrintJob.quality_check_by_user),
+        selectinload(PrintJob.status_history).selectinload(PrintJobStatusHistory.changed_by_user),
+        selectinload(PrintJob.job_applications).selectinload(PrintJobApplication.application)
+    ).filter(PrintJob.id == job_id).first()
+    
     if not print_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -972,7 +1043,7 @@ async def get_print_job(
             detail="Access denied to this print job"
         )
     
-    return PrintJobDetailResponse.from_orm(print_job)
+    return serialize_print_job_detail_response(print_job)
 
 
 @router.get("/jobs", response_model=PrintJobSearchResponse, summary="Search Print Jobs")
