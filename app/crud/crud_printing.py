@@ -17,12 +17,11 @@ from app.models.printing import (
     PrintJob, PrintJobApplication, PrintJobStatusHistory, PrintQueue,
     PrintJobStatus, PrintJobPriority, QualityCheckResult
 )
-from app.models.application import Application
 from app.models.license import License
-from app.models.user import User
-from app.models.enums import ApplicationStatus, LicenseCategory
+from app.models.application import Application
+from app.models.user import User, Location
 
-
+# Initialize logger for this module
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +30,6 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
 
     def generate_job_number(self, db: Session, location_id: UUID) -> str:
         """Generate unique print job number: PJ{YYYYMMDD}{LocationCode}{Sequence}"""
-        from app.models.user import Location
         
         # Get location code
         location = db.query(Location).filter(Location.id == location_id).first()
