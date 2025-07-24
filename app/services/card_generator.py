@@ -272,18 +272,18 @@ class MadagascarCardGenerator:
         watermark = watermark.crop((0, 0, width, height))
         return watermark
     
-    def _process_photo_data(self, photo_data: Optional[str]) -> Optional[Image.Image]:
+    def _process_photo_data(self, photo_data: Optional[bytes], target_width: int, target_height: int) -> Optional[Image.Image]:
         """Process photo data for license (Same as AMPRO)"""
         if not photo_data:
             return None
         
         try:
             # Handle base64 data
-            if photo_data.startswith('data:'):
-                photo_data = photo_data.split(',')[1]
+            if isinstance(photo_data, str) and (photo_data.startswith('data:') or len(photo_data) > 1000):
+                photo_data = base64.b64decode(photo_data.split(',')[1])
             
             # Decode base64
-            photo_bytes = base64.b64decode(photo_data)
+            photo_bytes = photo_data
             
             # Open image
             photo = Image.open(io.BytesIO(photo_bytes))
@@ -293,8 +293,8 @@ class MadagascarCardGenerator:
                 photo = photo.convert('RGB')
             
             # ISO specifications for photo (Same as AMPRO)
-            target_width = 213   # 18mm at 300 DPI
-            target_height = 260  # 22mm at 300 DPI
+            # target_width = 213   # 18mm at 300 DPI
+            # target_height = 260  # 22mm at 300 DPI
             
             # Resize maintaining aspect ratio
             photo.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
@@ -335,7 +335,7 @@ class MadagascarCardGenerator:
             draw.text((10, 10), "BARCODE DATA", fill=COLORS["black"], font=font)
             return img
     
-    def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[str]:
+    def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
         """Extract photo data from person data with multiple fallback paths"""
         try:
             # Try different ways to get photo data
@@ -368,34 +368,35 @@ class MadagascarCardGenerator:
             logger.error(f"Error extracting photo: {e}")
             return None
     
-    def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[str] = None) -> str:
-        """Generate Madagascar license front side using AMPRO design system"""
+    def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> str:
+        """Generate Madagascar license front side using exact AMPRO coordinates from CSV"""
         
-        # Create base image with AMPRO background template
+        # Create base image with AMPRO front background
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "front")
         draw = ImageDraw.Draw(license_img)
         
-        # Process and add photo using exact AMPRO coordinates
-        photo = self._process_photo_data(photo_data)
+        # Process and add photo using exact CSV coordinates
         photo_coords = COORDINATES.get('photo', {'x': 40, 'y': 58, 'width': 213, 'height': 260})
+        photo_x = photo_coords['x']
+        photo_y = photo_coords['y'] 
+        photo_w = photo_coords['width']
+        photo_h = photo_coords['height']
         
-        if photo:
-            # Use exact AMPRO positioning
-            photo_x = photo_coords['x']
-            photo_y = photo_coords['y']
-            photo_w = photo_coords['width']
-            photo_h = photo_coords['height']
-            
-            # Resize photo to fit the exact area
-            photo_resized = photo.resize((photo_w, photo_h), Image.Resampling.LANCZOS)
-            license_img.paste(photo_resized, (photo_x, photo_y))
+        if photo_data:
+            try:
+                photo_img = self._process_photo_data(photo_data, photo_w, photo_h)
+                license_img.paste(photo_img, (photo_x, photo_y))
+            except Exception as e:
+                logger.warning(f"Failed to process photo: {e}")
+                # Fallback: Draw photo placeholder
+                draw.rectangle([photo_x, photo_y, photo_x + photo_w, photo_y + photo_h], 
+                             fill=(240, 240, 240), outline=(180, 180, 180), width=2)
+                photo_center_x = photo_x + photo_w // 2
+                photo_center_y = photo_y + photo_h // 2
+                draw.text((photo_center_x, photo_center_y), "SARY", 
+                         fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
         else:
-            # Photo placeholder with border (Same as AMPRO)
-            photo_x = photo_coords['x']
-            photo_y = photo_coords['y']
-            photo_w = photo_coords['width']
-            photo_h = photo_coords['height']
-            
+            # Draw photo placeholder
             draw.rectangle([photo_x, photo_y, photo_x + photo_w, photo_y + photo_h], 
                          fill=(240, 240, 240), outline=(180, 180, 180), width=2)
             photo_center_x = photo_x + photo_w // 2
@@ -403,41 +404,43 @@ class MadagascarCardGenerator:
             draw.text((photo_center_x, photo_center_y), "SARY", 
                      fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
         
-        # Add Madagascar header/title
-        draw.text((CARD_W_PX // 2, 30), "REPOBLIKAN'I MADAGASIKARA", 
+        # Add Madagascar header/title using CSV coordinates
+        title_coords = COORDINATES.get('title', {'x': 506, 'y': 30})
+        subtitle_coords = COORDINATES.get('subtitle', {'x': 506, 'y': 55})
+        
+        draw.text((title_coords['x'], title_coords['y']), "REPOBLIKAN'I MADAGASIKARA", 
                  fill=COLORS["dark_blue"], font=self.fonts["title"], anchor="mm")
-        draw.text((CARD_W_PX // 2, 60), "FAHAZOAN-DÀLANA MITONDRA FIARA", 
+        draw.text((subtitle_coords['x'], subtitle_coords['y']), "FAHAZOAN-DÀLANA MITONDRA FIARA", 
                  fill=COLORS["black"], font=self.fonts["subtitle"], anchor="mm")
         
-        # Information fields using exact AMPRO coordinates but with Madagascar labels
+        # Information fields with Madagascar labels - using exact CSV coordinates
         info_fields = [
-            ("ANARANA FIANAKAVIANA", license_data.get('surname', 'N/A'), 'surname'),
-            ("ANARANA", license_data.get('first_name', 'N/A'), 'names'),
-            ("DATY NAHATERAHANA", license_data.get('birth_date', 'N/A'), 'date_of_birth'),
-            ("TAONA", license_data.get('gender', 'N/A'), 'gender'),
-            ("LAHARANA ID", license_data.get('id_number', 'N/A'), 'id_number'),
-            ("MIANKINA", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}", 'issue_date'),
-            ("NAVOAKA TANY", license_data.get('issuing_location', 'Madagasikara'), 'expiry_date'),
-            ("LAHARANA FAHAZOAN-DALANA", license_data.get('license_number', 'N/A'), 'license_number'),
-            ("SOKAJY", license_data.get('category', 'N/A'), 'category'),
-            ("FETRA", license_data.get('restrictions', '0'), 'restrictions'),
+            ("ANARANA FIANAKAVIANA:", license_data.get('surname', 'N/A'), 'surname'),
+            ("ANARANA:", license_data.get('first_name', 'N/A'), 'names'),
+            ("LAHARANA ID:", license_data.get('id_number', 'N/A'), 'id_number'),
+            ("DATY NAHATERAHANA:", license_data.get('birth_date', 'N/A'), 'date_of_birth'),
+            ("NAVOAKA:", license_data.get('issue_date', 'N/A'), 'issue_date'),
+            ("TAPITRA:", license_data.get('expiry_date', 'N/A'), 'expiry_date'),
+            ("LAHARANA:", license_data.get('license_number', 'N/A'), 'license_number'),
+            ("SOKAJY:", license_data.get('category', 'N/A'), 'category'),
+            ("FETRA:", license_data.get('restrictions', '0'), 'restrictions'),
         ]
         
-        # Draw information fields using exact AMPRO coordinates
+        # Draw information fields using exact CSV coordinates
         for label, value, coord_key in info_fields:
             coords = COORDINATES.get(coord_key, {'x': 530, 'y': 80})
             x_pos = coords['x']
             y_pos = coords['y']
             
-            # Draw label (in Malagasy)
-            draw.text((x_pos - 200, y_pos), label, 
+            # Draw label (in Malagasy) - positioned to the left of value
+            draw.text((x_pos - 180, y_pos), label, 
                      fill=COLORS["black"], font=self.fonts["field_label"])
             
-            # Draw value
+            # Draw value at exact CSV coordinate
             draw.text((x_pos, y_pos), str(value), 
                      fill=COLORS["black"], font=self.fonts["field_value"])
         
-        # Add signature area using exact AMPRO coordinates
+        # Add signature area using exact CSV coordinates
         sig_coords = COORDINATES.get('signature', {'x': 530, 'y': 485, 'width': 355, 'height': 55})
         sig_x = sig_coords['x']
         sig_y = sig_coords['y']
@@ -449,7 +452,7 @@ class MadagascarCardGenerator:
                       outline=COLORS["black"], width=1)
         
         # Signature label in Malagasy
-        draw.text((sig_x, sig_y - 25), "SONIA", 
+        draw.text((sig_x - 180, sig_y + 15), "SONIA:", 
                  fill=COLORS["black"], font=self.fonts["field_label"])
         
         # Convert to base64
@@ -464,26 +467,55 @@ class MadagascarCardGenerator:
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
     def generate_back(self, license_data: Dict[str, Any]) -> str:
-        """Generate Madagascar license back side using AMPRO design system"""
+        """Generate Madagascar license back side - SIMPLIFIED to only show PDF417 barcode"""
         
         # Create base image with AMPRO back background
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "back")
         draw = ImageDraw.Draw(license_img)
         
-        # Generate and add PDF417 barcode using exact AMPRO coordinates
-        barcode_data = json.dumps({
+        # Generate enhanced PDF417 barcode with all front information + photo data
+        barcode_data = {
             "license_number": license_data.get('license_number'),
             "id_number": license_data.get('id_number'),
+            "surname": license_data.get('surname'),
+            "first_name": license_data.get('first_name'),
+            "birth_date": license_data.get('birth_date'),
             "category": license_data.get('category'),
+            "restrictions": license_data.get('restrictions', '0'),
             "expiry_date": str(license_data.get('expiry_date')),
             "issue_date": str(license_data.get('issue_date')),
-            "country": "Madagascar"
-        })
+            "country": "Madagascar",
+            "issuing_authority": "Ministry of Transport Madagascar",
+            "gender": license_data.get('gender', 'M')
+        }
         
-        barcode_img = self._generate_pdf417_barcode(barcode_data)
+        # Add 8-bit photo data to barcode if available
+        photo_data_b64 = license_data.get('photo_base64')
+        if photo_data_b64:
+            try:
+                # Convert photo to 8-bit grayscale and compress for barcode
+                photo_bytes = base64.b64decode(photo_data_b64)
+                photo_img = Image.open(io.BytesIO(photo_bytes))
+                
+                # Convert to 8-bit grayscale and resize to small size for barcode
+                photo_8bit = photo_img.convert('L').resize((32, 32), Image.Resampling.LANCZOS)
+                
+                # Convert back to base64 for barcode
+                buffer = io.BytesIO()
+                photo_8bit.save(buffer, format="PNG")
+                photo_8bit_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                
+                barcode_data["photo_8bit"] = photo_8bit_b64
+                logger.info("Added 8-bit photo data to barcode")
+            except Exception as e:
+                logger.warning(f"Could not process photo for barcode: {e}")
+        
+        # Generate barcode with JSON data
+        barcode_json = json.dumps(barcode_data, separators=(',', ':'))  # Compact JSON
+        barcode_img = self._generate_pdf417_barcode(barcode_json)
+        
+        # Use exact CSV positioning for barcode
         barcode_coords = COORDINATES.get('barcode', {'x': 30, 'y': 340, 'width': 458, 'height': 38})
-        
-        # Use exact AMPRO positioning
         barcode_x = barcode_coords['x']
         barcode_y = barcode_coords['y']
         barcode_w = barcode_coords['width']
@@ -493,48 +525,8 @@ class MadagascarCardGenerator:
         barcode_resized = barcode_img.resize((barcode_w, barcode_h), Image.Resampling.LANCZOS)
         license_img.paste(barcode_resized, (barcode_x, barcode_y))
         
-        # Add license categories information (Madagascar specific)
-        categories_text = [
-            "SOKAJY:",
-            "A1 - Môtô hatramin'ny 50cc",
-            "A - Môtô ambonin'ny 50cc", 
-            "B - Fiara maivana",
-            "C - Kamiao sy bus",
-            "D - Tracteur sy fiara fampiasaina amin'ny asa"
-        ]
-        
-        # Draw categories using coordinates
-        start_y = 100
-        for i, text in enumerate(categories_text):
-            y_pos = start_y + (i * 25)
-            font = self.fonts["field_label"] if i == 0 else self.fonts["small"]
-            color = COLORS["dark_blue"] if i == 0 else COLORS["black"]
-            draw.text((30, y_pos), text, fill=color, font=font)
-        
-        # Add restrictions information in Malagasy
-        restrictions_y = 300
-        draw.text((30, restrictions_y), "FETRA:", 
-                 fill=COLORS["dark_blue"], font=self.fonts["field_label"])
-        draw.text((30, restrictions_y + 25), "0 - Tsy misy fetra", 
-                 fill=COLORS["black"], font=self.fonts["small"])
-        draw.text((30, restrictions_y + 45), "1 - Mila solomaso", 
-                 fill=COLORS["black"], font=self.fonts["small"])
-        
-        # Add government authority info
-        authority_y = CARD_H_PX - 80
-        draw.text((30, authority_y), "MINISITERAN'NY FIARAKODIA", 
-                 fill=COLORS["dark_blue"], font=self.fonts["small"])
-        draw.text((30, authority_y + 20), "sy ny FITATERANA", 
-                 fill=COLORS["dark_blue"], font=self.fonts["small"])
-        
-        # Add Madagascar flag colors as accent (small rectangles)
-        flag_y = CARD_H_PX - 100
-        # White stripe (already background)
-        draw.rectangle([CARD_W_PX - 100, flag_y, CARD_W_PX - 80, flag_y + 60], fill=COLORS["white"])
-        # Red stripe
-        draw.rectangle([CARD_W_PX - 80, flag_y, CARD_W_PX - 60, flag_y + 60], fill=COLORS["red"])
-        # Green stripe  
-        draw.rectangle([CARD_W_PX - 60, flag_y, CARD_W_PX - 40, flag_y + 60], fill=COLORS["green"])
+        # REMOVED: All categories, restrictions, government info, and flag
+        # Back side now only contains the PDF417 barcode as requested
         
         # Convert to base64
         buffer = io.BytesIO()
