@@ -28,9 +28,9 @@ from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
-from app.models.card import CardNumberGenerator, Card, CardType
+from app.models.card import CardNumberGenerator, Card, CardType, CardStatus, CardLicense
 from app.models.enums import ApplicationStatus, LicenseCategory
-from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication
+from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication, ProductionStatus
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
     PrintJobQueueMoveRequest, PrintJobAssignRequest, PrintJobStartRequest,
@@ -501,6 +501,54 @@ async def create_print_job(
             additional_application_ids=request.additional_application_ids
         )
         logger.info(f"Print job created successfully with ID: {print_job.id}")
+        
+        # Create the actual Card entity that represents the physical card
+        try:
+            logger.info(f"Creating Card entity for print job {print_job.id}")
+            
+            # Calculate card validity period (5 years for standard cards)
+            valid_from = datetime.utcnow()
+            valid_until = valid_from + timedelta(days=365 * 5)  # 5 years
+            
+            # Create Card entity
+            card = Card(
+                card_number=card_number,
+                person_id=application.person_id,
+                card_type=CardType.STANDARD,
+                status=CardStatus.PENDING_ORDER,  # Will change as print job progresses
+                production_status=ProductionStatus.NOT_STARTED,
+                valid_from=valid_from,
+                valid_until=valid_until,
+                created_from_application_id=request.application_id,
+                production_location_id=print_location_id,
+                collection_location_id=print_location_id,  # Same location for collection
+                is_active=True,
+                created_by=current_user.id,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(card)
+            db.flush()  # Get card ID
+            logger.info(f"Created Card entity with ID: {card.id}")
+            
+            # Create CardLicense associations for all card-eligible licenses
+            for i, license in enumerate(card_licenses):
+                card_license = CardLicense(
+                    card_id=card.id,
+                    license_id=license.id,
+                    is_primary=(i == 0),  # First license is primary
+                    added_by=current_user.id,
+                    added_at=datetime.utcnow()
+                )
+                db.add(card_license)
+                logger.info(f"Associated license {license.category.value} with card {card.id}")
+            
+            logger.info(f"Card entity created successfully with {len(card_licenses)} license associations")
+            
+        except Exception as card_error:
+            logger.error(f"Failed to create Card entity: {card_error}", exc_info=True)
+            # Don't fail the print job creation if card creation fails
+            # The print job can still proceed without the card entity
         
         # Update application status
         application.status = ApplicationStatus.SENT_TO_PRINTER
