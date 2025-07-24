@@ -214,17 +214,17 @@ async def get_accessible_print_queues(
     
     if current_user.is_superuser or current_user.user_type.value in ["SYSTEM_USER", "NATIONAL_ADMIN"]:
         # System and National admins can see all locations
-        from app.crud.crud_location import crud_location
-        accessible_locations = crud_location.get_all_active(db)
+        from app.crud.crud_location import location as crud_location
+        accessible_locations = crud_location.get_operational_locations(db)
         
     elif current_user.user_type.value == "PROVINCIAL_ADMIN":
         # Provincial admin can see locations in their province
-        from app.crud.crud_location import crud_location
-        accessible_locations = crud_location.get_by_province(db, current_user.scope_province)
+        from app.crud.crud_location import location as crud_location
+        accessible_locations = crud_location.get_by_province(db, province_code=current_user.scope_province)
         
     elif current_user.primary_location_id:
         # Location user can only see their assigned location
-        from app.crud.crud_location import crud_location
+        from app.crud.crud_location import location as crud_location
         location = crud_location.get(db, id=current_user.primary_location_id)
         if location:
             accessible_locations = [location]

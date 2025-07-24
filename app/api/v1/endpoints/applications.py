@@ -250,7 +250,7 @@ def create_application(
     if not current_user.can_access_location(application_in.location_id):
         # For provincial admins, do additional province check
         if current_user.user_type.value == "PROVINCIAL_ADMIN":
-            from app.crud.crud_location import crud_location
+            from app.crud.crud_location import location as crud_location
             location = crud_location.get(db=db, id=application_in.location_id)
             if not location or location.province_code != current_user.scope_province:
                 raise HTTPException(
