@@ -153,11 +153,12 @@ async def create_print_job(
         logger.info(f"Found {len(person_licenses)} total licenses for person {application.person_id}")
         
         # Filter out learners permits (they don't go on cards)
+        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
         card_licenses = [
             license for license in person_licenses 
-            if license.category != LicenseCategory.LEARNERS_PERMIT
+            if license.category not in learners_categories
         ]
-        logger.info(f"Found {len(card_licenses)} card-eligible licenses (excluding learners permits)")
+        logger.info(f"Found {len(card_licenses)} card-eligible licenses (excluding learners permits: {[cat.value for cat in learners_categories]})")
         
         if not card_licenses:
             logger.error(f"No valid licenses found for card printing - person {application.person_id} has {len(person_licenses)} total licenses but none are card-eligible")
