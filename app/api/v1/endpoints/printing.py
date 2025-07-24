@@ -134,6 +134,30 @@ async def search_person_for_card_ordering(
         )
         logger.info(f"Found {len(approved_applications)} approved applications")
         
+        # Extract biometric data from applications for card printing
+        biometric_data = {
+            "photo_url": None,
+            "photo_path": None,
+            "signature_url": None,
+            "signature_path": None,
+            "fingerprint_url": None,
+            "fingerprint_path": None
+        }
+        
+        # Look through all approved applications for biometric data
+        for app in approved_applications:
+            if hasattr(app, 'biometric_data') and app.biometric_data:
+                for bio_data in app.biometric_data:
+                    if bio_data.data_type == "PHOTO":
+                        biometric_data["photo_url"] = bio_data.file_url
+                        biometric_data["photo_path"] = bio_data.file_path
+                    elif bio_data.data_type == "SIGNATURE":
+                        biometric_data["signature_url"] = bio_data.file_url
+                        biometric_data["signature_path"] = bio_data.file_path
+                    elif bio_data.data_type == "FINGERPRINT":
+                        biometric_data["fingerprint_url"] = bio_data.file_url
+                        biometric_data["fingerprint_path"] = bio_data.file_path
+        
         # Check print eligibility
         can_order_card = len(card_eligible_licenses) > 0
         eligibility_issues = []
@@ -162,12 +186,18 @@ async def search_person_for_card_ordering(
                 "id": str(person.id),
                 "first_name": person.first_name,
                 "last_name": person.surname,  # Use surname field from Person model
+                "middle_name": person.middle_name,
                 "id_number": found_person_alias.document_number,  # Use the actual ID number from alias
                 "birth_date": person.birth_date.isoformat() if person.birth_date else None,
-                "nationality": person.nationality_code,  # Use nationality_code field
-                "photo_path": person.photo_path,
-                "signature_path": person.signature_path
+                "nationality_code": person.nationality_code,  # Use nationality_code field
+                "person_nature": person.person_nature,  # Gender info
+                "email_address": person.email_address,
+                "cell_phone": person.cell_phone,
+                "is_active": person.is_active
+                # Note: photo_path and signature_path don't exist in Person model yet
+                # TODO: Add biometric data fields when Persons module expands
             },
+            "biometric_data": biometric_data,
             "card_eligible_licenses": [
                 {
                     "id": str(license.id),
@@ -198,7 +228,10 @@ async def search_person_for_card_ordering(
                     "application_type": app.application_type.value,
                     "status": app.status.value,
                     "application_date": app.application_date.isoformat(),
-                    "approval_date": app.approval_date.isoformat() if app.approval_date else None
+                    "approval_date": app.approval_date.isoformat() if app.approval_date else None,
+                    "photo_captured": app.photo_captured,
+                    "signature_captured": app.signature_captured,
+                    "fingerprint_captured": app.fingerprint_captured
                 }
                 for app in approved_applications
             ],

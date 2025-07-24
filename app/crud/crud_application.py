@@ -146,7 +146,8 @@ class CRUDApplication(CRUDBase[Application, ApplicationCreate, ApplicationUpdate
         query = db.query(Application).options(
             joinedload(Application.person),
             joinedload(Application.location),
-            joinedload(Application.assigned_to_user)
+            joinedload(Application.assigned_to_user),
+            joinedload(Application.biometric_data)  # Include biometric data for card ordering
         ).filter(Application.person_id == person_id)
         
         if status_filter:
