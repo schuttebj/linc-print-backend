@@ -113,9 +113,9 @@ BACK_COORDINATES = {
         GRID_POSITIONS["r1c1"][3]   # height (1 row)
     ),
     
-    # Fingerprint area - Bottom left corner (330x205 pixels, 23px from edges)
+    # Fingerprint area - Bottom RIGHT corner (330x205 pixels, 23px from edges)
     "fingerprint": (
-        BLEED_PX,  # x - 23px from left edge
+        CARD_W_PX - BLEED_PX - 330,  # x - 23px from right edge, 330px width
         CARD_H_PX - BLEED_PX - 205,  # y - 23px from bottom edge, 205px height
         330,  # width
         205   # height
@@ -421,19 +421,18 @@ class MadagascarCardGenerator:
         info_y = FRONT_COORDINATES["info_start_y"]
         line_height = FRONT_COORDINATES["line_height"]
         
-        # Information fields with Madagascar labels - using exact AMPRO layout
+        # Information fields with English labels (like AMPRO) - all requested data
         info_fields = [
-            ("Anarana fianakaviana", license_data.get('surname', 'N/A')),
-            ("Anarana", license_data.get('first_name', 'N/A')),
-            ("Daty nahaterahana", license_data.get('birth_date', 'N/A')),
-            ("Lahy/Vavy", license_data.get('gender', 'N/A')),
-            ("Laharana ID", license_data.get('id_number', 'N/A')),
-            ("Miankina", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}"),
-            ("Navoaka", license_data.get('issuing_location', 'Madagasikara')),
-            ("Laharana fahazoan-dalana", license_data.get('license_number', 'N/A')),
-            ("Sokajy", license_data.get('category', 'N/A')),
-            ("Fetra", license_data.get('restrictions', '0')),
-            ("Voalohany navoaka", license_data.get('first_issue_date', license_data.get('issue_date', 'N/A'))),
+            ("Initials and Surname", f"{license_data.get('first_name', 'N/A')} {license_data.get('surname', 'N/A')}"),
+            ("ID Number", license_data.get('id_number', 'N/A')),
+            ("Driver Restrictions", license_data.get('restrictions', '0')),
+            ("Sex", license_data.get('gender', 'N/A')),
+            ("Date of Birth", license_data.get('birth_date', 'N/A')),
+            ("Licence Number", license_data.get('license_number', 'N/A')),
+            ("Valid", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}"),
+            ("Codes", license_data.get('category', 'N/A')),
+            ("Vehicle Restrictions", license_data.get('vehicle_restrictions', license_data.get('restrictions', '0'))),
+            ("First Issue", license_data.get('first_issue_date', license_data.get('issue_date', 'N/A'))),
         ]
         
         # Draw information fields using exact AMPRO column layout
@@ -449,11 +448,13 @@ class MadagascarCardGenerator:
             
             current_y += line_height
         
-        # Add signature area using AMPRO grid coordinates (Row 6, Columns 1-6)
+        # Add signature area using AMPRO grid coordinates - width adjusted to match photo width
         sig_coords = FRONT_COORDINATES["signature"]
+        photo_width = FRONT_COORDINATES["photo"][2]  # Get photo width
+        
         sig_x = sig_coords[0]
         sig_y = sig_coords[1]
-        sig_w = sig_coords[2]
+        sig_w = photo_width  # Use photo width instead of full width
         sig_h = sig_coords[3]
         
         # Draw signature border
@@ -557,7 +558,7 @@ class MadagascarCardGenerator:
         # Add fingerprint label below the area
         fp_label_x = fp_x + fp_w // 2
         fp_label_y = fp_y + fp_h + 10
-        draw.text((fp_label_x, fp_label_y), "DIAN-TANANA HAVANANA", 
+        draw.text((fp_label_x, fp_label_y), "RIGHT THUMB", 
                  fill=COLORS["black"], font=self.fonts["tiny"], anchor="mm")
         
         # REMOVED: All categories, restrictions, government info, and flag
