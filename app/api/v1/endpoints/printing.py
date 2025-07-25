@@ -524,12 +524,22 @@ async def create_print_job(
         ]
         logger.info(f"Found {len(card_licenses)} card-eligible licenses (excluding learners permits: {[cat.value for cat in learners_categories]})")
         
-        if not card_licenses:
-            logger.error(f"No valid licenses found for card printing - person {application.person_id} has {len(person_licenses)} total licenses but none are card-eligible")
+        # Check if the approved application is for a card-eligible category
+        application_is_card_eligible = (
+            application.license_category and 
+            application.license_category not in learners_categories
+        )
+        logger.info(f"Application {application.application_number} is card-eligible: {application_is_card_eligible} (category: {application.license_category.value if application.license_category else 'None'})")
+        
+        # Allow print job creation if there are existing card-eligible licenses OR the application is for a card-eligible category
+        if not card_licenses and not application_is_card_eligible:
+            logger.error(f"No valid licenses found for card printing - person {application.person_id} has {len(person_licenses)} total licenses but none are card-eligible, and application is not for a card-eligible category")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No valid licenses found for card printing"
+                detail="No valid licenses found for card printing - neither existing licenses nor the application qualify for card printing"
             )
+        
+        logger.info(f"Print job validation passed - existing card licenses: {len(card_licenses)}, application card-eligible: {application_is_card_eligible}")
         
         # Generate card number
         # Use the print location (not application location) for card number generation
@@ -556,22 +566,46 @@ async def create_print_job(
         logger.info(f"Generated card number: {card_number}")
         
         # Prepare license data for card generation
-        logger.info(f"Preparing license data for {len(card_licenses)} licenses")
+        logger.info(f"Preparing license data for {len(card_licenses)} existing licenses")
+        
+        # Start with existing card-eligible licenses
+        licenses_for_card = [
+            {
+                "id": str(license.id),
+                "category": license.category.value,
+                "issue_date": license.issue_date.isoformat(),
+                "expiry_date": license.expiry_date.isoformat() if license.expiry_date else None,
+                "restrictions": license.restrictions,
+                "status": license.status.value
+            }
+            for license in card_licenses
+        ]
+        
+        # If no existing card-eligible licenses but application is for a card-eligible category,
+        # add the application's license information (it will become a license when printed)
+        if not card_licenses and application_is_card_eligible:
+            logger.info(f"Adding application license data for category {application.license_category.value}")
+            # Calculate issue and expiry dates for new license
+            from datetime import datetime, timedelta
+            issue_date = datetime.now()
+            expiry_date = issue_date + timedelta(days=365 * 10)  # 10 years validity
+            
+            licenses_for_card.append({
+                "id": str(application.id),  # Use application ID as temporary license ID
+                "category": application.license_category.value,
+                "issue_date": issue_date.isoformat(),
+                "expiry_date": expiry_date.isoformat(),
+                "restrictions": "0",  # Default no restrictions
+                "status": "ACTIVE"  # Will be active once issued
+            })
+        
         license_data = {
-            "licenses": [
-                {
-                    "id": str(license.id),
-                    "category": license.category.value,
-                    "issue_date": license.issue_date.isoformat(),
-                    "expiry_date": license.expiry_date.isoformat() if license.expiry_date else None,
-                    "restrictions": license.restrictions,
-                    "status": license.status.value
-                }
-                for license in card_licenses
-            ],
-            "total_licenses": len(card_licenses),
+            "licenses": licenses_for_card,
+            "total_licenses": len(licenses_for_card),
             "card_template": request.card_template
         }
+        
+        logger.info(f"Final license data contains {len(licenses_for_card)} licenses for card generation")
         
         # Prepare person data for card generation
         logger.info(f"Preparing person data for person {person.id}")
