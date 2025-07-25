@@ -602,7 +602,8 @@ async def create_print_job(
         license_data = {
             "licenses": licenses_for_card,
             "total_licenses": len(licenses_for_card),
-            "card_template": request.card_template
+            "card_template": request.card_template,
+            "card_number": card_number  # Add the generated card number with location code + sequence + checksum
         }
         
         logger.info(f"Final license data contains {len(licenses_for_card)} licenses for card generation")

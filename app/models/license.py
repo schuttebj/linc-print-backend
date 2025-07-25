@@ -47,6 +47,9 @@ class License(BaseModel):
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="License holder")
     created_from_application_id = Column(UUID(as_uuid=True), ForeignKey('applications.id'), nullable=False, comment="Application that created this license")
     
+    # License number (unique identifier for the license)
+    license_number = Column(String(20), unique=True, index=True, nullable=False, comment="Unique license number for identification")
+    
     # License details
     category = Column(SQLEnum(LicenseCategory, native_enum=False), nullable=False, comment="Single license category for this license")
     status = Column(SQLEnum(LicenseStatus), nullable=False, default=LicenseStatus.ACTIVE, index=True, comment="Current license status")

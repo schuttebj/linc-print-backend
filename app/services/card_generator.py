@@ -490,6 +490,7 @@ class MadagascarCardGenerator:
         info_fields = [
             ("Initials and Surname", f"{license_data.get('first_name', 'N/A')} {license_data.get('surname', 'N/A')}"),
             ("ID Number", license_data.get('id_number', 'N/A')),
+            ("Card Number", license_data.get('card_number', 'N/A')),
             ("Driver Restrictions", license_data.get('restrictions', '0')),
             ("Sex", license_data.get('gender', 'N/A')),
             ("Date of Birth", license_data.get('birth_date', 'N/A')),
@@ -835,23 +836,26 @@ class MadagascarCardGenerator:
             )
             return str(restrictions)
         
-        # Convert dates to DD/MM/YYYY format (Madagascar standard)
+        # Convert dates to YYYY-MM-DD format (as requested)
         def format_date(date_val):
             if isinstance(date_val, datetime):
-                return date_val.strftime('%d/%m/%Y')
+                return date_val.strftime('%Y-%m-%d')
             elif isinstance(date_val, date):
-                return date_val.strftime('%d/%m/%Y')
+                return date_val.strftime('%Y-%m-%d')
             elif isinstance(date_val, str) and date_val:
-                # Try to parse common date formats and convert to DD/MM/YYYY
+                # Try to parse common date formats and convert to YYYY-MM-DD
                 try:
-                    # Try ISO format first (YYYY-MM-DD)
+                    # Try ISO format first (YYYY-MM-DD) - already correct
                     if len(date_val) == 10 and date_val.count('-') == 2:
-                        parsed_date = datetime.strptime(date_val, '%Y-%m-%d')
-                        return parsed_date.strftime('%d/%m/%Y')
-                    # Try DD/MM/YYYY format (already correct)
+                        return date_val  # Already in correct format
+                    # Try DD/MM/YYYY format
                     elif len(date_val) == 10 and date_val.count('/') == 2:
-                        return date_val
-                    # Try other formats...
+                        parsed_date = datetime.strptime(date_val, '%d/%m/%Y')
+                        return parsed_date.strftime('%Y-%m-%d')
+                    # Try other common formats
+                    elif 'T' in date_val:  # ISO datetime format
+                        parsed_date = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                        return parsed_date.strftime('%Y-%m-%d')
                     return date_val
                 except:
                     return date_val

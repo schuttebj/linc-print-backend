@@ -2775,7 +2775,6 @@ def _generate_license_from_application(db: Session, application: Application, re
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
-        license_number=license_number,  # Set the generated license number
         category=application.license_category,
         status=LicenseStatus.ACTIVE,
         issue_date=application.approval_date,
