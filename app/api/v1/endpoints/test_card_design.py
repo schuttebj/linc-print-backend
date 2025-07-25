@@ -483,8 +483,11 @@ def generate_test_card_from_application(
             "license_number": f"MG{application.application_number}",
             "category": application.license_category.value if application.license_category else "B",
             "restrictions": "0",
+            "driver_restrictions": "0",
+            "vehicle_restrictions": "0",
             "issue_date": datetime.now().strftime("%d/%m/%Y"),
             "expiry_date": (datetime.now().replace(year=datetime.now().year + 10)).strftime("%d/%m/%Y"),
+            "first_issue_date": datetime.now().strftime("%d/%m/%Y"),
             "issuing_location": "Madagascar",
             "country": "Madagascar",
         }

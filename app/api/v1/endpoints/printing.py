@@ -247,6 +247,17 @@ async def search_person_for_card_ordering(
         )
         logger.info(f"Found {len(approved_applications)} approved applications")
         
+        # Check which approved applications are for card-eligible license categories
+        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
+        card_eligible_applications = [
+            app for app in approved_applications 
+            if app.license_category and app.license_category not in learners_categories
+        ]
+        
+        logger.info(f"Card-eligible applications: {len(card_eligible_applications)}")
+        for app in card_eligible_applications:
+            logger.info(f"  - Application {app.application_number}: Category {app.license_category.value if app.license_category else 'None'}")
+        
         # Extract biometric data from applications for card printing
         biometric_data = {
             "photo_url": None,
@@ -271,14 +282,18 @@ async def search_person_for_card_ordering(
                         biometric_data["fingerprint_url"] = bio_data.file_url
                         biometric_data["fingerprint_path"] = bio_data.file_path
         
-        # Check print eligibility
-        can_order_card = len(card_eligible_licenses) > 0
+        # Check print eligibility - consider BOTH existing licenses AND approved applications
+        can_order_card = len(card_eligible_licenses) > 0 or len(card_eligible_applications) > 0
         eligibility_issues = []
         
-        if len(card_eligible_licenses) == 0:
-            eligibility_issues.append("No card-eligible licenses found")
-        if len(approved_applications) == 0:
-            eligibility_issues.append("No approved applications found")
+        if len(card_eligible_licenses) == 0 and len(card_eligible_applications) == 0:
+            eligibility_issues.append("No card-eligible licenses or approved applications found")
+        
+        logger.info(f"Card ordering eligibility check:")
+        logger.info(f"  - Existing card-eligible licenses: {len(card_eligible_licenses)}")
+        logger.info(f"  - Approved card-eligible applications: {len(card_eligible_applications)}")
+        logger.info(f"  - Can order card: {can_order_card}")
+        logger.info(f"  - Issues: {eligibility_issues}")
         
         # Get accessible print locations for current user
         accessible_locations = []
@@ -339,12 +354,14 @@ async def search_person_for_card_ordering(
                     "id": str(app.id),
                     "application_number": app.application_number,
                     "application_type": app.application_type.value,
+                    "license_category": app.license_category.value if app.license_category else None,
                     "status": app.status.value,
                     "application_date": app.application_date.isoformat(),
                     "approval_date": app.approval_date.isoformat() if app.approval_date else None,
                     "photo_captured": app.photo_captured,
                     "signature_captured": app.signature_captured,
-                    "fingerprint_captured": app.fingerprint_captured
+                    "fingerprint_captured": app.fingerprint_captured,
+                    "is_card_eligible": app.license_category and app.license_category not in learners_categories
                 }
                 for app in approved_applications
             ],
@@ -353,7 +370,12 @@ async def search_person_for_card_ordering(
                 "issues": eligibility_issues,
                 "total_licenses": len(all_licenses),
                 "card_eligible_count": len(card_eligible_licenses),
-                "learners_permit_count": len(learners_permits)
+                "learners_permit_count": len(learners_permits),
+                "card_eligible_applications_count": len(card_eligible_applications),
+                "eligible_sources": {
+                    "existing_licenses": len(card_eligible_licenses) > 0,
+                    "approved_applications": len(card_eligible_applications) > 0
+                }
             },
             "accessible_print_locations": [
                 {
