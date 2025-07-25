@@ -273,13 +273,13 @@ async def search_person_for_card_ordering(
             if hasattr(app, 'biometric_data') and app.biometric_data:
                 for bio_data in app.biometric_data:
                     if bio_data.data_type == "PHOTO":
-                        biometric_data["photo_url"] = bio_data.file_url
+                        biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["photo_path"] = bio_data.file_path
                     elif bio_data.data_type == "SIGNATURE":
-                        biometric_data["signature_url"] = bio_data.file_url
+                        biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["signature_path"] = bio_data.file_path
                     elif bio_data.data_type == "FINGERPRINT":
-                        biometric_data["fingerprint_url"] = bio_data.file_url
+                        biometric_data["fingerprint_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["fingerprint_path"] = bio_data.file_path
         
         # Check print eligibility - consider BOTH existing licenses AND approved applications
@@ -441,7 +441,7 @@ async def create_print_job(
         if hasattr(application, 'biometric_data') and application.biometric_data:
             logger.info(f"Found {len(application.biometric_data)} biometric records in application")
             for i, bio_data in enumerate(application.biometric_data):
-                logger.info(f"  Record {i}: {bio_data.data_type} - {bio_data.file_path}")
+                logger.info(f"Biometric record {i}: type={bio_data.data_type}, file_path={bio_data.file_path}")
         else:
             logger.info("No biometric data found in loaded application")
         
@@ -508,7 +508,7 @@ async def create_print_job(
         if hasattr(application, 'biometric_data') and application.biometric_data:
             logger.info(f"Found {len(application.biometric_data)} biometric data records")
             for i, bio_data in enumerate(application.biometric_data):
-                logger.info(f"Biometric record {i}: type={bio_data.data_type}, file_path={bio_data.file_path}, file_url={bio_data.file_url}")
+                logger.info(f"Biometric record {i}: type={bio_data.data_type}, file_path={bio_data.file_path}")
                 if bio_data.data_type == "PHOTO":
                     # Check if there's a license_ready version in metadata (optimized for card printing)
                     photo_path = bio_data.file_path
@@ -518,15 +518,15 @@ async def create_print_job(
                             photo_path = license_ready['file_path']
                             logger.info(f"Using license_ready photo: {photo_path}")
                     
-                    biometric_data["photo_url"] = bio_data.file_url
+                    biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["photo_path"] = photo_path
                     logger.info(f"Set photo_path to: {photo_path}")
                 elif bio_data.data_type == "SIGNATURE":
-                    biometric_data["signature_url"] = bio_data.file_url
+                    biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["signature_path"] = bio_data.file_path
                     logger.info(f"Set signature_path to: {bio_data.file_path}")
                 elif bio_data.data_type == "FINGERPRINT":
-                    biometric_data["fingerprint_url"] = bio_data.file_url
+                    biometric_data["fingerprint_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["fingerprint_path"] = bio_data.file_path
                     logger.info(f"Set fingerprint_path to: {bio_data.file_path}")
         else:
