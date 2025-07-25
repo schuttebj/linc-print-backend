@@ -37,6 +37,4 @@ api_router.include_router(lookups.router, prefix="/lookups", tags=["Lookups"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
 api_router.include_router(printing.router, prefix="/printing", tags=["Printing"])
 api_router.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
-
-# Test endpoints (only for development)
 api_router.include_router(test_card_design.router, prefix="/test-card", tags=["Test Card Design"]) 

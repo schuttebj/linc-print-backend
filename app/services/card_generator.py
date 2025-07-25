@@ -494,7 +494,6 @@ class MadagascarCardGenerator:
             ("Driver Restrictions", license_data.get('restrictions', '0')),
             ("Sex", license_data.get('gender', 'N/A')),
             ("Date of Birth", license_data.get('birth_date', 'N/A')),
-            ("Licence Number", license_data.get('license_number', 'N/A')),
             ("Valid", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}"),
             ("Codes", license_data.get('category', 'N/A')),
             ("Vehicle Restrictions", license_data.get('vehicle_restrictions', license_data.get('restrictions', '0'))),
@@ -781,22 +780,6 @@ class MadagascarCardGenerator:
             else:
                 return ["B"]  # Default fallback
         
-        # Helper function to safely extract license numbers
-        def extract_license_number(license_data):
-            # Try different paths for license number
-            paths = [
-                license_data.get("license_number"),
-                license_data.get("card_number"),
-                # Extract from first license in array
-                (license_data.get("licenses", [{}])[0].get("id") if license_data.get("licenses") else None),
-            ]
-            
-            for path in paths:
-                if path:
-                    return str(path)
-            
-            return "MG000000000"  # Default fallback
-        
         # Helper function to safely extract dates
         def extract_dates(license_data):
             issue_date = None
@@ -923,7 +906,6 @@ class MadagascarCardGenerator:
             'id_number': id_number,
             
             # License information
-            'license_number': extract_license_number(license_data),
             'category': category_str,
             'categories': categories,
             'restrictions': restrictions,

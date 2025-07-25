@@ -2056,21 +2056,11 @@ def _generate_license_from_authorization(db: Session, application: Application, 
     Generate a license from an authorized application
     """
     from app.models.license import License, LicenseStatus
-    from app.models.user import Location
-    
-    # Get location for license number generation
-    location = db.query(Location).filter(Location.id == application.location_id).first()
-    if not location:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Location {application.location_id} not found"
-        )
     
     # Create license
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
-        license_number=license_number,  # Set the generated license number
         category=application.license_category,
         status=LicenseStatus.ACTIVE,
         issue_date=application.approval_date,
@@ -2763,10 +2753,6 @@ def _generate_license_from_application(db: Session, application: Application, re
     restrictions_data format: {"driver_restrictions": ["01"], "vehicle_restrictions": ["01", "03"]}
     """
     from app.models.license import License, LicenseStatus
-    
-    # Simple license number generation for now
-    location = application.approved_at_location or application.location
-    license_number = f"LIC{datetime.now().strftime('%Y%m%d')}{application.id.hex[:8].upper()}"
     
     # Convert restrictions to license format (structured JSON)
     license_restrictions = restrictions_data or {"driver_restrictions": [], "vehicle_restrictions": []}
