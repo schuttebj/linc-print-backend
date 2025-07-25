@@ -544,20 +544,17 @@ class MadagascarCardGenerator:
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "back")
         draw = ImageDraw.Draw(license_img)
         
-        # Generate enhanced PDF417 barcode with all front information + photo data
+        # Enhanced Barcode Data: Include front information + 8-bit image in barcode
         barcode_data = {
-            "license_number": license_data.get('license_number'),
-            "id_number": license_data.get('id_number'),
-            "surname": license_data.get('surname'),
-            "first_name": license_data.get('first_name'),
-            "birth_date": license_data.get('birth_date'),
-            "category": license_data.get('category'),
+            "surname": license_data.get('surname', license_data.get('last_name', 'N/A')),
+            "first_name": license_data.get('first_name', license_data.get('names', 'N/A')),
+            "birth_date": license_data.get('birth_date', 'N/A'),
             "restrictions": license_data.get('restrictions', '0'),
-            "expiry_date": str(license_data.get('expiry_date')),
-            "issue_date": str(license_data.get('issue_date')),
-            "country": "Madagascar",
-            "issuing_authority": "Ministry of Transport Madagascar",
-            "gender": license_data.get('gender', 'M')
+            "gender": license_data.get('gender', 'N/A'),
+            "issuing_authority": "Madagascar Department of Transport",
+            "card_number": license_data.get('card_number', 'N/A'),
+            # Add compressed 8-bit photo data if available
+            "photo_8bit": self._convert_photo_to_8bit(license_data.get('photo_base64', '')) if license_data.get('photo_base64') else None
         }
         
         # Add 8-bit photo data to barcode if available
@@ -728,7 +725,6 @@ class MadagascarCardGenerator:
             result = {
                 "file_paths": file_paths,
                 "card_number": ampro_license_data.get("card_number", ""),
-                "license_number": ampro_license_data.get("license_number", ""),
                 "generation_timestamp": datetime.utcnow().isoformat(),
                 "generator_version": self.version,
                 "files_generated": True,
@@ -927,7 +923,6 @@ class MadagascarCardGenerator:
         
         logger.info(f"Enhanced LINC to AMPRO data conversion:")
         logger.info(f"  - Full Name: {ampro_data['first_name']} {ampro_data['last_name']}")
-        logger.info(f"  - License Number: {ampro_data['license_number']}")
         logger.info(f"  - Categories/Codes: {ampro_data['category']}")
         logger.info(f"  - ID Number: {ampro_data['id_number']}")
         logger.info(f"  - Birth Date: {ampro_data['birth_date']}")
@@ -986,7 +981,7 @@ class MadagascarCardGenerator:
         page_height = 638 * 72 / 300
         
         c = canvas.Canvas(pdf_buffer, pagesize=(page_width, page_height))
-        c.setTitle(f"Madagascar Driver's License - {license_data.get('license_number', '')}")
+        c.setTitle(f"Madagascar Driver's License - {license_data.get('card_number', 'Card')}")
         c.setAuthor("Madagascar License System - AMPRO")
         c.setSubject("Official Madagascar Driver's License")
         c.setCreator("Madagascar License System v3.0")

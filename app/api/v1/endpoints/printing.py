@@ -586,7 +586,6 @@ async def create_print_job(
         if not card_licenses and application_is_card_eligible:
             logger.info(f"Adding application license data for category {application.license_category.value}")
             # Calculate issue and expiry dates for new license
-            from datetime import datetime, timedelta
             issue_date = datetime.now()
             expiry_date = issue_date + timedelta(days=365 * 10)  # 10 years validity
             
