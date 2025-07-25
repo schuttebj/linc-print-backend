@@ -79,48 +79,61 @@ def calculate_grid_positions():
 # Calculate grid positions
 GRID_POSITIONS, CELL_WIDTH, CELL_HEIGHT = calculate_grid_positions()
 
-# Load coordinates from CSV file (Same system as AMPRO)
-def load_coordinates_from_csv():
-    """Load coordinate mappings from CSV file"""
-    coordinates = {}
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "assets", "sa_license_coordinates.csv")
+# ACTUAL AMPRO COORDINATES (from real AMPRO code)
+FRONT_COORDINATES = {
+    # Photo area: Columns 1-2, Rows 2-5 (2x4 grid cells)
+    "photo": (
+        GRID_POSITIONS["r2c1"][0],  # x
+        GRID_POSITIONS["r2c1"][1],  # y
+        GRID_POSITIONS["r2c2"][0] + GRID_POSITIONS["r2c2"][2] - GRID_POSITIONS["r2c1"][0],  # width (2 columns)
+        GRID_POSITIONS["r5c1"][1] + GRID_POSITIONS["r5c1"][3] - GRID_POSITIONS["r2c1"][1]   # height (4 rows)
+    ),
     
-    try:
-        with open(csv_path, 'r') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                element = row['Element']
-                if element and row['X'] and row['Y']:  # Skip rows without coordinates
-                    coordinates[element] = {
-                        'side': row['Side'],
-                        'x': int(row['X']) if row['X'].isdigit() else None,
-                        'y': int(row['Y']) if row['Y'].isdigit() else None,
-                        'width': int(row['Width']) if row['Width'] and row['Width'].isdigit() else None,
-                        'height': int(row['Height']) if row['Height'] and row['Height'].isdigit() else None,
-                        'description': row['Description'],
-                        'units': row['Units']
-                    }
-    except Exception as e:
-        logger.warning(f"Could not load coordinates CSV: {e}, using fallback coordinates")
-        # Fallback coordinates if CSV not available
-        coordinates = {
-            'photo': {'side': 'front', 'x': 40, 'y': 58, 'width': 213, 'height': 260},
-            'surname': {'side': 'front', 'x': 530, 'y': 80},
-            'names': {'side': 'front', 'x': 530, 'y': 125},
-            'id_number': {'side': 'front', 'x': 530, 'y': 170},
-            'date_of_birth': {'side': 'front', 'x': 530, 'y': 215},
-            'issue_date': {'side': 'front', 'x': 530, 'y': 260},
-            'expiry_date': {'side': 'front', 'x': 530, 'y': 305},
-            'license_number': {'side': 'front', 'x': 530, 'y': 350},
-            'category': {'side': 'front', 'x': 530, 'y': 395},
-            'restrictions': {'side': 'front', 'x': 530, 'y': 440},
-            'signature': {'side': 'front', 'x': 530, 'y': 485, 'width': 355, 'height': 55},
-            'barcode': {'side': 'back', 'x': 30, 'y': 340, 'width': 458, 'height': 38},
-        }
+    # Information area: Columns 3-6, Rows 2-5
+    "labels_column_x": GRID_POSITIONS["r2c3"][0],  # Labels in column 3
+    "values_column_x": GRID_POSITIONS["r2c4"][0],  # Values in column 4-6
+    "info_start_y": GRID_POSITIONS["r2c3"][1],
+    "line_height": 37,  # Exact AMPRO spacing
     
-    return coordinates
+    # Signature area: Row 6, Columns 1-6
+    "signature": (
+        GRID_POSITIONS["r6c1"][0],
+        GRID_POSITIONS["r6c1"][1],
+        GRID_POSITIONS["r6c6"][0] + GRID_POSITIONS["r6c6"][2] - GRID_POSITIONS["r6c1"][0],
+        GRID_POSITIONS["r6c1"][3]
+    ),
+}
 
-# Load coordinates
+BACK_COORDINATES = {
+    # PDF417 barcode area - Row 1, all 6 columns
+    "barcode": (
+        GRID_POSITIONS["r1c1"][0],  # x
+        GRID_POSITIONS["r1c1"][1],  # y
+        GRID_POSITIONS["r1c6"][0] + GRID_POSITIONS["r1c6"][2] - GRID_POSITIONS["r1c1"][0],  # width (6 columns)
+        GRID_POSITIONS["r1c1"][3]   # height (1 row)
+    ),
+    
+    # Fingerprint area - Bottom left corner (330x205 pixels, 23px from edges)
+    "fingerprint": (
+        BLEED_PX,  # x - 23px from left edge
+        CARD_H_PX - BLEED_PX - 205,  # y - 23px from bottom edge, 205px height
+        330,  # width
+        205   # height
+    ),
+}
+
+# Load coordinates from CSV file (Fallback only)
+def load_coordinates_from_csv():
+    """Load coordinate mappings from CSV file (fallback - not used with AMPRO coordinates)"""
+    # Return AMPRO coordinates instead of CSV
+    return {
+        'photo': {'side': 'front', 'x': FRONT_COORDINATES["photo"][0], 'y': FRONT_COORDINATES["photo"][1], 
+                 'width': FRONT_COORDINATES["photo"][2], 'height': FRONT_COORDINATES["photo"][3]},
+        'barcode': {'side': 'back', 'x': BACK_COORDINATES["barcode"][0], 'y': BACK_COORDINATES["barcode"][1], 
+                   'width': BACK_COORDINATES["barcode"][2], 'height': BACK_COORDINATES["barcode"][3]},
+    }
+
+# Load coordinates (now using AMPRO coordinates)
 COORDINATES = load_coordinates_from_csv()
 
 class MadagascarCardGenerator:
@@ -369,91 +382,83 @@ class MadagascarCardGenerator:
             return None
     
     def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> str:
-        """Generate Madagascar license front side using exact AMPRO coordinates from CSV"""
+        """Generate Madagascar license front side using exact AMPRO coordinates"""
         
         # Create base image with AMPRO front background
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "front")
         draw = ImageDraw.Draw(license_img)
         
-        # Process and add photo using exact CSV coordinates
-        photo_coords = COORDINATES.get('photo', {'x': 40, 'y': 58, 'width': 213, 'height': 260})
-        photo_x = photo_coords['x']
-        photo_y = photo_coords['y'] 
-        photo_w = photo_coords['width']
-        photo_h = photo_coords['height']
+        # Process and add photo using AMPRO grid coordinates (Columns 1-2, Rows 2-5)
+        photo_pos = FRONT_COORDINATES["photo"]
         
         if photo_data:
             try:
-                photo_img = self._process_photo_data(photo_data, photo_w, photo_h)
-                license_img.paste(photo_img, (photo_x, photo_y))
+                photo_img = self._process_photo_data(photo_data, photo_pos[2], photo_pos[3])
+                license_img.paste(photo_img, (photo_pos[0], photo_pos[1]))
             except Exception as e:
                 logger.warning(f"Failed to process photo: {e}")
                 # Fallback: Draw photo placeholder
-                draw.rectangle([photo_x, photo_y, photo_x + photo_w, photo_y + photo_h], 
+                draw.rectangle([photo_pos[0], photo_pos[1], photo_pos[0] + photo_pos[2], photo_pos[1] + photo_pos[3]], 
                              fill=(240, 240, 240), outline=(180, 180, 180), width=2)
-                photo_center_x = photo_x + photo_w // 2
-                photo_center_y = photo_y + photo_h // 2
+                photo_center_x = photo_pos[0] + photo_pos[2] // 2
+                photo_center_y = photo_pos[1] + photo_pos[3] // 2
                 draw.text((photo_center_x, photo_center_y), "SARY", 
                          fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
         else:
             # Draw photo placeholder
-            draw.rectangle([photo_x, photo_y, photo_x + photo_w, photo_y + photo_h], 
+            draw.rectangle([photo_pos[0], photo_pos[1], photo_pos[0] + photo_pos[2], photo_pos[1] + photo_pos[3]], 
                          fill=(240, 240, 240), outline=(180, 180, 180), width=2)
-            photo_center_x = photo_x + photo_w // 2
-            photo_center_y = photo_y + photo_h // 2
+            photo_center_x = photo_pos[0] + photo_pos[2] // 2
+            photo_center_y = photo_pos[1] + photo_pos[3] // 2
             draw.text((photo_center_x, photo_center_y), "SARY", 
                      fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
         
-        # Add Madagascar header/title using CSV coordinates
-        title_coords = COORDINATES.get('title', {'x': 506, 'y': 30})
-        subtitle_coords = COORDINATES.get('subtitle', {'x': 506, 'y': 55})
+        # REMOVED: Title and subtitle (no "REPOBLIKAN'I MADAGASIKARA" or subtitle)
         
-        draw.text((title_coords['x'], title_coords['y']), "REPOBLIKAN'I MADAGASIKARA", 
-                 fill=COLORS["dark_blue"], font=self.fonts["title"], anchor="mm")
-        draw.text((subtitle_coords['x'], subtitle_coords['y']), "FAHAZOAN-DÀLANA MITONDRA FIARA", 
-                 fill=COLORS["black"], font=self.fonts["subtitle"], anchor="mm")
+        # Information area using AMPRO grid coordinates (Columns 3-6, Rows 2-5)
+        labels_x = FRONT_COORDINATES["labels_column_x"]
+        values_x = FRONT_COORDINATES["values_column_x"]
+        info_y = FRONT_COORDINATES["info_start_y"]
+        line_height = FRONT_COORDINATES["line_height"]
         
-        # Information fields with Madagascar labels - using exact CSV coordinates
+        # Information fields with Madagascar labels - using exact AMPRO layout
         info_fields = [
-            ("ANARANA FIANAKAVIANA:", license_data.get('surname', 'N/A'), 'surname'),
-            ("ANARANA:", license_data.get('first_name', 'N/A'), 'names'),
-            ("LAHARANA ID:", license_data.get('id_number', 'N/A'), 'id_number'),
-            ("DATY NAHATERAHANA:", license_data.get('birth_date', 'N/A'), 'date_of_birth'),
-            ("NAVOAKA:", license_data.get('issue_date', 'N/A'), 'issue_date'),
-            ("TAPITRA:", license_data.get('expiry_date', 'N/A'), 'expiry_date'),
-            ("LAHARANA:", license_data.get('license_number', 'N/A'), 'license_number'),
-            ("SOKAJY:", license_data.get('category', 'N/A'), 'category'),
-            ("FETRA:", license_data.get('restrictions', '0'), 'restrictions'),
+            ("Anarana fianakaviana", license_data.get('surname', 'N/A')),
+            ("Anarana", license_data.get('first_name', 'N/A')),
+            ("Daty nahaterahana", license_data.get('birth_date', 'N/A')),
+            ("Lahy/Vavy", license_data.get('gender', 'N/A')),
+            ("Laharana ID", license_data.get('id_number', 'N/A')),
+            ("Miankina", f"{license_data.get('issue_date', 'N/A')} - {license_data.get('expiry_date', 'N/A')}"),
+            ("Navoaka", license_data.get('issuing_location', 'Madagasikara')),
+            ("Laharana fahazoan-dalana", license_data.get('license_number', 'N/A')),
+            ("Sokajy", license_data.get('category', 'N/A')),
+            ("Fetra", license_data.get('restrictions', '0')),
+            ("Voalohany navoaka", license_data.get('first_issue_date', license_data.get('issue_date', 'N/A'))),
         ]
         
-        # Draw information fields using exact CSV coordinates
-        for label, value, coord_key in info_fields:
-            coords = COORDINATES.get(coord_key, {'x': 530, 'y': 80})
-            x_pos = coords['x']
-            y_pos = coords['y']
-            
-            # Draw label (in Malagasy) - positioned to the left of value
-            draw.text((x_pos - 180, y_pos), label, 
+        # Draw information fields using exact AMPRO column layout
+        current_y = info_y
+        for label, value in info_fields:
+            # Draw label in labels column (bold)
+            draw.text((labels_x, current_y), label, 
                      fill=COLORS["black"], font=self.fonts["field_label"])
             
-            # Draw value at exact CSV coordinate
-            draw.text((x_pos, y_pos), str(value), 
+            # Draw value in values column (regular)
+            draw.text((values_x, current_y), str(value), 
                      fill=COLORS["black"], font=self.fonts["field_value"])
+            
+            current_y += line_height
         
-        # Add signature area using exact CSV coordinates
-        sig_coords = COORDINATES.get('signature', {'x': 530, 'y': 485, 'width': 355, 'height': 55})
-        sig_x = sig_coords['x']
-        sig_y = sig_coords['y']
-        sig_w = sig_coords['width']
-        sig_h = sig_coords['height']
+        # Add signature area using AMPRO grid coordinates (Row 6, Columns 1-6)
+        sig_coords = FRONT_COORDINATES["signature"]
+        sig_x = sig_coords[0]
+        sig_y = sig_coords[1]
+        sig_w = sig_coords[2]
+        sig_h = sig_coords[3]
         
         # Draw signature border
         draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
                       outline=COLORS["black"], width=1)
-        
-        # Signature label in Malagasy
-        draw.text((sig_x - 180, sig_y + 15), "SONIA:", 
-                 fill=COLORS["black"], font=self.fonts["field_label"])
         
         # Convert to base64
         buffer = io.BytesIO()
@@ -467,7 +472,7 @@ class MadagascarCardGenerator:
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
     def generate_back(self, license_data: Dict[str, Any]) -> str:
-        """Generate Madagascar license back side - SIMPLIFIED to only show PDF417 barcode"""
+        """Generate Madagascar license back side using AMPRO coordinates - SIMPLIFIED to only show PDF417 barcode"""
         
         # Create base image with AMPRO back background
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "back")
@@ -514,19 +519,49 @@ class MadagascarCardGenerator:
         barcode_json = json.dumps(barcode_data, separators=(',', ':'))  # Compact JSON
         barcode_img = self._generate_pdf417_barcode(barcode_json)
         
-        # Use exact CSV positioning for barcode
-        barcode_coords = COORDINATES.get('barcode', {'x': 30, 'y': 340, 'width': 458, 'height': 38})
-        barcode_x = barcode_coords['x']
-        barcode_y = barcode_coords['y']
-        barcode_w = barcode_coords['width']
-        barcode_h = barcode_coords['height']
+        # Use AMPRO coordinates for barcode (Row 1, all 6 columns)
+        barcode_coords = BACK_COORDINATES["barcode"]
+        barcode_x = barcode_coords[0]
+        barcode_y = barcode_coords[1]
+        barcode_w = barcode_coords[2]
+        barcode_h = barcode_coords[3]
         
-        # Resize barcode to fit the exact area
+        # Resize barcode to fit the exact AMPRO area
         barcode_resized = barcode_img.resize((barcode_w, barcode_h), Image.Resampling.LANCZOS)
         license_img.paste(barcode_resized, (barcode_x, barcode_y))
         
+        # Add fingerprint area in bottom left corner
+        fp_coords = BACK_COORDINATES["fingerprint"]
+        fp_x = fp_coords[0]
+        fp_y = fp_coords[1]
+        fp_w = fp_coords[2]
+        fp_h = fp_coords[3]
+        
+        # Draw fingerprint border
+        draw.rectangle([fp_x, fp_y, fp_x + fp_w, fp_y + fp_h], 
+                      outline=COLORS["black"], width=2)
+        
+        # Create fingerprint pattern (simple dot pattern for visual effect)
+        # Generate a realistic fingerprint-like pattern
+        for i in range(5, fp_w - 5, 4):
+            for j in range(5, fp_h - 5, 4):
+                # Create concentric oval-like patterns
+                center_x = fp_w // 2
+                center_y = fp_h // 2
+                distance_from_center = ((i - center_x) ** 2 + (j - center_y) ** 2) ** 0.5
+                
+                # Create ridges and valleys pattern
+                if int(distance_from_center) % 8 < 4:  # Adjust for ridge spacing
+                    draw.point((fp_x + i, fp_y + j), fill=COLORS["black"])
+        
+        # Add fingerprint label below the area
+        fp_label_x = fp_x + fp_w // 2
+        fp_label_y = fp_y + fp_h + 10
+        draw.text((fp_label_x, fp_label_y), "DIAN-TANANA HAVANANA", 
+                 fill=COLORS["black"], font=self.fonts["tiny"], anchor="mm")
+        
         # REMOVED: All categories, restrictions, government info, and flag
-        # Back side now only contains the PDF417 barcode as requested
+        # Back side now only contains the PDF417 barcode and fingerprint area as requested
         
         # Convert to base64
         buffer = io.BytesIO()
