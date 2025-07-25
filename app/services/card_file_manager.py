@@ -53,50 +53,88 @@ class CardFileManager:
         Save card files to disk and return file paths
         
         Args:
-            print_job_id: Print job UUID
-            card_files_data: Dictionary with base64 encoded file data
-            created_at: Creation timestamp for directory organization
+            print_job_id: Unique identifier for the print job
+            card_files_data: Dictionary containing base64-encoded file data
+            created_at: Creation timestamp (defaults to now)
             
         Returns:
-            Dictionary with file paths
+            Dictionary mapping file types to their saved paths
+        """
+        if created_at is None:
+            created_at = datetime.utcnow()
+            
+        # Create directory structure
+        job_dir = self._get_print_job_directory(print_job_id, created_at)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Saving card files for print job {print_job_id} to {job_dir}")
+        
+        file_paths = {}
+        
+        # File mappings: internal name -> (filename, description)
+        file_mappings = {
+            "front_image": ("front.png", "Front card image"),
+            "back_image": ("back.png", "Back card image"),
+            "watermark_image": ("watermark.png", "Watermark template"),
+            "front_pdf": ("front.pdf", "Front card PDF"),
+            "back_pdf": ("back.pdf", "Back card PDF"),
+            "combined_pdf": ("combined.pdf", "Combined card PDF")
+        }
+        
+        # Save each file
+        for internal_name, (filename, description) in file_mappings.items():
+            if internal_name in card_files_data:
+                file_path = job_dir / filename
+                try:
+                    # Decode base64 and save
+                    file_data = base64.b64decode(card_files_data[internal_name])
+                    with open(file_path, 'wb') as f:
+                        f.write(file_data)
+                    
+                    # Store relative path from base storage directory
+                    relative_path = file_path.relative_to(self.base_path)
+                    file_paths[f"{internal_name}_path"] = str(relative_path)
+                    
+                    logger.info(f"Saved {description} to {relative_path} ({len(file_data):,} bytes)")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to save {description}: {e}")
+                    # Continue with other files
+                    
+        logger.info(f"Saved {len(file_paths)} files for print job {print_job_id}")
+        return file_paths
+        
+    def read_file_as_base64(self, file_path: str) -> Optional[str]:
+        """
+        Read a file and return it as base64 encoded string
+        
+        Args:
+            file_path: Path to the file (can be absolute or relative to base_path)
+            
+        Returns:
+            Base64 encoded string or None if file not found/error
         """
         try:
-            job_dir = self._get_print_job_directory(print_job_id, created_at)
-            job_dir.mkdir(parents=True, exist_ok=True)
+            # Handle both absolute and relative paths
+            if os.path.isabs(file_path):
+                full_path = Path(file_path)
+            else:
+                full_path = self.base_path / file_path
             
-            file_paths = {}
-            
-            # File mappings: key in card_files_data -> filename on disk
-            file_mappings = {
-                "front_image": "front.png",
-                "back_image": "back.png", 
-                "front_pdf": "front.pdf",
-                "back_pdf": "back.pdf",
-                "combined_pdf": "combined.pdf"
-            }
-            
-            for data_key, filename in file_mappings.items():
-                if data_key in card_files_data:
-                    file_path = job_dir / filename
-                    
-                    # Decode base64 and save to disk
-                    file_content = base64.b64decode(card_files_data[data_key])
-                    
-                    with open(file_path, 'wb') as f:
-                        f.write(file_content)
-                    
-                    file_paths[data_key.replace("_", "_path")] = str(file_path)
-                    logger.info(f"Saved {filename} ({len(file_content)} bytes) to {file_path}")
-            
-            # Log total directory size
-            total_size = sum(f.stat().st_size for f in job_dir.iterdir() if f.is_file())
-            logger.info(f"Print job {print_job_id} total file size: {total_size:,} bytes ({total_size/1024/1024:.1f} MB)")
-            
-            return file_paths
+            if not full_path.exists():
+                logger.warning(f"File not found: {full_path}")
+                return None
+                
+            with open(full_path, 'rb') as f:
+                file_data = f.read()
+                
+            base64_data = base64.b64encode(file_data).decode('utf-8')
+            logger.info(f"Successfully read file as base64: {full_path} ({len(file_data):,} bytes)")
+            return base64_data
             
         except Exception as e:
-            logger.error(f"Error saving card files for print job {print_job_id}: {e}")
-            raise Exception(f"Failed to save card files: {str(e)}")
+            logger.error(f"Failed to read file {file_path} as base64: {e}")
+            return None
     
     def get_file_path(self, print_job_id: str, file_type: str, created_at: datetime = None) -> Optional[Path]:
         """

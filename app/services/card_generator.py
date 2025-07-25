@@ -105,12 +105,12 @@ FRONT_COORDINATES = {
 }
 
 BACK_COORDINATES = {
-    # PDF417 barcode area - Row 1, all 6 columns
+    # PDF417 barcode area - Rows 1-2, all 6 columns (increased height)
     "barcode": (
         GRID_POSITIONS["r1c1"][0],  # x
         GRID_POSITIONS["r1c1"][1],  # y
         GRID_POSITIONS["r1c6"][0] + GRID_POSITIONS["r1c6"][2] - GRID_POSITIONS["r1c1"][0],  # width (6 columns)
-        GRID_POSITIONS["r1c1"][3]   # height (1 row)
+        GRID_POSITIONS["r2c1"][1] + GRID_POSITIONS["r2c1"][3] - GRID_POSITIONS["r1c1"][1]   # height (2 rows)
     ),
     
     # Fingerprint area - Bottom RIGHT corner (330x205 pixels, 23px from edges)
@@ -352,33 +352,98 @@ class MadagascarCardGenerator:
         """Extract photo data from person data with multiple fallback paths"""
         try:
             # Try different ways to get photo data
-            photo_paths = [
+            photo_sources = [
+                # Direct photo data
                 person_data.get("photo_data"),
-                person_data.get("photo_path"),
+                person_data.get("photo_base64"),
+                # File paths from biometric data
                 person_data.get("biometric_data", {}).get("photo_path"),
                 person_data.get("biometric_data", {}).get("photo_url"),
+                # Legacy paths
+                person_data.get("photo_path"),
+                person_data.get("photo_url"),
             ]
             
-            for photo_path in photo_paths:
-                if photo_path:
-                    logger.info(f"Found photo data source: {type(photo_path)} ({len(str(photo_path))[:100]}...)")
+            for photo_source in photo_sources:
+                if photo_source:
+                    logger.info(f"Found photo source: {type(photo_source)} - {str(photo_source)[:100]}...")
                     
                     # If it's already base64 data, return it
-                    if isinstance(photo_path, str) and (photo_path.startswith('data:') or len(photo_path) > 1000):
-                        return photo_path
-                    
-                    # If it's a file path, try to read the file
-                    elif isinstance(photo_path, str) and (photo_path.endswith(('.jpg', '.jpeg', '.png')) or '/' in photo_path):
-                        # This might be a file path - we'd need file manager to read it
-                        logger.info(f"Photo appears to be file path: {photo_path}")
-                        # For now, return None and let it use placeholder
-                        return None
+                    if isinstance(photo_source, str):
+                        if photo_source.startswith('data:image/'):
+                            # Extract base64 part from data URL
+                            return photo_source.split(',')[1] if ',' in photo_source else photo_source
+                        elif len(photo_source) > 1000 and not ('/' in photo_source or '\\' in photo_source):
+                            # Looks like raw base64 data
+                            return photo_source
+                        elif photo_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in photo_source or '\\' in photo_source):
+                            # This looks like a file path - try to read it
+                            try:
+                                from app.services.card_file_manager import card_file_manager
+                                photo_data = card_file_manager.read_file_as_base64(photo_source)
+                                if photo_data:
+                                    logger.info(f"Successfully read photo from file: {photo_source}")
+                                    return photo_data
+                                else:
+                                    logger.warning(f"Could not read photo file: {photo_source}")
+                            except Exception as e:
+                                logger.warning(f"Failed to read photo file {photo_source}: {e}")
+                                continue
             
-            logger.info("No photo data found, will use placeholder")
+            logger.info("No usable photo data found, will use placeholder")
             return None
             
         except Exception as e:
             logger.error(f"Error extracting photo: {e}")
+            return None
+    
+    def _extract_signature_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
+        """Extract signature data from person data with multiple fallback paths"""
+        try:
+            # Try different ways to get signature data
+            signature_sources = [
+                # Direct signature data
+                person_data.get("signature_data"),
+                person_data.get("signature_base64"),
+                # File paths from biometric data
+                person_data.get("biometric_data", {}).get("signature_path"),
+                person_data.get("biometric_data", {}).get("signature_url"),
+                # Legacy paths
+                person_data.get("signature_path"),
+                person_data.get("signature_url"),
+            ]
+            
+            for signature_source in signature_sources:
+                if signature_source:
+                    logger.info(f"Found signature source: {type(signature_source)} - {str(signature_source)[:100]}...")
+                    
+                    # If it's already base64 data, return it
+                    if isinstance(signature_source, str):
+                        if signature_source.startswith('data:image/'):
+                            # Extract base64 part from data URL
+                            return signature_source.split(',')[1] if ',' in signature_source else signature_source
+                        elif len(signature_source) > 1000 and not ('/' in signature_source or '\\' in signature_source):
+                            # Looks like raw base64 data
+                            return signature_source
+                        elif signature_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in signature_source or '\\' in signature_source):
+                            # This looks like a file path - try to read it
+                            try:
+                                from app.services.card_file_manager import card_file_manager
+                                signature_data = card_file_manager.read_file_as_base64(signature_source)
+                                if signature_data:
+                                    logger.info(f"Successfully read signature from file: {signature_source}")
+                                    return signature_data
+                                else:
+                                    logger.warning(f"Could not read signature file: {signature_source}")
+                            except Exception as e:
+                                logger.warning(f"Failed to read signature file {signature_source}: {e}")
+                                continue
+            
+            logger.info("No usable signature data found, will use placeholder")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting signature: {e}")
             return None
     
     def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> str:
@@ -613,8 +678,15 @@ class MadagascarCardGenerator:
             # Convert LINC data format to AMPRO format
             ampro_license_data = self._convert_linc_to_ampro_format(license_data, person_data)
             
-            # Extract photo data with multiple fallback paths
+            # Extract biometric data with multiple fallback paths
             photo_data = self._extract_photo_from_person_data(person_data)
+            signature_data = self._extract_signature_from_person_data(person_data)
+            
+            # Add extracted biometric data to ampro_license_data for card generation
+            if photo_data:
+                ampro_license_data["photo_base64"] = photo_data
+            if signature_data:
+                ampro_license_data["signature_base64"] = signature_data
             
             # Generate front and back images using integrated AMPRO system
             front_base64 = self.generate_front(ampro_license_data, photo_data)
