@@ -436,6 +436,15 @@ async def create_print_job(
         
         logger.info(f"Found application: {application.application_number} (status: {application.status})")
         
+        # Debug: Check if biometric data was loaded
+        logger.info(f"Application biometric_data loaded: {hasattr(application, 'biometric_data')}")
+        if hasattr(application, 'biometric_data') and application.biometric_data:
+            logger.info(f"Found {len(application.biometric_data)} biometric records in application")
+            for i, bio_data in enumerate(application.biometric_data):
+                logger.info(f"  Record {i}: {bio_data.data_type} - {bio_data.file_path}")
+        else:
+            logger.info("No biometric data found in loaded application")
+        
         # Determine print location (admin users can specify location, others use application location)
         if request.location_id:
             # Admin user specified a print location
@@ -495,17 +504,33 @@ async def create_print_job(
         }
         
         # Look through application biometric data
+        logger.info(f"Checking application biometric data...")
         if hasattr(application, 'biometric_data') and application.biometric_data:
-            for bio_data in application.biometric_data:
+            logger.info(f"Found {len(application.biometric_data)} biometric data records")
+            for i, bio_data in enumerate(application.biometric_data):
+                logger.info(f"Biometric record {i}: type={bio_data.data_type}, file_path={bio_data.file_path}, file_url={bio_data.file_url}")
                 if bio_data.data_type == "PHOTO":
+                    # Check if there's a license_ready version in metadata (optimized for card printing)
+                    photo_path = bio_data.file_path
+                    if bio_data.metadata and isinstance(bio_data.metadata, dict):
+                        license_ready = bio_data.metadata.get('license_ready_version', {})
+                        if license_ready.get('file_path'):
+                            photo_path = license_ready['file_path']
+                            logger.info(f"Using license_ready photo: {photo_path}")
+                    
                     biometric_data["photo_url"] = bio_data.file_url
-                    biometric_data["photo_path"] = bio_data.file_path
+                    biometric_data["photo_path"] = photo_path
+                    logger.info(f"Set photo_path to: {photo_path}")
                 elif bio_data.data_type == "SIGNATURE":
                     biometric_data["signature_url"] = bio_data.file_url
                     biometric_data["signature_path"] = bio_data.file_path
+                    logger.info(f"Set signature_path to: {bio_data.file_path}")
                 elif bio_data.data_type == "FINGERPRINT":
                     biometric_data["fingerprint_url"] = bio_data.file_url
                     biometric_data["fingerprint_path"] = bio_data.file_path
+                    logger.info(f"Set fingerprint_path to: {bio_data.file_path}")
+        else:
+            logger.info(f"No biometric data found for application. hasattr={hasattr(application, 'biometric_data')}, biometric_data={getattr(application, 'biometric_data', 'MISSING')}")
         
         # Get all licenses for person (excluding learners permits)
         logger.info(f"Getting licenses for person {application.person_id}")
@@ -653,6 +678,12 @@ async def create_print_job(
                 "fingerprint_path": biometric_data.get("fingerprint_path")
             }
         }
+        
+        # Debug: Log the final biometric data being passed to card generator
+        logger.info(f"Final person_data biometric paths:")
+        logger.info(f"  photo_path: {biometric_data.get('photo_path')}")
+        logger.info(f"  signature_path: {biometric_data.get('signature_path')}")
+        logger.info(f"  fingerprint_path: {biometric_data.get('fingerprint_path')}")
         
         # Create print job
         logger.info(f"Calling create_print_job with application_id={request.application_id}, print_location_id={print_location_id}")

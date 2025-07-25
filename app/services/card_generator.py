@@ -400,7 +400,7 @@ class MadagascarCardGenerator:
                                 from app.services.card_file_manager import card_file_manager
                                 photo_data = card_file_manager.read_file_as_base64(photo_source)
                                 if photo_data:
-                                    logger.info(f"Successfully read photo from file: {photo_source}")
+                                    logger.info(f"Successfully read photo from file: {photo_source} ({len(photo_data)} chars base64)")
                                     return photo_data
                                 else:
                                     logger.warning(f"Could not read photo file: {photo_source}")
@@ -454,7 +454,7 @@ class MadagascarCardGenerator:
                                 from app.services.card_file_manager import card_file_manager
                                 signature_data = card_file_manager.read_file_as_base64(signature_source)
                                 if signature_data:
-                                    logger.info(f"Successfully read signature from file: {signature_source}")
+                                    logger.info(f"Successfully read signature from file: {signature_source} ({len(signature_data)} chars base64)")
                                     return signature_data
                                 else:
                                     logger.warning(f"Could not read signature file: {signature_source}")
