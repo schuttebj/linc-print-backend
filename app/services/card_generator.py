@@ -417,7 +417,7 @@ class MadagascarCardGenerator:
         
         # Information area using AMPRO grid coordinates (Columns 3-6, Rows 2-5)
         labels_x = FRONT_COORDINATES["labels_column_x"]
-        values_x = FRONT_COORDINATES["values_column_x"]
+        values_x = FRONT_COORDINATES["values_column_x"] + 50  # Move values 50px to the right
         info_y = FRONT_COORDINATES["info_start_y"]
         line_height = FRONT_COORDINATES["line_height"]
         
@@ -728,6 +728,7 @@ class MadagascarCardGenerator:
         def extract_dates(license_data):
             issue_date = None
             expiry_date = None
+            first_issue_date = None
             
             # Try to extract from licenses array first
             if "licenses" in license_data and isinstance(license_data["licenses"], list):
@@ -736,6 +737,8 @@ class MadagascarCardGenerator:
                         issue_date = license["issue_date"]
                     if license.get("expiry_date"):
                         expiry_date = license["expiry_date"]
+                    if license.get("first_issue_date"):
+                        first_issue_date = license["first_issue_date"]
                     if issue_date and expiry_date:
                         break
             
@@ -744,64 +747,136 @@ class MadagascarCardGenerator:
                 issue_date = license_data.get("issue_date")
             if not expiry_date:
                 expiry_date = license_data.get("expiry_date")
+            if not first_issue_date:
+                first_issue_date = license_data.get("first_issue_date", issue_date)
             
-            return issue_date, expiry_date
+            return issue_date, expiry_date, first_issue_date
         
-        # Convert dates to string format
+        # Helper function to extract restrictions
+        def extract_restrictions(license_data):
+            # Try different paths for restrictions
+            restrictions = (
+                license_data.get("restrictions") or 
+                license_data.get("driver_restrictions") or 
+                license_data.get("vehicle_restrictions") or 
+                "0"
+            )
+            return str(restrictions)
+        
+        # Convert dates to DD/MM/YYYY format (Madagascar standard)
         def format_date(date_val):
             if isinstance(date_val, datetime):
-                return date_val.strftime('%Y-%m-%d')
+                return date_val.strftime('%d/%m/%Y')
             elif isinstance(date_val, date):
-                return date_val.strftime('%Y-%m-%d')
-            return str(date_val) if date_val else ""
+                return date_val.strftime('%d/%m/%Y')
+            elif isinstance(date_val, str) and date_val:
+                # Try to parse common date formats and convert to DD/MM/YYYY
+                try:
+                    # Try ISO format first (YYYY-MM-DD)
+                    if len(date_val) == 10 and date_val.count('-') == 2:
+                        parsed_date = datetime.strptime(date_val, '%Y-%m-%d')
+                        return parsed_date.strftime('%d/%m/%Y')
+                    # Try DD/MM/YYYY format (already correct)
+                    elif len(date_val) == 10 and date_val.count('/') == 2:
+                        return date_val
+                    # Try other formats...
+                    return date_val
+                except:
+                    return date_val
+            return str(date_val) if date_val else "N/A"
         
         # Extract license categories
         categories = extract_categories(license_data)
         category_str = ", ".join(categories) if isinstance(categories, list) else str(categories)
         
         # Extract dates
-        issue_date, expiry_date = extract_dates(license_data)
+        issue_date, expiry_date, first_issue_date = extract_dates(license_data)
         
-        # Extract person information with fallbacks
-        first_name = person_data.get('first_name') or person_data.get('name') or 'N/A'
-        last_name = person_data.get('last_name') or person_data.get('surname') or 'N/A'
-        birth_date = person_data.get('birth_date') or person_data.get('date_of_birth') or person_data.get('dob')
-        id_number = person_data.get('id_number') or person_data.get('person_id') or 'N/A'
+        # Extract person information with comprehensive fallbacks
+        first_name = (
+            person_data.get('first_name') or 
+            person_data.get('name') or 
+            person_data.get('names') or 
+            'N/A'
+        )
+        last_name = (
+            person_data.get('last_name') or 
+            person_data.get('surname') or 
+            person_data.get('family_name') or 
+            'N/A'
+        )
+        birth_date = (
+            person_data.get('birth_date') or 
+            person_data.get('date_of_birth') or 
+            person_data.get('dob') or 
+            person_data.get('birthdate')
+        )
+        id_number = (
+            person_data.get('id_number') or 
+            person_data.get('person_id') or 
+            person_data.get('national_id') or 
+            person_data.get('passport_number') or 
+            'N/A'
+        )
+        gender = (
+            person_data.get('gender') or 
+            person_data.get('sex') or 
+            person_data.get('person_nature') or 
+            'M'
+        )
         
-        # Create AMPRO-compatible data structure
+        # Format dates properly
+        formatted_issue_date = format_date(issue_date)
+        formatted_expiry_date = format_date(expiry_date)
+        formatted_first_issue = format_date(first_issue_date)
+        formatted_birth_date = format_date(birth_date)
+        
+        # Extract restrictions
+        restrictions = extract_restrictions(license_data)
+        
+        # Create AMPRO-compatible data structure with all required fields
         ampro_data = {
             # Person information
             'first_name': first_name,
             'last_name': last_name,
             'surname': last_name,  # AMPRO uses 'surname'
             'names': first_name,   # AMPRO uses 'names'
-            'birth_date': format_date(birth_date),
-            'date_of_birth': format_date(birth_date),
-            'gender': person_data.get('gender') or person_data.get('person_nature') or 'M',
+            'birth_date': formatted_birth_date,
+            'date_of_birth': formatted_birth_date,
+            'gender': gender.upper() if gender else 'M',
             'id_number': id_number,
             
             # License information
             'license_number': extract_license_number(license_data),
             'category': category_str,
             'categories': categories,
-            'restrictions': license_data.get('restrictions', '0'),
-            'issue_date': format_date(issue_date),
-            'expiry_date': format_date(expiry_date),
-            'first_issue_date': format_date(license_data.get('first_issue_date', issue_date)),
+            'restrictions': restrictions,
+            'driver_restrictions': restrictions,  # Same as restrictions for front card
+            'vehicle_restrictions': restrictions, # Same as restrictions for front card
+            'issue_date': formatted_issue_date,
+            'expiry_date': formatted_expiry_date,
+            'first_issue_date': formatted_first_issue,
             'issued_location': 'Madagascar',
             'issuing_location': 'Madagascar',
             
             # Additional metadata
             'country': 'Madagascar',
             'card_number': license_data.get('card_number', ''),
+            
+            # Photo data (if available)
+            'photo_base64': license_data.get('photo_base64', ''),
         }
         
-        logger.info(f"Converted LINC data to AMPRO format:")
-        logger.info(f"  - Name: {ampro_data['first_name']} {ampro_data['last_name']}")
-        logger.info(f"  - License: {ampro_data['license_number']}")
-        logger.info(f"  - Categories: {ampro_data['category']}")
+        logger.info(f"Enhanced LINC to AMPRO data conversion:")
+        logger.info(f"  - Full Name: {ampro_data['first_name']} {ampro_data['last_name']}")
+        logger.info(f"  - License Number: {ampro_data['license_number']}")
+        logger.info(f"  - Categories/Codes: {ampro_data['category']}")
         logger.info(f"  - ID Number: {ampro_data['id_number']}")
         logger.info(f"  - Birth Date: {ampro_data['birth_date']}")
+        logger.info(f"  - Gender/Sex: {ampro_data['gender']}")
+        logger.info(f"  - Restrictions: {ampro_data['restrictions']}")
+        logger.info(f"  - Valid Period: {ampro_data['issue_date']} - {ampro_data['expiry_date']}")
+        logger.info(f"  - First Issue: {ampro_data['first_issue_date']}")
         
         return ampro_data
     
