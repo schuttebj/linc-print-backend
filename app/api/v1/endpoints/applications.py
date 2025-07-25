@@ -779,7 +779,7 @@ def approve_and_generate_license(
     # Handle different approval scenarios based on application type and current status
     if application.application_type == ApplicationType.NEW_LICENSE:
         if application.status == ApplicationStatus.SUBMITTED:
-            # First approval: Mark as passed, but require card payment
+            # First approval: Mark as passed, require card payment, and CREATE LICENSE
             application.test_result = TestResult.PASSED
             application.status = ApplicationStatus.CARD_PAYMENT_PENDING
             
@@ -792,15 +792,19 @@ def approve_and_generate_license(
                 notes=notes
             )
             
+            # CREATE LICENSE AT APPROVAL TIME
+            license = _generate_license_from_application(db, updated_application, {})
+            
             return {
                 "application": updated_application,
-                "message": "Test passed! Card payment (38,000 MGA) required before license generation",
+                "license": license,
+                "message": "Test passed! License created. Card payment (38,000 MGA) required for card ordering",
                 "next_step": "card_payment_required",
                 "card_payment_amount": "38,000 MGA"
             }
             
         elif application.status == ApplicationStatus.CARD_PAYMENT_PENDING:
-            # Second approval: Generate license after card payment
+            # Second approval: Just update status (license already exists)
             if not application.card_payment_completed:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -817,22 +821,14 @@ def approve_and_generate_license(
                 notes=notes
             )
             
-            # Generate license immediately
-            license = None
-            try:
-                license = _generate_license_from_application_approval(db, updated_application, current_user)
-                logger.info(f"Generated license {license.id} for application {application_id}")
-            except Exception as e:
-                logger.error(f"Failed to generate license for application {application_id}: {str(e)}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Application approved but license generation failed"
-                )
+            # License already exists from first approval - just find it
+            from app.models.license import License
+            license = db.query(License).filter(License.created_from_application_id == application_id).first()
             
             return {
                 "application": updated_application,
                 "license": license,
-                "message": "Application approved successfully and license generated"
+                "message": "Application approved successfully - license already exists"
             }
     else:
         # Other application types: Single-step approval to APPROVED with license generation
@@ -848,7 +844,7 @@ def approve_and_generate_license(
         # Generate license immediately for non-NEW_LICENSE applications
         license = None
         try:
-            license = _generate_license_from_application_approval(db, updated_application, current_user)
+            license = _generate_license_from_application(db, updated_application, {})
             logger.info(f"Generated license {license.id} for application {application_id}")
         except Exception as e:
             logger.error(f"Failed to generate license for application {application_id}: {str(e)}")
@@ -1940,29 +1936,27 @@ def create_application_authorization(
             # NEW_LICENSE: Move to CARD_PAYMENT_PENDING to require card payment
             application.status = ApplicationStatus.CARD_PAYMENT_PENDING
             
-            # Don't generate license yet - wait for card payment
-            authorization.license_generated = False
-            authorization.license_id = None
-            authorization.license_generated_at = None
+            # CREATE LICENSE AT APPROVAL TIME (not payment time)
+            license = _generate_license_from_application(db, application, final_restrictions)
             
-            # Add status history
-            from app.models.application import ApplicationStatusHistory
-            status_history = ApplicationStatusHistory(
-                application_id=application_id,
-                previous_status=ApplicationStatus.PAID,
-                new_status=ApplicationStatus.CARD_PAYMENT_PENDING,
-                changed_by=current_user.id,
-                change_reason="Test passed, awaiting card payment",
-                change_notes=f"Test passed by {current_user.username}, card payment required"
-            )
-            db.add(status_history)
+            db.commit()
             
+            return {
+                "success": True,
+                "message": "Test passed! License created. Card payment (38,000 MGA) required for card ordering",
+                "application_status": application.status.value,
+                "test_result": application.test_result.value,
+                "license_id": str(license.id),
+                "next_step": "card_payment_required",
+                "card_payment_amount": "38,000 MGA",
+                "applied_restrictions": final_restrictions
+            }
         else:
-            # Other application types: Move to APPROVED status and generate license
+            # Other application types: Go directly to APPROVED and generate license
             application.status = ApplicationStatus.APPROVED
             
-            # Generate license automatically
-            license = _generate_license_from_authorization(db, application, authorization)
+            # Auto-generate license
+            license = _generate_license_from_application(db, application, final_restrictions)
             
             # Update authorization with generated license
             authorization.license_generated = True
@@ -2076,12 +2070,14 @@ def _generate_license_from_authorization(db: Session, application: Application, 
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
+        license_number=license_number,  # Set the generated license number
         category=application.license_category,
         status=LicenseStatus.ACTIVE,
-        issue_date=datetime.utcnow(),
-        issuing_location_id=application.location_id,
-        issued_by_user_id=authorization.examiner_id,
-        restrictions=authorization.applied_restrictions or []
+        issue_date=application.approval_date,
+        issuing_location_id=application.approved_at_location_id,
+        issued_by_user_id=application.approved_by_user_id,
+        restrictions=authorization.applied_restrictions or [],
+        medical_restrictions=[],  # Can be populated from medical_information if needed
     )
     
     db.add(license)
@@ -2712,13 +2708,17 @@ def process_application_approval(
             # NEW_LICENSE: Move to CARD_PAYMENT_PENDING to require card payment
             application.status = ApplicationStatus.CARD_PAYMENT_PENDING
             
+            # CREATE LICENSE AT APPROVAL TIME (not payment time)
+            license = _generate_license_from_application(db, application, final_restrictions)
+            
             db.commit()
             
             return {
                 "success": True,
-                "message": "Test passed! Card payment (38,000 MGA) required before license generation",
+                "message": "Test passed! License created. Card payment (38,000 MGA) required for card ordering",
                 "application_status": application.status.value,
                 "test_result": application.test_result.value,
+                "license_id": str(license.id),
                 "next_step": "card_payment_required",
                 "card_payment_amount": "38,000 MGA",
                 "applied_restrictions": final_restrictions
@@ -2775,6 +2775,7 @@ def _generate_license_from_application(db: Session, application: Application, re
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
+        license_number=license_number,  # Set the generated license number
         category=application.license_category,
         status=LicenseStatus.ACTIVE,
         issue_date=application.approval_date,

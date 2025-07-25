@@ -170,37 +170,7 @@ class CRUDTransaction(CRUDBase[Transaction, TransactionCreate, TransactionUpdate
                             application.status = ApplicationStatus.APPROVED
                             print(f"DEBUG: NEW_LICENSE card payment completed for {application.application_number}")
                             
-                            # AUTO-GENERATE LICENSE when card payment is completed for NEW_LICENSE
-                            try:
-                                from app.crud.crud_license import license as crud_license
-                                from app.schemas.license import LicenseCreate
-                                from datetime import timedelta
-                                
-                                # Create license from approved application using proper schema
-                                license_data = LicenseCreate(
-                                    person_id=application.person_id,
-                                    license_category=application.license_category,
-                                    issuing_location_id=application.location_id,
-                                    restrictions=application.identified_restrictions.get("driver_restrictions", []) if application.identified_restrictions else [],
-                                    medical_restrictions=application.identified_restrictions.get("vehicle_restrictions", []) if application.identified_restrictions else [],
-                                    has_professional_permit=False,
-                                    professional_permit_categories=[],
-                                    professional_permit_expiry=None,
-                                    previous_license_id=None,
-                                    is_upgrade=False,
-                                    upgrade_from_category=None,
-                                    legacy_license_number=None,
-                                    captured_from_license_number=None
-                                )
-                                
-                                # Create the license
-                                new_license = crud_license.create(db=db, obj_in=license_data)
-                                print(f"DEBUG: Auto-generated license {new_license.id} for application {application.application_number}")
-                                
-                            except Exception as e:
-                                print(f"DEBUG: Failed to auto-generate license for {application.application_number}: {str(e)}")
-                                # Don't fail the payment if license generation fails
-                                pass
+                            # Note: License is already created during approval stage, not here
                     elif application.application_type == ApplicationType.LEARNERS_PERMIT:
                         # LEARNERS_PERMIT has single payment for test
                         if application.status == ApplicationStatus.SUBMITTED:
