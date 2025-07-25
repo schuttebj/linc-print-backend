@@ -351,6 +351,21 @@ class MadagascarCardGenerator:
     def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
         """Extract photo data from person data with multiple fallback paths"""
         try:
+            logger.info(f"Extracting photo from person data. Available keys: {list(person_data.keys())}")
+            
+            # Log biometric data structure if available
+            if "biometric_data" in person_data:
+                biometric_data = person_data["biometric_data"]
+                logger.info(f"Biometric data found with keys: {list(biometric_data.keys()) if isinstance(biometric_data, dict) else type(biometric_data)}")
+                if isinstance(biometric_data, dict):
+                    for key, value in biometric_data.items():
+                        if value:
+                            logger.info(f"  {key}: {type(value)} - {str(value)[:100]}...")
+                        else:
+                            logger.info(f"  {key}: None/empty")
+            else:
+                logger.info("No biometric_data key found in person_data")
+            
             # Try different ways to get photo data
             photo_sources = [
                 # Direct photo data
@@ -364,20 +379,23 @@ class MadagascarCardGenerator:
                 person_data.get("photo_url"),
             ]
             
-            for photo_source in photo_sources:
+            for i, photo_source in enumerate(photo_sources):
+                logger.info(f"Checking photo source {i}: {type(photo_source)} - {str(photo_source)[:100] if photo_source else 'None'}...")
+                
                 if photo_source:
-                    logger.info(f"Found photo source: {type(photo_source)} - {str(photo_source)[:100]}...")
-                    
                     # If it's already base64 data, return it
                     if isinstance(photo_source, str):
                         if photo_source.startswith('data:image/'):
                             # Extract base64 part from data URL
+                            logger.info(f"Found data URL photo source")
                             return photo_source.split(',')[1] if ',' in photo_source else photo_source
                         elif len(photo_source) > 1000 and not ('/' in photo_source or '\\' in photo_source):
                             # Looks like raw base64 data
+                            logger.info(f"Found raw base64 photo data")
                             return photo_source
                         elif photo_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in photo_source or '\\' in photo_source):
                             # This looks like a file path - try to read it
+                            logger.info(f"Attempting to read photo from file path: {photo_source}")
                             try:
                                 from app.services.card_file_manager import card_file_manager
                                 photo_data = card_file_manager.read_file_as_base64(photo_source)
@@ -400,6 +418,8 @@ class MadagascarCardGenerator:
     def _extract_signature_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
         """Extract signature data from person data with multiple fallback paths"""
         try:
+            logger.info(f"Extracting signature from person data")
+            
             # Try different ways to get signature data
             signature_sources = [
                 # Direct signature data
@@ -413,20 +433,23 @@ class MadagascarCardGenerator:
                 person_data.get("signature_url"),
             ]
             
-            for signature_source in signature_sources:
+            for i, signature_source in enumerate(signature_sources):
+                logger.info(f"Checking signature source {i}: {type(signature_source)} - {str(signature_source)[:100] if signature_source else 'None'}...")
+                
                 if signature_source:
-                    logger.info(f"Found signature source: {type(signature_source)} - {str(signature_source)[:100]}...")
-                    
                     # If it's already base64 data, return it
                     if isinstance(signature_source, str):
                         if signature_source.startswith('data:image/'):
                             # Extract base64 part from data URL
+                            logger.info(f"Found data URL signature source")
                             return signature_source.split(',')[1] if ',' in signature_source else signature_source
                         elif len(signature_source) > 1000 and not ('/' in signature_source or '\\' in signature_source):
                             # Looks like raw base64 data
+                            logger.info(f"Found raw base64 signature data")
                             return signature_source
                         elif signature_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in signature_source or '\\' in signature_source):
                             # This looks like a file path - try to read it
+                            logger.info(f"Attempting to read signature from file path: {signature_source}")
                             try:
                                 from app.services.card_file_manager import card_file_manager
                                 signature_data = card_file_manager.read_file_as_base64(signature_source)
@@ -873,12 +896,33 @@ class MadagascarCardGenerator:
             person_data.get('passport_number') or 
             'N/A'
         )
-        gender = (
+        raw_gender = (
             person_data.get('gender') or 
             person_data.get('sex') or 
             person_data.get('person_nature') or 
             'M'
         )
+        
+        # Map gender codes to text
+        def map_gender_code(gender_code):
+            """Map numeric gender codes to text"""
+            if isinstance(gender_code, str):
+                code_lower = gender_code.lower().strip()
+                if code_lower in ['01', '1', 'm', 'male']:
+                    return 'MALE'
+                elif code_lower in ['02', '2', 'f', 'female']:
+                    return 'FEMALE'
+            return 'MALE'  # Default fallback
+        
+        gender = map_gender_code(raw_gender)
+        
+        # Calculate card expiry date (5 years from now, regardless of license expiry)
+        from datetime import datetime, timedelta
+        card_creation_date = datetime.now()
+        card_expiry_date = card_creation_date + timedelta(days=365 * 5)  # 5 years for card
+        
+        # Use card expiry for display, not license expiry
+        expiry_date = card_expiry_date.isoformat()
         
         # Format dates properly
         formatted_issue_date = format_date(issue_date)
