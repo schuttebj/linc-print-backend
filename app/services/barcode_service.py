@@ -30,6 +30,13 @@ except ImportError:
     logging.warning("ReportLab not available - barcode generation will be simulated")
 
 try:
+    import qrcode
+    from qrcode.image.styledpil import StyledPilImage
+    QR_AVAILABLE = True
+except ImportError:
+    QR_AVAILABLE = False
+
+try:
     from PIL import Image
     PIL_AVAILABLE = True
 except ImportError:
@@ -251,6 +258,7 @@ class LicenseBarcodeService:
     def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
         """
         Generate PDF417 barcode from license data
+        Falls back to QR code if PDF417 is not available
         
         Args:
             barcode_data: Standardized barcode data dictionary
@@ -269,19 +277,51 @@ class LicenseBarcodeService:
                     f"Data size ({data_bytes} bytes) exceeds maximum ({self.BARCODE_CONFIG['max_data_bytes']} bytes)"
                 )
             
-            if not BARCODE_AVAILABLE:
-                # Simulation mode - generate placeholder
+            if BARCODE_AVAILABLE:
+                # Generate PDF417 barcode
+                barcode = PDF417(
+                    json_data,
+                    columns=self.BARCODE_CONFIG['columns'],
+                    level=self.BARCODE_CONFIG['error_correction_level']
+                )
+                
+                # Render to image
+                img = renderPM.drawToPIL(barcode, fmt='PNG', bg=0xffffff)
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            elif QR_AVAILABLE:
+                # Fallback to QR code
+                self.logger.warning("PDF417 not available, generating QR code instead")
+                return self._generate_qr_code(json_data)
+            
+            else:
+                # Last resort - generate placeholder
                 return self._generate_barcode_placeholder(json_data)
             
-            # Create PDF417 barcode
-            barcode = PDF417(
-                json_data,
-                columns=self.BARCODE_CONFIG['columns'],
-                level=self.BARCODE_CONFIG['error_correction_level']
+        except Exception as e:
+            raise BarcodeGenerationError(f"Failed to generate barcode: {str(e)}")
+
+    def _generate_qr_code(self, data: str) -> str:
+        """Generate QR code as fallback when PDF417 is not available"""
+        try:
+            # Create QR code instance
+            qr = qrcode.QRCode(
+                version=1,  # Auto-adjust size
+                error_correction=qrcode.constants.ERROR_CORRECT_M,  # 15% error correction
+                box_size=4,  # Size of each box
+                border=2,   # Minimum border size
             )
             
-            # Render to image
-            img = renderPM.drawToPIL(barcode, fmt='PNG', bg=0xffffff)
+            # Add data
+            qr.add_data(data)
+            qr.make(fit=True)
+            
+            # Create image
+            img = qr.make_image(fill_color="black", back_color="white")
             
             # Convert to base64
             buffer = io.BytesIO()
@@ -289,7 +329,8 @@ class LicenseBarcodeService:
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
-            raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
+            self.logger.error(f"Failed to generate QR code: {e}")
+            return self._generate_barcode_placeholder(data)
 
     def _generate_barcode_placeholder(self, data: str) -> str:
         """Generate a placeholder barcode image when PDF417 is not available"""
