@@ -486,7 +486,80 @@ class MadagascarCardGenerator:
         except Exception as e:
             logger.error(f"Error extracting signature: {e}")
             return None
+        
+        logger.info("No usable signature data found, will use placeholder")
+        return None
     
+    def _extract_fingerprint_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
+        """Extract fingerprint data from person data with multiple fallback paths"""
+        try:
+            logger.info(f"Extracting fingerprint from person data")
+            
+            # Try different ways to get fingerprint data
+            fingerprint_sources = [
+                # Direct fingerprint data
+                person_data.get("fingerprint_data"),
+                person_data.get("biometric_data", {}).get("fingerprint_url"),
+                person_data.get("biometric_data", {}).get("fingerprint_path"),
+                # Legacy paths
+                person_data.get("fingerprint_url"),
+                person_data.get("fingerprint_path"),
+                person_data.get("fingerprint_file_path"),
+            ]
+            
+            for i, fingerprint_source in enumerate(fingerprint_sources):
+                logger.info(f"Checking fingerprint source {i}: {type(fingerprint_source)} - {str(fingerprint_source)[:100] if fingerprint_source else 'None'}...")
+                
+                if fingerprint_source:
+                    # Handle different data types
+                    if isinstance(fingerprint_source, str):
+                        if fingerprint_source.startswith('data:image/'):
+                            # Data URL format
+                            fingerprint_data = fingerprint_source.split(',')[1] if ',' in fingerprint_source else fingerprint_source
+                            logger.info(f"Found data URL fingerprint")
+                            return fingerprint_data
+                        elif len(fingerprint_source) > 1000 and not ('/' in fingerprint_source or '\\' in fingerprint_source):
+                            # Likely base64 data
+                            logger.info(f"Found raw base64 fingerprint data")
+                            return fingerprint_source
+                        elif fingerprint_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in fingerprint_source or '\\' in fingerprint_source):
+                            # File path
+                            logger.info(f"Attempting to read fingerprint from file path: {fingerprint_source}")
+                            from app.services.card_file_manager import card_file_manager
+                            fingerprint_data = card_file_manager.read_file_as_base64(fingerprint_source)
+                            if fingerprint_data:
+                                logger.info(f"Successfully read fingerprint from file: {fingerprint_source} ({len(fingerprint_data)} chars base64)")
+                                return fingerprint_data
+                            else:
+                                logger.warning(f"Could not read fingerprint file: {fingerprint_source}")
+                        except Exception as e:
+                            logger.warning(f"Failed to read fingerprint file {fingerprint_source}: {e}")
+                            continue
+                    elif isinstance(fingerprint_source, bytes):
+                        # Direct bytes data
+                        return base64.b64encode(fingerprint_source).decode('utf-8')
+                    
+        except Exception as e:
+            logger.error(f"Error extracting fingerprint: {e}")
+            return None
+        
+        logger.info("No usable fingerprint data found, will use placeholder")
+        return None
+    
+    def _draw_fingerprint_pattern(self, draw, fp_x, fp_y, fp_w, fp_h):
+        """Draw fingerprint pattern placeholder"""
+        # Generate a realistic fingerprint-like pattern
+        for i in range(5, fp_w - 5, 4):
+            for j in range(5, fp_h - 5, 4):
+                # Create concentric oval-like patterns
+                center_x = fp_w // 2
+                center_y = fp_h // 2
+                distance_from_center = ((i - center_x) ** 2 + (j - center_y) ** 2) ** 0.5
+                
+                # Create ridges and valleys pattern
+                if int(distance_from_center) % 8 < 4:  # Adjust for ridge spacing
+                    draw.point((fp_x + i, fp_y + j), fill=COLORS["black"])
+
     def generate_front(self, license_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> str:
         """Generate Madagascar license front side using exact AMPRO coordinates"""
         
@@ -523,6 +596,51 @@ class MadagascarCardGenerator:
             photo_center_y = photo_pos[1] + photo_pos[3] // 2
             draw.text((photo_center_x, photo_center_y), "SARY", 
                      fill=(100, 100, 100), font=self.fonts["field_value"], anchor="mm")
+        
+        # Add signature area using AMPRO grid coordinates - width adjusted to match photo width
+        sig_coords = FRONT_COORDINATES["signature"]
+        photo_width = FRONT_COORDINATES["photo"][2]  # Get photo width
+        
+        sig_x = sig_coords[0]
+        sig_y = sig_coords[1]
+        sig_w = photo_width  # Use photo width instead of full width
+        sig_h = sig_coords[3]
+        
+        # Process and add signature if available
+        signature_data = license_data.get("signature_base64")
+        if signature_data:
+            try:
+                logger.info(f"Processing signature data for front card")
+                signature_img = self._process_photo_data(signature_data, sig_w, sig_h)
+                if signature_img:
+                    license_img.paste(signature_img, (sig_x, sig_y))
+                    logger.info(f"Successfully added signature at position ({sig_x}, {sig_y})")
+                else:
+                    logger.warning("Signature processing returned None")
+                    # Draw signature placeholder
+                    draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
+                                  fill=(240, 240, 240), outline=(180, 180, 180), width=1)
+                    sig_center_x = sig_x + sig_w // 2
+                    sig_center_y = sig_y + sig_h // 2
+                    draw.text((sig_center_x, sig_center_y), "SONIA", 
+                             fill=(100, 100, 100), font=self.fonts["small"], anchor="mm")
+            except Exception as e:
+                logger.warning(f"Failed to process signature: {e}")
+                # Draw signature placeholder
+                draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
+                              fill=(240, 240, 240), outline=(180, 180, 180), width=1)
+                sig_center_x = sig_x + sig_w // 2
+                sig_center_y = sig_y + sig_h // 2
+                draw.text((sig_center_x, sig_center_y), "SONIA", 
+                         fill=(100, 100, 100), font=self.fonts["small"], anchor="mm")
+        else:
+            # Draw signature placeholder
+            draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
+                          fill=(240, 240, 240), outline=(180, 180, 180), width=1)
+            sig_center_x = sig_x + sig_w // 2
+            sig_center_y = sig_y + sig_h // 2
+            draw.text((sig_center_x, sig_center_y), "SONIA", 
+                     fill=(100, 100, 100), font=self.fonts["small"], anchor="mm")
         
         # REMOVED: Title and subtitle (no "REPOBLIKAN'I MADAGASIKARA" or subtitle)
         
@@ -567,10 +685,6 @@ class MadagascarCardGenerator:
         sig_y = sig_coords[1]
         sig_w = photo_width  # Use photo width instead of full width
         sig_h = sig_coords[3]
-        
-        # Draw signature border
-        draw.rectangle([sig_x, sig_y, sig_x + sig_w, sig_y + sig_h], 
-                      outline=COLORS["black"], width=1)
         
         # Convert to base64
         buffer = io.BytesIO()
@@ -635,18 +749,26 @@ class MadagascarCardGenerator:
         draw.rectangle([fp_x, fp_y, fp_x + fp_w, fp_y + fp_h], 
                       outline=COLORS["black"], width=2)
         
-        # Create fingerprint pattern (simple dot pattern for visual effect)
-        # Generate a realistic fingerprint-like pattern
-        for i in range(5, fp_w - 5, 4):
-            for j in range(5, fp_h - 5, 4):
-                # Create concentric oval-like patterns
-                center_x = fp_w // 2
-                center_y = fp_h // 2
-                distance_from_center = ((i - center_x) ** 2 + (j - center_y) ** 2) ** 0.5
-                
-                # Create ridges and valleys pattern
-                if int(distance_from_center) % 8 < 4:  # Adjust for ridge spacing
-                    draw.point((fp_x + i, fp_y + j), fill=COLORS["black"])
+        # Process and add fingerprint if available  
+        fingerprint_data = license_data.get("fingerprint_base64")
+        if fingerprint_data:
+            try:
+                logger.info(f"Processing fingerprint data for back card")
+                fingerprint_img = self._process_photo_data(fingerprint_data, fp_w - 4, fp_h - 4)  # Leave border space
+                if fingerprint_img:
+                    license_img.paste(fingerprint_img, (fp_x + 2, fp_y + 2))  # Offset for border
+                    logger.info(f"Successfully added fingerprint at position ({fp_x + 2}, {fp_y + 2})")
+                else:
+                    logger.warning("Fingerprint processing returned None")
+                    # Create fingerprint pattern (simple dot pattern for visual effect)
+                    self._draw_fingerprint_pattern(draw, fp_x, fp_y, fp_w, fp_h)
+            except Exception as e:
+                logger.warning(f"Failed to process fingerprint: {e}")
+                # Create fingerprint pattern (simple dot pattern for visual effect)
+                self._draw_fingerprint_pattern(draw, fp_x, fp_y, fp_w, fp_h)
+        else:
+            # Create fingerprint pattern (simple dot pattern for visual effect)
+            self._draw_fingerprint_pattern(draw, fp_x, fp_y, fp_w, fp_h)
         
         # Add fingerprint label below the area
         fp_label_x = fp_x + fp_w // 2
@@ -709,12 +831,15 @@ class MadagascarCardGenerator:
             # Extract biometric data with multiple fallback paths
             photo_data = self._extract_photo_from_person_data(person_data)
             signature_data = self._extract_signature_from_person_data(person_data)
+            fingerprint_data = self._extract_fingerprint_from_person_data(person_data)
             
             # Add extracted biometric data to ampro_license_data for card generation
             if photo_data:
                 ampro_license_data["photo_base64"] = photo_data
             if signature_data:
                 ampro_license_data["signature_base64"] = signature_data
+            if fingerprint_data:
+                ampro_license_data["fingerprint_base64"] = fingerprint_data
             
             # Generate front and back images using integrated AMPRO system
             front_base64 = self.generate_front(ampro_license_data, photo_data)
