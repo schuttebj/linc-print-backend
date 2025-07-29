@@ -64,8 +64,8 @@ class LicenseBarcodeService:
     BARCODE_CONFIG = {
         'columns': 9,  # Fixed columns for consistency
         'error_correction_level': 2,  # Security level 2 for pdf417gen (~25% correction capacity)
-        'max_data_bytes': 1800,  # ~70% of 2.7KB capacity (925 codewords)
-        'max_image_bytes': 1500,  # Maximum photo size in base64
+        'max_data_bytes': 1200,  # Conservative limit accounting for PDF417 encoding overhead
+        'max_image_bytes': 800,  # More conservative photo size limit
         'version': 1  # JSON structure version
     }
     
@@ -456,7 +456,7 @@ class LicenseBarcodeService:
             output = io.BytesIO()
             quality = 85
             
-            # Iteratively adjust quality to target ~1.5KB
+            # Iteratively adjust quality to target ~800 bytes
             while quality > 20:
                 output.seek(0)
                 output.truncate()
@@ -465,8 +465,8 @@ class LicenseBarcodeService:
                 # Check encoded size
                 encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
                 
-                # Target ~1.5KB (1536 bytes) encoded
-                if encoded_size <= 1500:
+                # Target ~800 bytes encoded (conservative for PDF417)
+                if encoded_size <= 800:
                     break
                     
                 quality -= 5

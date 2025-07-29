@@ -342,16 +342,19 @@ async def generate_test_barcode(
         
         # Add image if requested and space allows
         # PDF417 constraints: Max 925 codewords (~2.7KB), use ~70% (~1.8KB) for data
+        print(f"Photo inclusion check: include_sample_photo={request.include_sample_photo}, custom_photo_provided={bool(request.custom_photo_base64)}")
+        
         if request.include_sample_photo or request.custom_photo_base64:
             # Check space before adding photo
             json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-            max_photo_size = 1500  # 1.5KB max for photo as specified
-            remaining_space = 1800 - json_size  # Total data budget minus current JSON size
+            max_photo_size = 800  # Conservative photo size for PDF417
+            remaining_space = 1200 - json_size  # Conservative total data budget
             
             print(f"Space calculation: JSON size={json_size}, remaining_space={remaining_space}, max_photo_size={max_photo_size}")
             
             # Only add photo if we have enough space (with some safety margin)
-            if remaining_space >= (max_photo_size + 50):  # 50 byte safety margin
+            if remaining_space >= (max_photo_size + 100):  # 100 byte safety margin
+                print("Space check passed, proceeding with photo processing")
                 try:
                     photo_to_use = None
                     
@@ -359,6 +362,7 @@ async def generate_test_barcode(
                     if request.custom_photo_base64:
                         if len(request.custom_photo_base64) <= max_photo_size:
                             photo_to_use = request.custom_photo_base64
+                            print(f"Using custom photo, size: {len(request.custom_photo_base64)} chars")
                         else:
                             # Truncate if too large (basic fallback)
                             photo_to_use = request.custom_photo_base64[:max_photo_size]
@@ -373,17 +377,25 @@ async def generate_test_barcode(
                     # Add photo to barcode data
                     if photo_to_use:
                         barcode_data["photo"] = photo_to_use
+                        print(f"Photo added to barcode data, length: {len(photo_to_use)} chars")
+                    else:
+                        print("No photo was processed successfully")
                         
                 except Exception as e:
                     # Log error but continue without photo
                     print(f"Photo processing error: {e}")
                     pass
+            else:
+                print(f"Space check failed: remaining_space={remaining_space} < required={max_photo_size + 50}")
+        else:
+            print("No photo inclusion requested")
+        
+        # Calculate final data size before generating barcode
+        data_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
+        print(f"Final data size before PDF417 generation: {data_size} bytes")
         
         # Generate PDF417 barcode image
         barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
-        
-        # Calculate final data size
-        data_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
         
         return BarcodeGenerationResponse(
             success=True,
