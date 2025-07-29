@@ -525,16 +525,17 @@ class MadagascarCardGenerator:
                         elif fingerprint_source.endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) or ('/' in fingerprint_source or '\\' in fingerprint_source):
                             # File path
                             logger.info(f"Attempting to read fingerprint from file path: {fingerprint_source}")
-                            from app.services.card_file_manager import card_file_manager
-                            fingerprint_data = card_file_manager.read_file_as_base64(fingerprint_source)
-                            if fingerprint_data:
-                                logger.info(f"Successfully read fingerprint from file: {fingerprint_source} ({len(fingerprint_data)} chars base64)")
-                                return fingerprint_data
-                            else:
-                                logger.warning(f"Could not read fingerprint file: {fingerprint_source}")
-                        except Exception as e:
-                            logger.warning(f"Failed to read fingerprint file {fingerprint_source}: {e}")
-                            continue
+                            try:
+                                from app.services.card_file_manager import card_file_manager
+                                fingerprint_data = card_file_manager.read_file_as_base64(fingerprint_source)
+                                if fingerprint_data:
+                                    logger.info(f"Successfully read fingerprint from file: {fingerprint_source} ({len(fingerprint_data)} chars base64)")
+                                    return fingerprint_data
+                                else:
+                                    logger.warning(f"Could not read fingerprint file: {fingerprint_source}")
+                            except Exception as e:
+                                logger.warning(f"Failed to read fingerprint file {fingerprint_source}: {e}")
+                                continue
                     elif isinstance(fingerprint_source, bytes):
                         # Direct bytes data
                         return base64.b64encode(fingerprint_source).decode('utf-8')
