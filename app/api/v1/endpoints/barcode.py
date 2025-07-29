@@ -291,14 +291,14 @@ async def decode_license_barcode(
 @router.post(
     "/test",
     response_model=BarcodeGenerationResponse,
-    summary="Generate comprehensive test barcode",
-    description="Generate a complete PDF417 barcode with comprehensive test data that mimics a real Madagascar license"
+    summary="Generate test barcode with license data only",
+    description="Generate a PDF417 barcode with only the actual Madagascar license file data"
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
     current_user: User = Depends(require_permission("licenses.read"))
 ):
-    """Generate comprehensive test barcode with complete license details"""
+    """Generate test barcode with only actual license file data"""
     try:
         import uuid
         from datetime import datetime, timedelta
@@ -315,93 +315,42 @@ async def generate_test_barcode(
         sequence = random.randint(100000, 999999)
         card_number = f"MG{location_code}{sequence:06d}"
         
-        # Create COMPACT but comprehensive barcode data using short keys
+        # Generate realistic ID number (Madagascar national ID format)
+        id_number = f"{random.randint(100000000000, 999999999999)}"  # 12-digit ID
+        
+        # Create barcode with ONLY the actual license file data (using short keys)
         barcode_data = {
+            # Required system fields
             "ver": 1,
             "country": "MG",
-            "card_num": card_number,
-            "dob": request.date_of_birth,
-            "sex": request.sex,
-            "codes": request.license_codes,
-            "valid_from": current_issue_date.strftime("%Y-%m-%d"),
-            "valid_to": expiry_date.strftime("%Y-%m-%d"),
-            "first_issued": first_issue_date.strftime("%Y-%m-%d"),
-            "name": request.person_name.upper(),
-            "vehicle_restrictions": request.vehicle_restrictions,
-            "driver_restrictions": request.driver_restrictions,
+            
+            # Actual license file data ONLY
+            "name": request.person_name.upper(),                    # Initials and Surname
+            "idn": id_number,                                       # ID Number  
+            "card_num": card_number,                               # Card Number
+            "dr": request.driver_restrictions,                     # Driver Restrictions
+            "sex": request.sex,                                    # Sex
+            "dob": request.date_of_birth,                          # Date of Birth
+            "vf": current_issue_date.strftime("%Y-%m-%d"),         # Valid Period Start
+            "vt": expiry_date.strftime("%Y-%m-%d"),                # Valid Period End
+            "codes": request.license_codes,                        # License Codes
+            "vr": request.vehicle_restrictions,                    # Vehicle Restrictions
+            "fi": first_issue_date.strftime("%Y-%m-%d"),           # First Issued Date
         }
         
-        # Add compact additional data if space allows (using short keys)
-        if request.include_medical_data:
-            barcode_data.update({
-                "med": "01" if request.driver_restrictions else "00",  # Medical code
-                "bt": random.choice(["A+", "O+", "B+", "AB+"]),        # Blood type (short)
-                "ht": f"{random.randint(150, 190)}",                   # Height (cm only)
-                "ec": random.choice(["BR", "BL", "HZ", "GR"])          # Eye color (abbreviated)
-            })
-        
-        if request.include_address_data:
-            regions = ["TNR", "FIA", "TOM", "MAH", "ANT", "TOL"]  # Abbreviated region codes
-            barcode_data.update({
-                "reg": random.choice(regions),                         # Region (abbreviated)
-                "pc": f"{random.randint(100, 999):03d}"               # Postal code
-            })
-        
-        # Add professional permit data (compact) if C or D license
-        if request.include_professional_permit and any(code in ["C", "D"] for code in request.license_codes):
-            prof_codes = [code for code in request.license_codes if code in ["C", "D"]]
-            barcode_data["prof"] = {
-                "cat": prof_codes,
-                "exp": (current_issue_date + timedelta(days=365)).strftime("%Y-%m-%d"),
-                "cert": f"TC{random.randint(1000, 9999)}"
-            }
-        
-        # Add license history (very compact) if upgrade scenario
-        if request.include_license_history and "B" in request.license_codes and len(request.license_codes) > 1:
-            barcode_data["hist"] = [{"c": "B", "d": first_issue_date.strftime("%Y-%m-%d")}]
-        
-        # Add essential authority info (compact)
-        barcode_data.update({
-            "loc": location_code,                                      # Issue location code
-            "auth": "MGMT",                                           # Authority (abbreviated)
-            "sec": f"MG{random.randint(1000, 9999)}"                 # Security code
-        })
-        
-        # Check size before adding photo
-        json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-        max_photo_size = 1800 - json_size - 100  # Leave 100 bytes buffer
-        
-        # Add optimized photo if requested and space allows
-        if request.include_sample_photo and max_photo_size > 500:
-            # Generate smaller photo for barcode
-            try:
-                sample_photo = barcode_service._generate_sample_photo()
-                if sample_photo and len(sample_photo) <= max_photo_size:
-                    barcode_data["photo"] = sample_photo
-                else:
-                    # Generate minimal photo if space is tight
-                    barcode_data["photo"] = "R0lGODlhEAAQAPIAAP///wAAAMLCwkJCQgAAAGJiYoKCgpKSkiH+GkNyZWF0ZWQgd2l0aCBhamF4bG9hZC5pbmZvACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAEAAQAAADMwi63P4wyklrE2MIOggZnAdOmGYJRbExwroUmcG2LmDEwnHQLVsYOd2mBzkYDAdKa+dIAAAh+QQACgABACwAAAAAEAAQAAADNAi63P5OjCEgG4QMu7DmikRxQlFUYDEZIGBMRVsaqHwctXXf7QWQV/pMHJNh7wfwYAEOOBAAACH5BAAKAAIALAAAAAAQABAAAAMyiC63P4"  # Tiny placeholder
-            except:
-                pass  # Skip photo if generation fails
-        
-        # Final size check
-        final_json = json.dumps(barcode_data, separators=(',', ':'))
-        final_size = len(final_json.encode('utf-8'))
-        
-        if final_size > 1800:
-            # Remove photo if still too large
-            if "photo" in barcode_data:
-                del barcode_data["photo"]
-            # Remove optional fields if still too large
-            if final_size > 1800:
-                optional_fields = ["hist", "prof", "bt", "ht", "ec", "reg", "pc"]
-                for field in optional_fields:
-                    if field in barcode_data:
-                        del barcode_data[field]
-                        final_json = json.dumps(barcode_data, separators=(',', ':'))
-                        final_size = len(final_json.encode('utf-8'))
-                        if final_size <= 1800:
-                            break
+        # Add image only if requested and space allows
+        if request.include_sample_photo:
+            # Check space before adding photo
+            json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
+            max_photo_size = 1700 - json_size  # Leave buffer
+            
+            if max_photo_size > 500:
+                try:
+                    sample_photo = barcode_service._generate_sample_photo()
+                    if sample_photo and len(sample_photo) <= max_photo_size:
+                        barcode_data["photo"] = sample_photo
+                except:
+                    pass  # Skip photo if generation fails
         
         # Generate PDF417 barcode image
         barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
@@ -409,27 +358,18 @@ async def generate_test_barcode(
         # Calculate final data size
         data_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
         
-        # Create a compact test summary
-        test_summary = {
-            "type": "MADAGASCAR_LICENSE_TEST",
-            "fields": len(barcode_data),
-            "photo": bool(barcode_data.get("photo")),
-            "size_bytes": data_size,
-            "card": card_number
-        }
-        
         return BarcodeGenerationResponse(
             success=True,
             barcode_image_base64=barcode_image,
-            barcode_data={**barcode_data, "_test": test_summary},
+            barcode_data=barcode_data,
             data_size_bytes=data_size,
-            message=f"Compact test barcode: {card_number} ({data_size} bytes, {len(barcode_data)} fields)"
+            message=f"License barcode: {card_number} (ID: {id_number}, {data_size} bytes)"
         )
         
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate comprehensive test barcode: {str(e)}"
+            detail=f"Failed to generate test barcode: {str(e)}"
         )
 
 
