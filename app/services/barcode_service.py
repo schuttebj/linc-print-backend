@@ -419,14 +419,14 @@ class LicenseBarcodeService:
         return info
 
     def _generate_sample_photo(self) -> Optional[str]:
-        """Generate a sample photo for testing purposes"""
+        """Generate a sample photo for testing purposes - targeting ~1.5KB 8-bit image"""
         try:
             if not PIL_AVAILABLE:
                 return None
             
             from PIL import Image, ImageDraw, ImageFont
             
-            # Create a simple test image (passport photo size)
+            # Create a passport photo sized image
             img = Image.new('RGB', (150, 200), color='#E6E6FA')  # Light lavender background
             draw = ImageDraw.Draw(img)
             
@@ -452,9 +452,25 @@ class LicenseBarcodeService:
                 # Fallback if font issues
                 draw.text((50, 120), "SAMPLE", fill='red')
             
-            # Convert to base64
+            # Convert to base64 with quality targeting ~1.5KB
             output = io.BytesIO()
-            img.save(output, format='JPEG', quality=85)
+            quality = 85
+            
+            # Iteratively adjust quality to target ~1.5KB
+            while quality > 20:
+                output.seek(0)
+                output.truncate()
+                img.save(output, format='JPEG', quality=quality, optimize=True)
+                
+                # Check encoded size
+                encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
+                
+                # Target ~1.5KB (1536 bytes) encoded
+                if encoded_size <= 1500:
+                    break
+                    
+                quality -= 5
+            
             return base64.b64encode(output.getvalue()).decode('utf-8')
             
         except Exception as e:

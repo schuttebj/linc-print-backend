@@ -138,6 +138,7 @@ class TestBarcodeRequest(BaseModel):
     vehicle_restrictions: List[str] = []
     driver_restrictions: List[str] = []
     include_sample_photo: bool = True
+    custom_photo_base64: Optional[str] = None  # For testing with custom 8-bit images
     include_professional_permit: bool = False
     include_address_data: bool = True
     include_medical_data: bool = True
@@ -154,6 +155,7 @@ class TestBarcodeRequest(BaseModel):
                 "vehicle_restrictions": ["auto"],
                 "driver_restrictions": ["glasses"],
                 "include_sample_photo": True,
+                "custom_photo_base64": null,
                 "include_professional_permit": False,
                 "include_address_data": True,
                 "include_medical_data": True,
@@ -338,20 +340,44 @@ async def generate_test_barcode(
             "fi": first_issue_date.strftime("%Y-%m-%d"),           # First Issued Date
         }
         
-        # Add image only if requested and space allows
+        # Add image if requested and space allows
         # PDF417 constraints: Max 925 codewords (~2.7KB), use ~70% (~1.8KB) for data
-        if request.include_sample_photo:
+        if request.include_sample_photo or request.custom_photo_base64:
             # Check space before adding photo
             json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-            max_photo_size = 1700 - json_size  # Leave buffer for error correction
+            max_photo_size = 1500  # 1.5KB max for photo as specified
+            remaining_space = 1800 - json_size  # Total data budget minus current JSON size
             
-            if max_photo_size > 500:
+            print(f"Space calculation: JSON size={json_size}, remaining_space={remaining_space}, max_photo_size={max_photo_size}")
+            
+            # Only add photo if we have enough space (with some safety margin)
+            if remaining_space >= (max_photo_size + 50):  # 50 byte safety margin
                 try:
-                    sample_photo = barcode_service._generate_sample_photo()
-                    if sample_photo and len(sample_photo) <= max_photo_size:
-                        barcode_data["photo"] = sample_photo
-                except:
-                    pass  # Skip photo if generation fails
+                    photo_to_use = None
+                    
+                    # Use custom photo if provided
+                    if request.custom_photo_base64:
+                        if len(request.custom_photo_base64) <= max_photo_size:
+                            photo_to_use = request.custom_photo_base64
+                        else:
+                            # Truncate if too large (basic fallback)
+                            photo_to_use = request.custom_photo_base64[:max_photo_size]
+                            print(f"Custom photo truncated from {len(request.custom_photo_base64)} to {max_photo_size} chars")
+                    
+                    # Generate sample photo if no custom photo or if custom photo failed
+                    if not photo_to_use and request.include_sample_photo:
+                        sample_photo = barcode_service._generate_sample_photo()
+                        if sample_photo and len(sample_photo) <= max_photo_size:
+                            photo_to_use = sample_photo
+                    
+                    # Add photo to barcode data
+                    if photo_to_use:
+                        barcode_data["photo"] = photo_to_use
+                        
+                except Exception as e:
+                    # Log error but continue without photo
+                    print(f"Photo processing error: {e}")
+                    pass
         
         # Generate PDF417 barcode image
         barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
