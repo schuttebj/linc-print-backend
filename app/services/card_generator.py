@@ -757,8 +757,11 @@ class MadagascarCardGenerator:
                 logger.info(f"Processing fingerprint data for back card")
                 fingerprint_img = self._process_photo_data(fingerprint_data, fp_w - 4, fp_h - 4)  # Leave border space
                 if fingerprint_img:
-                    license_img.paste(fingerprint_img, (fp_x + 2, fp_y + 2))  # Offset for border
-                    logger.info(f"Successfully added fingerprint at position ({fp_x + 2}, {fp_y + 2})")
+                    # Ensure coordinates are integers
+                    paste_x = int(fp_x + 2)
+                    paste_y = int(fp_y + 2)
+                    license_img.paste(fingerprint_img, (paste_x, paste_y))
+                    logger.info(f"Successfully added fingerprint at position ({paste_x}, {paste_y})")
                 else:
                     logger.warning("Fingerprint processing returned None")
                     # Create fingerprint pattern (simple dot pattern for visual effect)
