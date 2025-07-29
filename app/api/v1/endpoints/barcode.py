@@ -155,7 +155,7 @@ class TestBarcodeRequest(BaseModel):
                 "vehicle_restrictions": ["auto"],
                 "driver_restrictions": ["glasses"],
                 "include_sample_photo": True,
-                "custom_photo_base64": null,
+                "custom_photo_base64": None,
                 "include_professional_permit": False,
                 "include_address_data": True,
                 "include_medical_data": True,
