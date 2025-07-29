@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.api.v1.dependencies import get_db, get_current_user, require_permission
+from app.core.database import get_db
+from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.license import License
 from app.models.person import Person
@@ -21,6 +22,25 @@ from app.crud.crud_license import crud_license
 from app.crud.crud_card import crud_card
 
 router = APIRouter()
+
+
+def check_permission(user: User, permission: str) -> bool:
+    """Check if user has specific permission"""
+    if user.is_superuser:
+        return True
+    return user.has_permission(permission)
+
+
+def require_permission(permission: str):
+    """Decorator to require specific permission"""
+    def decorator(current_user: User = Depends(get_current_user)):
+        if not check_permission(current_user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission}"
+            )
+        return current_user
+    return decorator
 
 
 # Pydantic models for API
