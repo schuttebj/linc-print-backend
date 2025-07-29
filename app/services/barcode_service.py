@@ -174,7 +174,6 @@ class LicenseBarcodeService:
             # Construct barcode data
             barcode_data = {
                 "ver": self.BARCODE_CONFIG['version'],
-                "id": license_id,
                 "dob": person.birth_date.strftime("%Y-%m-%d") if person.birth_date else None,
                 "sex": sex_code,
                 "codes": codes,
@@ -187,7 +186,7 @@ class LicenseBarcodeService:
                 "driver_restrictions": driver_restrictions,
             }
             
-            # Add card number if available
+            # Add card number as the primary identifier (what's actually on the card)
             if card:
                 barcode_data["card_num"] = card.card_number
             
@@ -336,7 +335,7 @@ class LicenseBarcodeService:
 
     def _validate_barcode_structure(self, data: Dict[str, Any]) -> None:
         """Validate the structure of decoded barcode data"""
-        required_fields = ['ver', 'id', 'country']
+        required_fields = ['ver', 'country']
         
         for field in required_fields:
             if field not in data:
@@ -350,6 +349,10 @@ class LicenseBarcodeService:
         # Validate country code
         if data.get('country') != 'MG':
             self.logger.warning(f"Barcode country code '{data.get('country')}' is not Madagascar (MG)")
+        
+        # Recommend having card_num as identifier
+        if not data.get('card_num'):
+            self.logger.warning("Barcode missing card number - recommended for identification")
 
     def extract_photo_from_barcode(self, barcode_data: Dict[str, Any]) -> Optional[bytes]:
         """

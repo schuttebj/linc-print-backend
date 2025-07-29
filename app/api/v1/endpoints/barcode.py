@@ -399,7 +399,6 @@ async def test_barcode_scan():
     # Sample barcode JSON for testing
     sample_barcode_data = {
         "ver": 1,
-        "id": "550e8400-e29b-41d4-a716-446655440000",
         "dob": "1985-03-15",
         "sex": "F",
         "codes": ["B", "EB"],
@@ -442,27 +441,56 @@ async def get_barcode_format():
         "error_correction_level": barcode_service.BARCODE_CONFIG['error_correction_level'],
         "max_data_bytes": barcode_service.BARCODE_CONFIG['max_data_bytes'],
         "max_image_bytes": barcode_service.BARCODE_CONFIG['max_image_bytes'],
-        "required_fields": [
-            "ver",    # Version number
-            "id",     # License UUID
-            "country" # Country code (MG)
-        ],
+        "required_fields": ["ver", "country"],
+        "required_field_descriptions": {
+            "ver": "Format version number",
+            "country": "ISO country code (MG for Madagascar)"
+        },
+        "recommended_fields": ["card_num"],
+        "recommended_field_descriptions": {
+            "card_num": "Physical card number (primary identifier for verification)"
+        },
         "optional_fields": [
-            "dob",                  # Date of birth (YYYY-MM-DD)
-            "sex",                  # M or F
-            "codes",                # License category codes
-            "valid_from",           # Valid from date (YYYY-MM-DD)
-            "valid_to",             # Valid until date (YYYY-MM-DD)
-            "first_issued",         # First issue date (YYYY-MM-DD)
-            "name",                 # Full name
-            "vehicle_restrictions", # Vehicle restriction codes
-            "driver_restrictions",  # Driver restriction codes
-            "card_num",             # Physical card number
-            "photo"                 # Base64 encoded photo
+            "dob", "sex", "codes", "valid_from", "valid_to", 
+            "first_issued", "name", "vehicle_restrictions", 
+            "driver_restrictions", "photo"
         ],
+        "optional_field_descriptions": {
+            "dob": "Date of birth (YYYY-MM-DD)",
+            "sex": "Gender (M or F)",
+            "codes": "License category codes array",
+            "valid_from": "Valid from date (YYYY-MM-DD)",
+            "valid_to": "Valid until date (YYYY-MM-DD)",
+            "first_issued": "First issue date (YYYY-MM-DD)",
+            "name": "Full name (uppercase)",
+            "vehicle_restrictions": "Vehicle restriction codes array",
+            "driver_restrictions": "Driver restriction codes array",
+            "card_num": "Physical card number",
+            "photo": "Base64 encoded JPEG photo"
+        },
+        "license_categories": {
+            "A": "Motorcycle",
+            "B": "Light vehicle (cars)",
+            "C": "Heavy vehicle (trucks)", 
+            "D": "Bus/taxi",
+            "EB": "Light trailer",
+            "EC": "Heavy trailer"
+        },
+        "restriction_codes": {
+            "driver_restrictions": {
+                "glasses": "Must wear corrective lenses",
+                "prosthetics": "Uses artificial limb/prosthetics"
+            },
+            "vehicle_restrictions": {
+                "auto": "Automatic transmission only",
+                "electric": "Electric powered vehicles only",
+                "disabled": "Vehicles adapted for disabilities",
+                "tractor": "Tractor vehicles only",
+                "industrial": "Industrial/agriculture vehicles only"
+            }
+        },
         "example": {
             "ver": 1,
-            "id": "123e4567-e89b-12d3-a456-426614174000",
             "dob": "1990-05-12",
             "sex": "M",
             "codes": ["B", "EB"],
