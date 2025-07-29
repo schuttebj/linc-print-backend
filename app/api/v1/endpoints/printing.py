@@ -29,7 +29,7 @@ from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
 from app.models.card import CardNumberGenerator, Card, CardType, CardStatus, CardLicense, ProductionStatus
-from app.models.enums import ApplicationStatus, LicenseCategory
+from app.models.enums import ApplicationStatus, LicenseCategory, BiometricDataType
 from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication
 from app.schemas.printing import (
     PrintJobCreateRequest, PrintJobResponse, PrintJobDetailResponse,
@@ -272,13 +272,13 @@ async def search_person_for_card_ordering(
         for app in approved_applications:
             if hasattr(app, 'biometric_data') and app.biometric_data:
                 for bio_data in app.biometric_data:
-                    if bio_data.data_type == "PHOTO":
+                    if bio_data.data_type == BiometricDataType.PHOTO:
                         biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["photo_path"] = bio_data.file_path
-                    elif bio_data.data_type == "SIGNATURE":
+                    elif bio_data.data_type == BiometricDataType.SIGNATURE:
                         biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["signature_path"] = bio_data.file_path
-                    elif bio_data.data_type == "FINGERPRINT":
+                    elif bio_data.data_type == BiometricDataType.FINGERPRINT:
                         biometric_data["fingerprint_url"] = None  # URL not available in ApplicationBiometricData model
                         biometric_data["fingerprint_path"] = bio_data.file_path
         
@@ -509,7 +509,11 @@ async def create_print_job(
             logger.info(f"Found {len(application.biometric_data)} biometric data records")
             for i, bio_data in enumerate(application.biometric_data):
                 logger.info(f"Biometric record {i}: type={bio_data.data_type}, file_path={bio_data.file_path}")
-                if bio_data.data_type == "PHOTO":
+                logger.info(f"  bio_data.data_type type: {type(bio_data.data_type)}")
+                logger.info(f"  BiometricDataType.PHOTO: {BiometricDataType.PHOTO}, type: {type(BiometricDataType.PHOTO)}")
+                logger.info(f"  Comparison result: {bio_data.data_type == BiometricDataType.PHOTO}")
+                
+                if bio_data.data_type == BiometricDataType.PHOTO:
                     # Check if there's a license_ready version in metadata (optimized for card printing)
                     photo_path = bio_data.file_path
                     if bio_data.metadata and isinstance(bio_data.metadata, dict):
@@ -521,16 +525,23 @@ async def create_print_job(
                     biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["photo_path"] = photo_path
                     logger.info(f"Set photo_path to: {photo_path}")
-                elif bio_data.data_type == "SIGNATURE":
+                elif bio_data.data_type == BiometricDataType.SIGNATURE:
                     biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["signature_path"] = bio_data.file_path
                     logger.info(f"Set signature_path to: {bio_data.file_path}")
-                elif bio_data.data_type == "FINGERPRINT":
+                elif bio_data.data_type == BiometricDataType.FINGERPRINT:
                     biometric_data["fingerprint_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["fingerprint_path"] = bio_data.file_path
                     logger.info(f"Set fingerprint_path to: {bio_data.file_path}")
+                else:
+                    logger.warning(f"Unknown biometric data type: {bio_data.data_type} (type: {type(bio_data.data_type)})")
         else:
             logger.info(f"No biometric data found for application. hasattr={hasattr(application, 'biometric_data')}, biometric_data={getattr(application, 'biometric_data', 'MISSING')}")
+        
+        # Debug: Log what biometric data was actually collected
+        logger.info(f"Biometric data after processing:")
+        for key, value in biometric_data.items():
+            logger.info(f"  {key}: {value}")
         
         # Get all licenses for person (excluding learners permits)
         logger.info(f"Getting licenses for person {application.person_id}")
