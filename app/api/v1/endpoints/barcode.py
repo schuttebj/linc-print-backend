@@ -302,6 +302,7 @@ async def generate_test_barcode(
     try:
         import uuid
         from datetime import datetime, timedelta
+        import random
         
         # Generate realistic dates
         first_issue_date = datetime.now() - timedelta(days=1825)  # 5 years ago
@@ -309,13 +310,12 @@ async def generate_test_barcode(
         expiry_date = current_issue_date + timedelta(days=1825)   # 5 years from current issue
         
         # Generate realistic card number (Madagascar format)
-        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]  # Common Madagascar location codes
-        import random
+        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
         location_code = random.choice(location_codes)
         sequence = random.randint(100000, 999999)
         card_number = f"MG{location_code}{sequence:06d}"
         
-        # Create comprehensive test barcode data with ALL possible fields
+        # Create COMPACT but comprehensive barcode data using short keys
         barcode_data = {
             "ver": 1,
             "country": "MG",
@@ -331,90 +331,99 @@ async def generate_test_barcode(
             "driver_restrictions": request.driver_restrictions,
         }
         
-        # Add additional realistic fields for comprehensive testing
-        additional_test_data = {
-            "issue_location": f"Madagascar {location_code[:1].upper()}{'01' if location_code.endswith('01') else '02'} Office",
-            "endorsements": [],  # Professional endorsements if any
-            "medical_code": "00" if not request.driver_restrictions else "01",  # Medical restrictions code
-            "emergency_contact": "AVAILABLE ON FILE",  # Indicates emergency contact exists
-            "blood_type": random.choice(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
-            "height": f"{random.randint(150, 190)}cm",
-            "weight": f"{random.randint(50, 120)}kg",
-            "eye_color": random.choice(["Brown", "Black", "Hazel", "Blue", "Green"]),
-            "issuing_authority": "Madagascar Ministry of Transport",
-            "security_code": f"MG{random.randint(1000, 9999)}",
-            "renewal_eligible": True,
-            "international_valid": True
-        }
+        # Add compact additional data if space allows (using short keys)
+        if request.include_medical_data:
+            barcode_data.update({
+                "med": "01" if request.driver_restrictions else "00",  # Medical code
+                "bt": random.choice(["A+", "O+", "B+", "AB+"]),        # Blood type (short)
+                "ht": f"{random.randint(150, 190)}",                   # Height (cm only)
+                "ec": random.choice(["BR", "BL", "HZ", "GR"])          # Eye color (abbreviated)
+            })
         
-        # Add additional data to barcode (keeping within size limits)
-        if len(json.dumps(barcode_data).encode('utf-8')) < 1200:  # Leave room for photo
-            barcode_data.update(additional_test_data)
+        if request.include_address_data:
+            regions = ["TNR", "FIA", "TOM", "MAH", "ANT", "TOL"]  # Abbreviated region codes
+            barcode_data.update({
+                "reg": random.choice(regions),                         # Region (abbreviated)
+                "pc": f"{random.randint(100, 999):03d}"               # Postal code
+            })
         
-        # Add professional driving permit data if C or D license
-        if any(code in ["C", "D"] for code in request.license_codes):
-            barcode_data["professional_permit"] = {
-                "categories": [code for code in request.license_codes if code in ["C", "D"]],
-                "expiry": (current_issue_date + timedelta(days=365)).strftime("%Y-%m-%d"),  # 1 year for professional
-                "medical_cert": "VALID",
-                "training_cert": f"TC{random.randint(10000, 99999)}"
+        # Add professional permit data (compact) if C or D license
+        if request.include_professional_permit and any(code in ["C", "D"] for code in request.license_codes):
+            prof_codes = [code for code in request.license_codes if code in ["C", "D"]]
+            barcode_data["prof"] = {
+                "cat": prof_codes,
+                "exp": (current_issue_date + timedelta(days=365)).strftime("%Y-%m-%d"),
+                "cert": f"TC{random.randint(1000, 9999)}"
             }
         
-        # Add sample photo if requested
-        if request.include_sample_photo:
-            sample_photo = barcode_service._generate_sample_photo()
-            if sample_photo:
-                barcode_data["photo"] = sample_photo
+        # Add license history (very compact) if upgrade scenario
+        if request.include_license_history and "B" in request.license_codes and len(request.license_codes) > 1:
+            barcode_data["hist"] = [{"c": "B", "d": first_issue_date.strftime("%Y-%m-%d")}]
         
-        # Add comprehensive address information (if space allows)
-        if len(json.dumps(barcode_data).encode('utf-8')) < 1400:
-            barcode_data["address"] = {
-                "region": random.choice(["Antananarivo", "Fianarantsoa", "Toamasina", "Mahajanga", "Antsiranana", "Toliara"]),
-                "postal_code": f"{random.randint(100, 999):03d}",
-                "verified": True
-            }
+        # Add essential authority info (compact)
+        barcode_data.update({
+            "loc": location_code,                                      # Issue location code
+            "auth": "MGMT",                                           # Authority (abbreviated)
+            "sec": f"MG{random.randint(1000, 9999)}"                 # Security code
+        })
         
-        # Add license history information
-        if len(json.dumps(barcode_data).encode('utf-8')) < 1500:
-            license_history = []
-            
-            # Add previous licenses if this is an upgrade
-            if "B" in request.license_codes and len(request.license_codes) > 1:
-                license_history.append({
-                    "code": "B",
-                    "issued": first_issue_date.strftime("%Y-%m-%d"),
-                    "status": "UPGRADED"
-                })
-            
-            if license_history:
-                barcode_data["license_history"] = license_history
+        # Check size before adding photo
+        json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
+        max_photo_size = 1800 - json_size - 100  # Leave 100 bytes buffer
+        
+        # Add optimized photo if requested and space allows
+        if request.include_sample_photo and max_photo_size > 500:
+            # Generate smaller photo for barcode
+            try:
+                sample_photo = barcode_service._generate_sample_photo()
+                if sample_photo and len(sample_photo) <= max_photo_size:
+                    barcode_data["photo"] = sample_photo
+                else:
+                    # Generate minimal photo if space is tight
+                    barcode_data["photo"] = "R0lGODlhEAAQAPIAAP///wAAAMLCwkJCQgAAAGJiYoKCgpKSkiH+GkNyZWF0ZWQgd2l0aCBhamF4bG9hZC5pbmZvACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAEAAQAAADMwi63P4wyklrE2MIOggZnAdOmGYJRbExwroUmcG2LmDEwnHQLVsYOd2mBzkYDAdKa+dIAAAh+QQACgABACwAAAAAEAAQAAADNAi63P5OjCEgG4QMu7DmikRxQlFUYDEZIGBMRVsaqHwctXXf7QWQV/pMHJNh7wfwYAEOOBAAACH5BAAKAAIALAAAAAAQABAAAAMyiC63P4"  # Tiny placeholder
+            except:
+                pass  # Skip photo if generation fails
+        
+        # Final size check
+        final_json = json.dumps(barcode_data, separators=(',', ':'))
+        final_size = len(final_json.encode('utf-8'))
+        
+        if final_size > 1800:
+            # Remove photo if still too large
+            if "photo" in barcode_data:
+                del barcode_data["photo"]
+            # Remove optional fields if still too large
+            if final_size > 1800:
+                optional_fields = ["hist", "prof", "bt", "ht", "ec", "reg", "pc"]
+                for field in optional_fields:
+                    if field in barcode_data:
+                        del barcode_data[field]
+                        final_json = json.dumps(barcode_data, separators=(',', ':'))
+                        final_size = len(final_json.encode('utf-8'))
+                        if final_size <= 1800:
+                            break
         
         # Generate PDF417 barcode image
         barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
         
         # Calculate final data size
-        data_size = len(json.dumps(barcode_data).encode('utf-8'))
+        data_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
         
-        # Create a comprehensive test summary
+        # Create a compact test summary
         test_summary = {
-            "test_type": "COMPREHENSIVE_MADAGASCAR_LICENSE",
-            "data_completeness": "100%",
-            "includes_photo": bool(barcode_data.get("photo")),
-            "includes_restrictions": bool(request.driver_restrictions or request.vehicle_restrictions),
-            "includes_professional_permit": bool(barcode_data.get("professional_permit")),
-            "card_format": "Madagascar Standard",
-            "barcode_standard": "PDF417",
-            "data_fields_count": len(barcode_data),
-            "scannable": True,
-            "realistic_data": True
+            "type": "MADAGASCAR_LICENSE_TEST",
+            "fields": len(barcode_data),
+            "photo": bool(barcode_data.get("photo")),
+            "size_bytes": data_size,
+            "card": card_number
         }
         
         return BarcodeGenerationResponse(
             success=True,
             barcode_image_base64=barcode_image,
-            barcode_data={**barcode_data, "_test_summary": test_summary},
+            barcode_data={**barcode_data, "_test": test_summary},
             data_size_bytes=data_size,
-            message=f"Comprehensive test barcode generated with {len(barcode_data)} fields. Card: {card_number}"
+            message=f"Compact test barcode: {card_number} ({data_size} bytes, {len(barcode_data)} fields)"
         )
         
     except Exception as e:
