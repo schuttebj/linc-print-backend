@@ -74,14 +74,17 @@ class LicenseBarcodeService:
     
     # Restriction code mappings
     DRIVER_RESTRICTION_MAPPING = {
-        DriverRestrictionCode.GLASSES: "glasses",
+        DriverRestrictionCode.CORRECTIVE_LENSES: "glasses",
         DriverRestrictionCode.PROSTHETICS: "prosthetics",
         # Add more mappings as needed
     }
     
     VEHICLE_RESTRICTION_MAPPING = {
-        VehicleRestrictionCode.AUTOMATIC_ONLY: "auto",
-        VehicleRestrictionCode.ELECTRIC_ONLY: "electric",
+        VehicleRestrictionCode.AUTOMATIC_TRANSMISSION: "auto",
+        VehicleRestrictionCode.ELECTRIC_POWERED: "electric",
+        VehicleRestrictionCode.PHYSICAL_DISABLED: "disabled",
+        VehicleRestrictionCode.TRACTOR_ONLY: "tractor",
+        VehicleRestrictionCode.INDUSTRIAL_AGRICULTURE: "industrial",
         # Add more mappings as needed
     }
 
