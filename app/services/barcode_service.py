@@ -203,8 +203,8 @@ class LicenseBarcodeService:
 
     def _process_photo_for_barcode(self, photo_data: bytes) -> str:
         """
-        Process photo data for barcode embedding
-        Resize and compress to fit within size constraints
+        Process photo data for barcode embedding - optimized for white background ID photos
+        Resize and compress to fit within size constraints using grayscale and PNG
         """
         try:
             if not PIL_AVAILABLE:
@@ -214,36 +214,66 @@ class LicenseBarcodeService:
             # Open image with PIL
             image = Image.open(io.BytesIO(photo_data))
             
-            # Convert to RGB if necessary
-            if image.mode not in ('RGB', 'L'):
-                image = image.convert('RGB')
+            # Convert to grayscale for smaller size (ID photos work well in grayscale)
+            if image.mode != 'L':
+                image = image.convert('L')
             
-            # Resize to maximum dimensions while maintaining aspect ratio
-            max_size = (150, 200)  # Appropriate for license photo
+            # Resize to small dimensions for barcode (white background helps compression)
+            max_size = (60, 80)  # Very small for barcode embedding
             image.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            # Compress to JPEG with quality adjustment
-            output = io.BytesIO()
-            quality = 85
+            # Try different compression strategies
+            strategies = [
+                ('PNG', {'optimize': True}),  # PNG with optimization
+                ('JPEG', {'quality': 30, 'optimize': True}),  # Low quality JPEG
+                ('JPEG', {'quality': 20, 'optimize': True}),  # Very low quality JPEG
+            ]
             
-            while quality > 20:
-                output.seek(0)
-                output.truncate()
-                image.save(output, format='JPEG', quality=quality, optimize=True)
-                
-                # Check if size is acceptable
-                encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
-                if encoded_size <= self.BARCODE_CONFIG['max_image_bytes']:
-                    break
+            best_result = None
+            best_size = float('inf')
+            
+            for format_type, kwargs in strategies:
+                output = io.BytesIO()
+                try:
+                    image.save(output, format=format_type, **kwargs)
+                    encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
                     
-                quality -= 10
+                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes'] and encoded_size < best_size:
+                        best_result = base64.b64encode(output.getvalue()).decode('utf-8')
+                        best_size = encoded_size
+                        self.logger.info(f"Photo compressed with {format_type}: {encoded_size} bytes")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Failed to compress with {format_type}: {e}")
+                    continue
             
-            return base64.b64encode(output.getvalue()).decode('utf-8')
+            # If still too large, try 1-bit dithering for maximum compression
+            if best_result is None or best_size > self.BARCODE_CONFIG['max_image_bytes']:
+                try:
+                    # Convert to 1-bit (black and white) with dithering
+                    bw_image = image.convert('1', dither=Image.Dither.FLOYDSTEINBERG)
+                    output = io.BytesIO()
+                    bw_image.save(output, format='PNG', optimize=True)
+                    encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
+                    
+                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes']:
+                        best_result = base64.b64encode(output.getvalue()).decode('utf-8')
+                        best_size = encoded_size
+                        self.logger.info(f"Photo compressed with 1-bit dithering: {encoded_size} bytes")
+                    
+                except Exception as e:
+                    self.logger.warning(f"Failed 1-bit compression: {e}")
+            
+            # Return best result or None if nothing worked
+            if best_result and best_size <= self.BARCODE_CONFIG['max_image_bytes']:
+                return best_result
+            else:
+                self.logger.warning(f"Could not compress photo to required size. Best: {best_size} bytes")
+                return None
             
         except Exception as e:
             self.logger.error(f"Error processing photo for barcode: {e}")
-            # Return basic base64 encoding as fallback
-            return base64.b64encode(photo_data).decode('utf-8')
+            return None
 
     def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
         """

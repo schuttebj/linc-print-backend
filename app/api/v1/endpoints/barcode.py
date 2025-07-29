@@ -360,13 +360,26 @@ async def generate_test_barcode(
                     
                     # Use custom photo if provided
                     if request.custom_photo_base64:
-                        if len(request.custom_photo_base64) <= max_photo_size:
-                            photo_to_use = request.custom_photo_base64
-                            print(f"Using custom photo, size: {len(request.custom_photo_base64)} chars")
-                        else:
-                            # Truncate if too large (basic fallback)
-                            photo_to_use = request.custom_photo_base64[:max_photo_size]
-                            print(f"Custom photo truncated from {len(request.custom_photo_base64)} to {max_photo_size} chars")
+                        try:
+                            # Decode and process the custom photo properly
+                            import base64
+                            photo_bytes = base64.b64decode(request.custom_photo_base64)
+                            processed_photo = barcode_service._process_photo_for_barcode(photo_bytes)
+                            
+                            if processed_photo and len(processed_photo) <= max_photo_size:
+                                photo_to_use = processed_photo
+                                print(f"Custom photo processed and compressed: {len(processed_photo)} chars")
+                            else:
+                                print(f"Custom photo processing failed or too large: {len(processed_photo) if processed_photo else 0} chars")
+                        except Exception as e:
+                            print(f"Error processing custom photo: {e}")
+                            # Fallback to truncation if processing fails
+                            if len(request.custom_photo_base64) <= max_photo_size:
+                                photo_to_use = request.custom_photo_base64
+                                print(f"Using unprocessed custom photo: {len(request.custom_photo_base64)} chars")
+                            else:
+                                photo_to_use = request.custom_photo_base64[:max_photo_size]
+                                print(f"Custom photo truncated: {len(request.custom_photo_base64)} → {max_photo_size} chars")
                     
                     # Generate sample photo if no custom photo or if custom photo failed
                     if not photo_to_use and request.include_sample_photo:
