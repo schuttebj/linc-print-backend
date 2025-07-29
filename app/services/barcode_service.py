@@ -62,10 +62,10 @@ class LicenseBarcodeService:
     
     # Barcode configuration for PDF417
     BARCODE_CONFIG = {
-        'columns': 9,  # Fixed columns for consistency
+        'columns': 12,  # More columns = fewer rows (max 90 rows limit)
         'error_correction_level': 2,  # Security level 2 for pdf417gen (~25% correction capacity)
-        'max_data_bytes': 1200,  # Conservative limit accounting for PDF417 encoding overhead
-        'max_image_bytes': 800,  # More conservative photo size limit
+        'max_data_bytes': 800,  # Very conservative limit for PDF417
+        'max_image_bytes': 400,  # Much smaller photo size limit
         'version': 1  # JSON structure version
     }
     
@@ -268,9 +268,13 @@ class LicenseBarcodeService:
                 )
             
             if BARCODE_AVAILABLE:
-                # Generate PDF417 barcode using pdf417gen (same as card_generator.py)
-                codes = pdf417gen.encode(json_data, security_level=self.BARCODE_CONFIG['error_correction_level'])
-                img = pdf417gen.render_image(codes, scale=3, ratio=3)
+                # Generate PDF417 barcode using pdf417gen with more columns to reduce rows
+                codes = pdf417gen.encode(
+                    json_data, 
+                    security_level=self.BARCODE_CONFIG['error_correction_level'],
+                    columns=self.BARCODE_CONFIG['columns']
+                )
+                img = pdf417gen.render_image(codes, scale=2, ratio=3)  # Smaller scale
                 
                 # Convert to base64
                 buffer = io.BytesIO()
@@ -426,37 +430,37 @@ class LicenseBarcodeService:
             
             from PIL import Image, ImageDraw, ImageFont
             
-            # Create a passport photo sized image
-            img = Image.new('RGB', (150, 200), color='#E6E6FA')  # Light lavender background
+            # Create a very small passport photo sized image for barcode
+            img = Image.new('RGB', (80, 100), color='#E6E6FA')  # Much smaller image
             draw = ImageDraw.Draw(img)
             
-            # Draw a simple face representation
+            # Draw a simple face representation (scaled down)
             # Head circle
-            draw.ellipse([40, 40, 110, 110], fill='#F5DEB3', outline='#DEB887')  # Face
+            draw.ellipse([20, 20, 60, 60], fill='#F5DEB3', outline='#DEB887')  # Face
             
             # Eyes
-            draw.ellipse([55, 60, 65, 70], fill='black')  # Left eye
-            draw.ellipse([85, 60, 95, 70], fill='black')  # Right eye
+            draw.ellipse([28, 32, 35, 39], fill='black')  # Left eye
+            draw.ellipse([45, 32, 52, 39], fill='black')  # Right eye
             
             # Nose
-            draw.ellipse([72, 75, 78, 85], outline='#DEB887')
+            draw.ellipse([38, 42, 42, 48], outline='#DEB887')
             
             # Mouth
-            draw.arc([60, 85, 90, 100], 0, 180, fill='#8B4513')
+            draw.arc([32, 48, 48, 56], 0, 180, fill='#8B4513')
             
-            # Add "SAMPLE" text
+            # Add "SAMPLE" text (smaller)
             try:
-                draw.text((20, 120), "SAMPLE", fill='red', anchor='mm')
-                draw.text((75, 140), "PHOTO", fill='red', anchor='mm')
+                draw.text((40, 70), "SAMPLE", fill='red', anchor='mm')
+                draw.text((40, 85), "PHOTO", fill='red', anchor='mm')
             except:
                 # Fallback if font issues
-                draw.text((50, 120), "SAMPLE", fill='red')
+                draw.text((20, 70), "SAMPLE", fill='red')
             
             # Convert to base64 with quality targeting ~1.5KB
             output = io.BytesIO()
             quality = 85
             
-            # Iteratively adjust quality to target ~800 bytes
+            # Iteratively adjust quality to target ~400 bytes
             while quality > 20:
                 output.seek(0)
                 output.truncate()
@@ -465,8 +469,8 @@ class LicenseBarcodeService:
                 # Check encoded size
                 encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
                 
-                # Target ~800 bytes encoded (conservative for PDF417)
-                if encoded_size <= 800:
+                # Target ~400 bytes encoded (very conservative for PDF417)
+                if encoded_size <= 400:
                     break
                     
                 quality -= 5
