@@ -38,8 +38,3 @@ structlog==23.2.0
 
 # Production server
 gunicorn==21.2.0
-
-# Add these lines to your requirements.txt for barcode generation
-reportlab>=4.0.0
-Pillow>=10.0.0
-qrcode[pil]>=7.0.0

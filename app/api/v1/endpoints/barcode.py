@@ -339,10 +339,11 @@ async def generate_test_barcode(
         }
         
         # Add image only if requested and space allows
+        # PDF417 constraints: Max 925 codewords (~2.7KB), use ~70% (~1.8KB) for data
         if request.include_sample_photo:
             # Check space before adding photo
             json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-            max_photo_size = 1700 - json_size  # Leave buffer
+            max_photo_size = 1700 - json_size  # Leave buffer for error correction
             
             if max_photo_size > 500:
                 try:

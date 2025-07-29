@@ -20,21 +20,11 @@ from pathlib import Path
 import logging
 
 try:
-    from reportlab.graphics.barcode import qr
-    from reportlab.graphics.barcode.lto import PDF417
-    from reportlab.graphics import renderPM
-    from reportlab.lib.units import mm
+    import pdf417gen
     BARCODE_AVAILABLE = True
 except ImportError:
     BARCODE_AVAILABLE = False
-    logging.warning("ReportLab not available - barcode generation will be simulated")
-
-try:
-    import qrcode
-    from qrcode.image.styledpil import StyledPilImage
-    QR_AVAILABLE = True
-except ImportError:
-    QR_AVAILABLE = False
+    logging.warning("pdf417gen not available - barcode generation will be simulated")
 
 try:
     from PIL import Image
@@ -73,8 +63,8 @@ class LicenseBarcodeService:
     # Barcode configuration for PDF417
     BARCODE_CONFIG = {
         'columns': 9,  # Fixed columns for consistency
-        'error_correction_level': 5,  # ECC Level 5 (~25% correction capacity)
-        'max_data_bytes': 1800,  # ~70% of 2.7KB capacity
+        'error_correction_level': 2,  # Security level 2 for pdf417gen (~25% correction capacity)
+        'max_data_bytes': 1800,  # ~70% of 2.7KB capacity (925 codewords)
         'max_image_bytes': 1500,  # Maximum photo size in base64
         'version': 1  # JSON structure version
     }
@@ -278,59 +268,23 @@ class LicenseBarcodeService:
                 )
             
             if BARCODE_AVAILABLE:
-                # Generate PDF417 barcode
-                barcode = PDF417(
-                    json_data,
-                    columns=self.BARCODE_CONFIG['columns'],
-                    level=self.BARCODE_CONFIG['error_correction_level']
-                )
-                
-                # Render to image
-                img = renderPM.drawToPIL(barcode, fmt='PNG', bg=0xffffff)
+                # Generate PDF417 barcode using pdf417gen (same as card_generator.py)
+                codes = pdf417gen.encode(json_data, security_level=self.BARCODE_CONFIG['error_correction_level'])
+                img = pdf417gen.render_image(codes, scale=3, ratio=3)
                 
                 # Convert to base64
                 buffer = io.BytesIO()
                 img.save(buffer, format='PNG')
                 return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            elif QR_AVAILABLE:
-                # Fallback to QR code
-                self.logger.warning("PDF417 not available, generating QR code instead")
-                return self._generate_qr_code(json_data)
-            
             else:
-                # Last resort - generate placeholder
+                # Fallback - generate placeholder
                 return self._generate_barcode_placeholder(json_data)
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate barcode: {str(e)}")
 
-    def _generate_qr_code(self, data: str) -> str:
-        """Generate QR code as fallback when PDF417 is not available"""
-        try:
-            # Create QR code instance
-            qr = qrcode.QRCode(
-                version=1,  # Auto-adjust size
-                error_correction=qrcode.constants.ERROR_CORRECT_M,  # 15% error correction
-                box_size=4,  # Size of each box
-                border=2,   # Minimum border size
-            )
-            
-            # Add data
-            qr.add_data(data)
-            qr.make(fit=True)
-            
-            # Create image
-            img = qr.make_image(fill_color="black", back_color="white")
-            
-            # Convert to base64
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-        except Exception as e:
-            self.logger.error(f"Failed to generate QR code: {e}")
-            return self._generate_barcode_placeholder(data)
+
 
     def _generate_barcode_placeholder(self, data: str) -> str:
         """Generate a placeholder barcode image when PDF417 is not available"""
