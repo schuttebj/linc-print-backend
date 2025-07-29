@@ -291,26 +291,34 @@ class MadagascarCardGenerator:
             return None
         
         try:
+            logger.info(f"Processing photo data: target_width={target_width}, target_height={target_height}")
+            
             # Handle base64 data
             if isinstance(photo_data, str) and (photo_data.startswith('data:') or len(photo_data) > 1000):
+                logger.info("Decoding base64 data string")
                 photo_data = base64.b64decode(photo_data.split(',')[1])
             
             # Decode base64
             photo_bytes = photo_data
+            logger.info(f"Photo bytes length: {len(photo_bytes) if photo_bytes else 0}")
             
             # Open image
             photo = Image.open(io.BytesIO(photo_bytes))
+            logger.info(f"Opened image: mode={photo.mode}, size={photo.size}")
             
             # Convert to RGB if needed
             if photo.mode != 'RGB':
                 photo = photo.convert('RGB')
+                logger.info("Converted image to RGB")
             
             # ISO specifications for photo (Same as AMPRO)
             # target_width = 213   # 18mm at 300 DPI
             # target_height = 260  # 22mm at 300 DPI
             
             # Resize maintaining aspect ratio
+            logger.info(f"Resizing photo to thumbnail: {target_width}x{target_height}")
             photo.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+            logger.info(f"Photo size after thumbnail: {photo.size}")
             
             # Create final image with exact dimensions
             final_photo = Image.new('RGB', (target_width, target_height), (255, 255, 255))
@@ -318,12 +326,17 @@ class MadagascarCardGenerator:
             # Center the photo
             x_offset = (target_width - photo.width) // 2
             y_offset = (target_height - photo.height) // 2
+            logger.info(f"Centering photo at offset: ({x_offset}, {y_offset})")
             final_photo.paste(photo, (x_offset, y_offset))
             
+            logger.info("Photo processing completed successfully")
             return final_photo
             
         except Exception as e:
             logger.error(f"Error processing photo: {e}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def _generate_pdf417_barcode(self, data: str) -> Image.Image:
@@ -478,11 +491,16 @@ class MadagascarCardGenerator:
         
         # Process and add photo using AMPRO grid coordinates (Columns 1-2, Rows 2-5)
         photo_pos = FRONT_COORDINATES["photo"]
+        logger.info(f"Photo position coordinates: {photo_pos}")
         
         if photo_data:
             try:
                 photo_img = self._process_photo_data(photo_data, photo_pos[2], photo_pos[3])
-                license_img.paste(photo_img, (photo_pos[0], photo_pos[1]))
+                if photo_img:
+                    license_img.paste(photo_img, (photo_pos[0], photo_pos[1]))
+                    logger.info(f"Successfully added photo at position ({photo_pos[0]}, {photo_pos[1]})")
+                else:
+                    logger.warning("Photo processing returned None")
             except Exception as e:
                 logger.warning(f"Failed to process photo: {e}")
                 # Fallback: Draw photo placeholder
@@ -575,31 +593,16 @@ class MadagascarCardGenerator:
             "restrictions": license_data.get('restrictions', '0'),
             "gender": license_data.get('gender', 'N/A'),
             "issuing_authority": "Madagascar Department of Transport",
-            "card_number": license_data.get('card_number', 'N/A'),
-            # Add compressed 8-bit photo data if available
-            "photo_8bit": self._convert_photo_to_8bit(license_data.get('photo_base64', '')) if license_data.get('photo_base64') else None
+            "card_number": license_data.get('card_number', 'N/A')
         }
         
-        # Add 8-bit photo data to barcode if available
-        photo_data_b64 = license_data.get('photo_base64')
-        if photo_data_b64:
-            try:
-                # Convert photo to 8-bit grayscale and compress for barcode
-                photo_bytes = base64.b64decode(photo_data_b64)
-                photo_img = Image.open(io.BytesIO(photo_bytes))
-                
-                # Convert to 8-bit grayscale and resize to small size for barcode
-                photo_8bit = photo_img.convert('L').resize((32, 32), Image.Resampling.LANCZOS)
-                
-                # Convert back to base64 for barcode
-                buffer = io.BytesIO()
-                photo_8bit.save(buffer, format="PNG")
-                photo_8bit_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                
-                barcode_data["photo_8bit"] = photo_8bit_b64
-                logger.info("Added 8-bit photo data to barcode")
-            except Exception as e:
-                logger.warning(f"Could not process photo for barcode: {e}")
+        # Use existing license_ready 8-bit image if available (from image_service.py processing)
+        license_ready_photo = license_data.get('license_ready_photo_base64')
+        if license_ready_photo:
+            barcode_data["photo_8bit"] = license_ready_photo
+            logger.info("Added existing license_ready 8-bit photo data to barcode")
+        else:
+            logger.info("No license_ready 8-bit photo available for barcode")
         
         # Generate barcode with JSON data
         barcode_json = json.dumps(barcode_data, separators=(',', ':'))  # Compact JSON

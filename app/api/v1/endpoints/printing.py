@@ -516,15 +516,28 @@ async def create_print_job(
                 if bio_data.data_type == BiometricDataType.PHOTO:
                     # Check if there's a license_ready version in metadata (optimized for card printing)
                     photo_path = bio_data.file_path
+                    license_ready_photo_base64 = None
+                    
                     if bio_data.metadata and isinstance(bio_data.metadata, dict):
                         license_ready = bio_data.metadata.get('license_ready_version', {})
                         if license_ready.get('file_path'):
                             photo_path = license_ready['file_path']
                             logger.info(f"Using license_ready photo: {photo_path}")
+                            
+                            # Also read license_ready photo as base64 for barcode generation
+                            try:
+                                from app.services.card_file_manager import card_file_manager
+                                license_ready_photo_base64 = card_file_manager.read_file_as_base64(license_ready['file_path'])
+                                logger.info(f"Read license_ready photo as base64: {len(license_ready_photo_base64)} chars")
+                            except Exception as e:
+                                logger.warning(f"Could not read license_ready photo as base64: {e}")
                     
                     biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["photo_path"] = photo_path
+                    biometric_data["license_ready_photo_base64"] = license_ready_photo_base64
                     logger.info(f"Set photo_path to: {photo_path}")
+                    if license_ready_photo_base64:
+                        logger.info(f"Set license_ready_photo_base64: {len(license_ready_photo_base64)} chars")
                 elif bio_data.data_type == BiometricDataType.SIGNATURE:
                     biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["signature_path"] = bio_data.file_path
@@ -638,7 +651,8 @@ async def create_print_job(
             "licenses": licenses_for_card,
             "total_licenses": len(licenses_for_card),
             "card_template": request.card_template,
-            "card_number": card_number  # Add the generated card number with location code + sequence + checksum
+            "card_number": card_number,  # Add the generated card number with location code + sequence + checksum
+            "license_ready_photo_base64": biometric_data.get("license_ready_photo_base64")  # Add license_ready 8-bit photo for barcode
         }
         
         logger.info(f"Final license data contains {len(licenses_for_card)} licenses for card generation")
