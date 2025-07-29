@@ -296,7 +296,12 @@ class MadagascarCardGenerator:
             # Handle base64 data
             if isinstance(photo_data, str) and (photo_data.startswith('data:') or len(photo_data) > 1000):
                 logger.info("Decoding base64 data string")
-                photo_data = base64.b64decode(photo_data.split(',')[1])
+                # Check if it's a data URI format (data:image/jpeg;base64,<data>)
+                if photo_data.startswith('data:') and ',' in photo_data:
+                    photo_data = base64.b64decode(photo_data.split(',')[1])
+                else:
+                    # Raw base64 string without data URI prefix
+                    photo_data = base64.b64decode(photo_data)
             
             # Decode base64
             photo_bytes = photo_data

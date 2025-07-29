@@ -518,8 +518,11 @@ async def create_print_job(
                     photo_path = bio_data.file_path
                     license_ready_photo_base64 = None
                     
+                    logger.info(f"Photo metadata: {bio_data.metadata}")
                     if bio_data.metadata and isinstance(bio_data.metadata, dict):
+                        logger.info(f"Photo metadata keys: {list(bio_data.metadata.keys())}")
                         license_ready = bio_data.metadata.get('license_ready_version', {})
+                        logger.info(f"License ready info: {license_ready}")
                         if license_ready.get('file_path'):
                             photo_path = license_ready['file_path']
                             logger.info(f"Using license_ready photo: {photo_path}")
@@ -531,6 +534,10 @@ async def create_print_job(
                                 logger.info(f"Read license_ready photo as base64: {len(license_ready_photo_base64)} chars")
                             except Exception as e:
                                 logger.warning(f"Could not read license_ready photo as base64: {e}")
+                        else:
+                            logger.info("No license_ready file_path found in metadata")
+                    else:
+                        logger.info("No metadata found for photo biometric data")
                     
                     biometric_data["photo_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["photo_path"] = photo_path
@@ -538,6 +545,8 @@ async def create_print_job(
                     logger.info(f"Set photo_path to: {photo_path}")
                     if license_ready_photo_base64:
                         logger.info(f"Set license_ready_photo_base64: {len(license_ready_photo_base64)} chars")
+                    else:
+                        logger.info("No license_ready_photo_base64 available")
                 elif bio_data.data_type == BiometricDataType.SIGNATURE:
                     biometric_data["signature_url"] = None  # URL not available in ApplicationBiometricData model
                     biometric_data["signature_path"] = bio_data.file_path
