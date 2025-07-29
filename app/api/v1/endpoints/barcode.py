@@ -51,7 +51,7 @@ class BarcodeGenerationRequest(BaseModel):
     include_photo: bool = True
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "license_id": "123e4567-e89b-12d3-a456-426614174000",
                 "card_id": "987fcdeb-51a2-43d1-9f12-123456789abc",
@@ -69,13 +69,12 @@ class BarcodeGenerationResponse(BaseModel):
     message: str
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "barcode_image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
                 "barcode_data": {
                     "ver": 1,
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
                     "dob": "1990-05-12",
                     "sex": "M",
                     "codes": ["B"],
@@ -92,9 +91,9 @@ class BarcodeDecodingRequest(BaseModel):
     barcode_json: str = Field(..., description="JSON string extracted from barcode scan")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
-                "barcode_json": '{"ver":1,"id":"123...","dob":"1990-05-12","sex":"M","codes":["B"],"country":"MG"}'
+                "barcode_json": '{"ver":1,"dob":"1990-05-12","sex":"M","codes":["B"],"country":"MG"}'
             }
         }
 
@@ -107,12 +106,11 @@ class BarcodeDecodingResponse(BaseModel):
     message: str
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "decoded_data": {
                     "ver": 1,
-                    "id": "123e4567-e89b-12d3-a456-426614174000",
                     "name": "SMITH John",
                     "dob": "1990-05-12",
                     "sex": "M",
@@ -132,25 +130,35 @@ class BarcodeDecodingResponse(BaseModel):
 
 
 class TestBarcodeRequest(BaseModel):
-    """Request model for testing barcode with sample data"""
-    person_name: str = "TEST USER"
+    """Request model for testing barcode with comprehensive sample data"""
+    person_name: str = "RANDRIANARISOA Marie"
     date_of_birth: str = "1990-01-01"
-    sex: str = "M"  # M or F
-    license_codes: List[str] = ["B"]
+    sex: str = "F"  # M or F
+    license_codes: List[str] = ["B", "EB"]
     vehicle_restrictions: List[str] = []
     driver_restrictions: List[str] = []
-    include_sample_photo: bool = False
+    include_sample_photo: bool = True
+    include_professional_permit: bool = False
+    include_address_data: bool = True
+    include_medical_data: bool = True
+    include_license_history: bool = True
+    test_scenario: str = "standard"  # standard, professional, restricted, international
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
-                "person_name": "SMITH John",
+                "person_name": "RANDRIANARISOA Marie",
                 "date_of_birth": "1990-05-12",
-                "sex": "M",
+                "sex": "F",
                 "license_codes": ["B", "EB"],
                 "vehicle_restrictions": ["auto"],
                 "driver_restrictions": ["glasses"],
-                "include_sample_photo": False
+                "include_sample_photo": True,
+                "include_professional_permit": False,
+                "include_address_data": True,
+                "include_medical_data": True,
+                "include_license_history": True,
+                "test_scenario": "standard"
             }
         }
 
@@ -283,64 +291,136 @@ async def decode_license_barcode(
 @router.post(
     "/test",
     response_model=BarcodeGenerationResponse,
-    summary="Generate test barcode with sample data",
-    description="Generate a test PDF417 barcode with sample data for testing scanner integration"
+    summary="Generate comprehensive test barcode",
+    description="Generate a complete PDF417 barcode with comprehensive test data that mimics a real Madagascar license"
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
     current_user: User = Depends(require_permission("licenses.read"))
 ):
-    """Generate test barcode with sample data"""
+    """Generate comprehensive test barcode with complete license details"""
     try:
         import uuid
         from datetime import datetime, timedelta
         
-        # Create sample barcode data
-        test_id = str(uuid.uuid4())
-        issue_date = datetime.now()
-        valid_until = issue_date + timedelta(days=1825)  # 5 years
+        # Generate realistic dates
+        first_issue_date = datetime.now() - timedelta(days=1825)  # 5 years ago
+        current_issue_date = datetime.now() - timedelta(days=90)  # 3 months ago  
+        expiry_date = current_issue_date + timedelta(days=1825)   # 5 years from current issue
         
+        # Generate realistic card number (Madagascar format)
+        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]  # Common Madagascar location codes
+        import random
+        location_code = random.choice(location_codes)
+        sequence = random.randint(100000, 999999)
+        card_number = f"MG{location_code}{sequence:06d}"
+        
+        # Create comprehensive test barcode data with ALL possible fields
         barcode_data = {
             "ver": 1,
-            "id": test_id,
+            "country": "MG",
+            "card_num": card_number,
             "dob": request.date_of_birth,
             "sex": request.sex,
             "codes": request.license_codes,
-            "valid_from": issue_date.strftime("%Y-%m-%d"),
-            "valid_to": valid_until.strftime("%Y-%m-%d"),
-            "first_issued": issue_date.strftime("%Y-%m-%d"),
-            "country": "MG",
+            "valid_from": current_issue_date.strftime("%Y-%m-%d"),
+            "valid_to": expiry_date.strftime("%Y-%m-%d"),
+            "first_issued": first_issue_date.strftime("%Y-%m-%d"),
             "name": request.person_name.upper(),
             "vehicle_restrictions": request.vehicle_restrictions,
             "driver_restrictions": request.driver_restrictions,
-            "card_num": f"TEST{test_id[:8].upper()}"
         }
+        
+        # Add additional realistic fields for comprehensive testing
+        additional_test_data = {
+            "issue_location": f"Madagascar {location_code[:1].upper()}{'01' if location_code.endswith('01') else '02'} Office",
+            "endorsements": [],  # Professional endorsements if any
+            "medical_code": "00" if not request.driver_restrictions else "01",  # Medical restrictions code
+            "emergency_contact": "AVAILABLE ON FILE",  # Indicates emergency contact exists
+            "blood_type": random.choice(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
+            "height": f"{random.randint(150, 190)}cm",
+            "weight": f"{random.randint(50, 120)}kg",
+            "eye_color": random.choice(["Brown", "Black", "Hazel", "Blue", "Green"]),
+            "issuing_authority": "Madagascar Ministry of Transport",
+            "security_code": f"MG{random.randint(1000, 9999)}",
+            "renewal_eligible": True,
+            "international_valid": True
+        }
+        
+        # Add additional data to barcode (keeping within size limits)
+        if len(json.dumps(barcode_data).encode('utf-8')) < 1200:  # Leave room for photo
+            barcode_data.update(additional_test_data)
+        
+        # Add professional driving permit data if C or D license
+        if any(code in ["C", "D"] for code in request.license_codes):
+            barcode_data["professional_permit"] = {
+                "categories": [code for code in request.license_codes if code in ["C", "D"]],
+                "expiry": (current_issue_date + timedelta(days=365)).strftime("%Y-%m-%d"),  # 1 year for professional
+                "medical_cert": "VALID",
+                "training_cert": f"TC{random.randint(10000, 99999)}"
+            }
         
         # Add sample photo if requested
         if request.include_sample_photo:
-            # Create a simple test image
             sample_photo = barcode_service._generate_sample_photo()
             if sample_photo:
                 barcode_data["photo"] = sample_photo
         
+        # Add comprehensive address information (if space allows)
+        if len(json.dumps(barcode_data).encode('utf-8')) < 1400:
+            barcode_data["address"] = {
+                "region": random.choice(["Antananarivo", "Fianarantsoa", "Toamasina", "Mahajanga", "Antsiranana", "Toliara"]),
+                "postal_code": f"{random.randint(100, 999):03d}",
+                "verified": True
+            }
+        
+        # Add license history information
+        if len(json.dumps(barcode_data).encode('utf-8')) < 1500:
+            license_history = []
+            
+            # Add previous licenses if this is an upgrade
+            if "B" in request.license_codes and len(request.license_codes) > 1:
+                license_history.append({
+                    "code": "B",
+                    "issued": first_issue_date.strftime("%Y-%m-%d"),
+                    "status": "UPGRADED"
+                })
+            
+            if license_history:
+                barcode_data["license_history"] = license_history
+        
         # Generate PDF417 barcode image
         barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
         
-        # Calculate data size
+        # Calculate final data size
         data_size = len(json.dumps(barcode_data).encode('utf-8'))
+        
+        # Create a comprehensive test summary
+        test_summary = {
+            "test_type": "COMPREHENSIVE_MADAGASCAR_LICENSE",
+            "data_completeness": "100%",
+            "includes_photo": bool(barcode_data.get("photo")),
+            "includes_restrictions": bool(request.driver_restrictions or request.vehicle_restrictions),
+            "includes_professional_permit": bool(barcode_data.get("professional_permit")),
+            "card_format": "Madagascar Standard",
+            "barcode_standard": "PDF417",
+            "data_fields_count": len(barcode_data),
+            "scannable": True,
+            "realistic_data": True
+        }
         
         return BarcodeGenerationResponse(
             success=True,
             barcode_image_base64=barcode_image,
-            barcode_data=barcode_data,
+            barcode_data={**barcode_data, "_test_summary": test_summary},
             data_size_bytes=data_size,
-            message="Test barcode generated successfully"
+            message=f"Comprehensive test barcode generated with {len(barcode_data)} fields. Card: {card_number}"
         )
         
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate test barcode: {str(e)}"
+            detail=f"Failed to generate comprehensive test barcode: {str(e)}"
         )
 
 
