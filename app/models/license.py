@@ -210,6 +210,118 @@ class License(BaseModel):
         """Check if this license can be added to a card"""
         return self.is_active and not self.current_card
 
+    def generate_barcode_data(self, person: 'Person', card: Optional['Card'] = None, db_session=None) -> Dict[str, Any]:
+        """
+        Generate barcode data for this license
+        
+        Args:
+            person: Person object for this license
+            card: Optional card object
+            db_session: Optional database session for loading related data
+            
+        Returns:
+            Dictionary containing barcode data
+        """
+        try:
+            from app.services.barcode_service import barcode_service
+            
+            # Generate barcode data using the service
+            barcode_data = barcode_service.generate_license_barcode_data(
+                license=self,
+                person=person,
+                card=card
+            )
+            
+            # Update the license's barcode_data field with JSON string
+            import json
+            self.barcode_data = json.dumps(barcode_data, separators=(',', ':'), ensure_ascii=False)
+            
+            return barcode_data
+            
+        except Exception as e:
+            # Log error but don't fail the license creation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to generate barcode data for license {self.id}: {str(e)}")
+            return {}
+
+    def regenerate_barcode_data(self, db_session) -> bool:
+        """
+        Regenerate barcode data for this license
+        Loads person and card data from database
+        
+        Args:
+            db_session: Database session
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            from app.models.person import Person
+            from app.models.card import Card
+            
+            # Load person
+            person = db_session.query(Person).filter(Person.id == self.person_id).first()
+            if not person:
+                return False
+            
+            # Load active card if exists
+            card = None
+            if hasattr(self, 'cards') and self.cards:
+                card = next((c for c in self.cards if c.is_active), None)
+            
+            # Generate barcode data
+            barcode_data = self.generate_barcode_data(person, card, db_session)
+            
+            # Save to database
+            db_session.commit()
+            
+            return bool(barcode_data)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to regenerate barcode data for license {self.id}: {str(e)}")
+            return False
+
+    def get_barcode_data(self) -> Optional[Dict[str, Any]]:
+        """
+        Get parsed barcode data from the stored JSON
+        
+        Returns:
+            Parsed barcode data dictionary or None if not available
+        """
+        if not self.barcode_data:
+            return None
+            
+        try:
+            import json
+            return json.loads(self.barcode_data)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def generate_barcode_image(self) -> Optional[str]:
+        """
+        Generate PDF417 barcode image from stored barcode data
+        
+        Returns:
+            Base64 encoded PNG image or None if barcode data not available
+        """
+        try:
+            from app.services.barcode_service import barcode_service
+            
+            barcode_data = self.get_barcode_data()
+            if not barcode_data:
+                return None
+                
+            return barcode_service.generate_pdf417_barcode(barcode_data)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to generate barcode image for license {self.id}: {str(e)}")
+            return None
+
 
 
 

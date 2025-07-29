@@ -1,0 +1,13 @@
+# PDF417 Barcode Generation Dependencies for Madagascar License System
+
+# ReportLab - PDF417 barcode generation
+reportlab>=4.0.0
+
+# PIL/Pillow - Image processing for photo compression and barcode images
+Pillow>=10.0.0
+
+# Optional: pyzbar for barcode reading/testing (if needed for validation)
+# pyzbar>=0.1.9
+
+# Optional: python-barcode for additional barcode format support
+# python-barcode>=0.14.0 
