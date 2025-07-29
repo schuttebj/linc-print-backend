@@ -423,62 +423,65 @@ class LicenseBarcodeService:
         return info
 
     def _generate_sample_photo(self) -> Optional[str]:
-        """Generate a sample photo for testing purposes - targeting ~1.5KB 8-bit image"""
+        """Generate a sample photo for testing purposes - targeting ~400 bytes"""
         try:
             if not PIL_AVAILABLE:
+                print("PIL not available for photo generation")
                 return None
             
-            from PIL import Image, ImageDraw, ImageFont
+            from PIL import Image, ImageDraw
             
-            # Create a very small passport photo sized image for barcode
-            img = Image.new('RGB', (80, 100), color='#E6E6FA')  # Much smaller image
+            # Create a very small image for barcode
+            img = Image.new('RGB', (40, 50), color='#E0E0E0')  # Tiny gray image
             draw = ImageDraw.Draw(img)
             
-            # Draw a simple face representation (scaled down)
-            # Head circle
-            draw.ellipse([20, 20, 60, 60], fill='#F5DEB3', outline='#DEB887')  # Face
+            # Draw a very simple face
+            draw.ellipse([10, 10, 30, 30], fill='#F0C674')  # Face
+            draw.ellipse([15, 18, 18, 21], fill='black')  # Left eye
+            draw.ellipse([22, 18, 25, 21], fill='black')  # Right eye
+            draw.arc([16, 22, 24, 28], 0, 180, fill='black')  # Mouth
             
-            # Eyes
-            draw.ellipse([28, 32, 35, 39], fill='black')  # Left eye
-            draw.ellipse([45, 32, 52, 39], fill='black')  # Right eye
-            
-            # Nose
-            draw.ellipse([38, 42, 42, 48], outline='#DEB887')
-            
-            # Mouth
-            draw.arc([32, 48, 48, 56], 0, 180, fill='#8B4513')
-            
-            # Add "SAMPLE" text (smaller)
+            # Add tiny text
             try:
-                draw.text((40, 70), "SAMPLE", fill='red', anchor='mm')
-                draw.text((40, 85), "PHOTO", fill='red', anchor='mm')
+                draw.text((20, 35), "ID", fill='red', anchor='mm')
             except:
-                # Fallback if font issues
-                draw.text((20, 70), "SAMPLE", fill='red')
+                pass
             
-            # Convert to base64 with quality targeting ~1.5KB
+            # Convert to base64 with very aggressive compression
             output = io.BytesIO()
-            quality = 85
+            quality = 30  # Start with low quality
             
-            # Iteratively adjust quality to target ~400 bytes
-            while quality > 20:
+            # Try to get under 400 bytes
+            while quality > 10:
                 output.seek(0)
                 output.truncate()
                 img.save(output, format='JPEG', quality=quality, optimize=True)
                 
                 # Check encoded size
                 encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
+                print(f"Photo compression attempt: quality={quality}, size={encoded_size}")
                 
-                # Target ~400 bytes encoded (very conservative for PDF417)
+                # Target ~400 bytes encoded
                 if encoded_size <= 400:
-                    break
+                    result = base64.b64encode(output.getvalue()).decode('utf-8')
+                    print(f"Photo generated successfully: {len(result)} chars")
+                    return result
                     
-                quality -= 5
+                quality -= 2
             
-            return base64.b64encode(output.getvalue()).decode('utf-8')
+            # If still too large, return a very basic version
+            output.seek(0)
+            output.truncate()
+            img.save(output, format='JPEG', quality=10, optimize=True)
+            result = base64.b64encode(output.getvalue()).decode('utf-8')
+            print(f"Photo generated with minimum quality: {len(result)} chars")
+            return result if len(result) <= 400 else None
             
         except Exception as e:
             self.logger.error(f"Error generating sample photo: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            print(f"Photo generation error: {e}")
             return None
 
 

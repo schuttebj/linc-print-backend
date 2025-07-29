@@ -371,8 +371,11 @@ async def generate_test_barcode(
                     # Generate sample photo if no custom photo or if custom photo failed
                     if not photo_to_use and request.include_sample_photo:
                         sample_photo = barcode_service._generate_sample_photo()
+                        print(f"Sample photo generated: {bool(sample_photo)}, size: {len(sample_photo) if sample_photo else 0}")
                         if sample_photo and len(sample_photo) <= max_photo_size:
                             photo_to_use = sample_photo
+                        elif sample_photo:
+                            print(f"Sample photo too large: {len(sample_photo)} > {max_photo_size}")
                     
                     # Add photo to barcode data
                     if photo_to_use:
