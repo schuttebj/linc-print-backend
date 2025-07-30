@@ -766,7 +766,7 @@ class LicenseBarcodeService:
                 img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
