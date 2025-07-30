@@ -424,20 +424,40 @@ class LicenseBarcodeService:
             Base64-encoded PNG image of the barcode
         """
         try:
-            # Convert binary to hex string for PDF417 compatibility
-            hex_data = binascii.hexlify(cbor_payload).decode('ascii')
-            
-            print(f"PDF417 generation: {len(cbor_payload)} bytes → {len(hex_data)} hex chars")
+            print(f"PDF417 generation: {len(cbor_payload)} bytes binary data")
             
             if not BARCODE_AVAILABLE:
                 return self._generate_barcode_placeholder(f"CBOR-{len(cbor_payload)}-bytes")
             
-            # Generate PDF417 barcode with optimal settings
-            codes = pdf417gen.encode(
-                hex_data,
-                security_level=self.BARCODE_CONFIG['error_correction_level'],
-                columns=self.BARCODE_CONFIG['columns']
-            )
+            # Try binary mode first (most efficient)
+            try:
+                codes = pdf417gen.encode(
+                    cbor_payload,  # Direct binary data
+                    security_level=self.BARCODE_CONFIG['error_correction_level'],
+                    columns=self.BARCODE_CONFIG['columns']
+                )
+                print(f"PDF417 encoded successfully using binary mode")
+            except Exception as binary_error:
+                print(f"Binary mode failed: {binary_error}, trying text mode")
+                # Fallback to text mode with higher capacity settings
+                try:
+                    # Use text encoding with fewer columns for higher capacity
+                    codes = pdf417gen.encode(
+                        cbor_payload.decode('latin1'),  # Latin1 preserves all byte values
+                        security_level=3,  # Lower error correction for more capacity
+                        columns=4  # Fewer columns = more rows = higher capacity
+                    )
+                    print(f"PDF417 encoded successfully using text mode (latin1)")
+                except Exception as text_error:
+                    # Last resort: Base64 encoding (more compact than hex)
+                    import base64
+                    b64_data = base64.b64encode(cbor_payload).decode('ascii')
+                    codes = pdf417gen.encode(
+                        b64_data,
+                        security_level=3,
+                        columns=4
+                    )
+                    print(f"PDF417 encoded using base64 fallback: {len(b64_data)} chars")
             
             # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)

@@ -563,14 +563,32 @@ async def decode_barcode_data(
     try:
         import binascii
         
-        # Convert hex to binary
+        # Try different decoding methods based on the input format
+        binary_data = None
+        decoding_method = "unknown"
+        
         try:
+            # Method 1: Try direct binary (if scanner returns raw bytes as hex)
             binary_data = binascii.unhexlify(request.hex_data)
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid hex data: {str(e)}"
-            )
+            decoding_method = "hex"
+        except:
+            try:
+                # Method 2: Try base64 decoding
+                import base64
+                binary_data = base64.b64decode(request.hex_data)
+                decoding_method = "base64"
+            except:
+                try:
+                    # Method 3: Try latin1 text decoding
+                    binary_data = request.hex_data.encode('latin1')
+                    decoding_method = "latin1"
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Could not decode data as hex, base64, or latin1: {str(e)}"
+                    )
+        
+        print(f"Decoded using method: {decoding_method}, data length: {len(binary_data)} bytes")
         
         # Decode CBOR payload
         decoded_data = barcode_service.decode_cbor_payload(binary_data)
@@ -588,7 +606,8 @@ async def decode_barcode_data(
             "has_image": has_image,
             "image_size_bytes": image_size,
             "total_payload_size": len(binary_data),
-            "message": f"Barcode decoded successfully. {'Image found' if has_image else 'No image'} ({len(binary_data)} bytes total)"
+            "decoding_method": decoding_method,
+            "message": f"Barcode decoded successfully using {decoding_method}. {'Image found' if has_image else 'No image'} ({len(binary_data)} bytes total)"
         }
         
         # Add base64 encoded image if present
