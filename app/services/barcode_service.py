@@ -464,36 +464,37 @@ class LicenseBarcodeService:
             if not BARCODE_AVAILABLE:
                 return self._generate_barcode_placeholder(f"CBOR-{len(cbor_payload)}-bytes")
             
-            # Try latin1 mode first (most reliable for binary data)
+            # Use base64 encoding (most reliable for binary data in PDF417)
             try:
-                # Use latin1 encoding which preserves all byte values 0-255
-                latin1_data = cbor_payload.decode('latin1')
+                # Base64 encoding is safe and reliable for all binary data
+                b64_data = base64.b64encode(cbor_payload).decode('ascii')
                 codes = pdf417gen.encode(
-                    latin1_data,
+                    b64_data,
                     security_level=self.BARCODE_CONFIG['error_correction_level'],
                     columns=self.BARCODE_CONFIG['columns']
                 )
-                print(f"PDF417 encoded successfully using latin1 mode: {len(latin1_data)} chars")
-            except Exception as latin1_error:
-                print(f"Latin1 mode failed: {latin1_error}, trying binary mode")
-                # Fallback to binary mode
+                print(f"PDF417 encoded successfully using base64 mode: {len(b64_data)} chars")
+            except Exception as b64_error:
+                print(f"Base64 mode failed: {b64_error}, trying latin1")
+                # Fallback to latin1 mode
                 try:
+                    # Use latin1 encoding which preserves all byte values 0-255
+                    latin1_data = cbor_payload.decode('latin1')
+                    codes = pdf417gen.encode(
+                        latin1_data,
+                        security_level=2,  # Lower error correction for more capacity
+                        columns=15  # More columns for higher capacity
+                    )
+                    print(f"PDF417 encoded successfully using latin1 mode: {len(latin1_data)} chars")
+                except Exception as latin1_error:
+                    print(f"Latin1 mode failed: {latin1_error}, trying binary mode")
+                    # Last resort: binary mode
                     codes = pdf417gen.encode(
                         cbor_payload,  # Direct binary data
-                        security_level=self.BARCODE_CONFIG['error_correction_level'],
-                        columns=self.BARCODE_CONFIG['columns']
+                        security_level=2,
+                        columns=18
                     )
                     print(f"PDF417 encoded successfully using binary mode")
-                except Exception as binary_error:
-                    print(f"Binary mode failed: {binary_error}, trying base64")
-                    # Last resort: Base64 encoding (more compact than hex)
-                    b64_data = base64.b64encode(cbor_payload).decode('ascii')
-                    codes = pdf417gen.encode(
-                        b64_data,
-                        security_level=2,
-                        columns=18  # Even more columns for base64 fallback
-                    )
-                    print(f"PDF417 encoded using base64 fallback: {len(b64_data)} chars")
             
             # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)
