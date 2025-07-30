@@ -450,7 +450,6 @@ class LicenseBarcodeService:
                     print(f"PDF417 encoded successfully using text mode (latin1)")
                 except Exception as text_error:
                     # Last resort: Base64 encoding (more compact than hex)
-                    import base64
                     b64_data = base64.b64encode(cbor_payload).decode('ascii')
                     codes = pdf417gen.encode(
                         b64_data,
