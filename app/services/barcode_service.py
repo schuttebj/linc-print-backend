@@ -669,8 +669,8 @@ class LicenseBarcodeService:
             return data
         
         try:
-            # Generate random nonce (12 bytes for ChaCha20)
-            nonce = secrets.token_bytes(12)
+            # Generate random nonce (16 bytes for ChaCha20)
+            nonce = secrets.token_bytes(16)
             
             # Create ChaCha20 cipher
             cipher = Cipher(
@@ -696,9 +696,9 @@ class LicenseBarcodeService:
             return encrypted_data
         
         try:
-            # Extract nonce (first 12 bytes) and ciphertext
-            nonce = encrypted_data[:12]
-            ciphertext = encrypted_data[12:]
+            # Extract nonce (first 16 bytes) and ciphertext
+            nonce = encrypted_data[:16]
+            ciphertext = encrypted_data[16:]
             
             # Create ChaCha20 cipher
             cipher = Cipher(
