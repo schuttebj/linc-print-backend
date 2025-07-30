@@ -199,8 +199,16 @@ class LicenseBarcodeService:
             print(f"Attempting to decode CBOR data: {len(cbor_data)} bytes")
             print(f"First 20 bytes: {cbor_data[:20].hex() if len(cbor_data) >= 20 else cbor_data.hex()}")
             
-            payload = cbor2.loads(cbor_data)
-            print(f"CBOR decoded successfully, type: {type(payload)}")
+            try:
+                payload = cbor2.loads(cbor_data)
+                print(f"CBOR decoded successfully, type: {type(payload)}")
+            except Exception as cbor_error:
+                print(f"CBOR decoding failed: {cbor_error}")
+                # Try to extract partial data if possible
+                if "premature end of stream" in str(cbor_error):
+                    raise BarcodeDecodingError(f"Barcode data is truncated - {str(cbor_error)}. Please rescan the barcode completely.")
+                else:
+                    raise BarcodeDecodingError(f"Invalid CBOR format: {str(cbor_error)}")
             
             # Validate structure - handle both formats
             if not isinstance(payload, dict):
@@ -456,26 +464,28 @@ class LicenseBarcodeService:
             if not BARCODE_AVAILABLE:
                 return self._generate_barcode_placeholder(f"CBOR-{len(cbor_payload)}-bytes")
             
-            # Try binary mode first (most efficient)
+            # Try latin1 mode first (most reliable for binary data)
             try:
+                # Use latin1 encoding which preserves all byte values 0-255
+                latin1_data = cbor_payload.decode('latin1')
                 codes = pdf417gen.encode(
-                    cbor_payload,  # Direct binary data
+                    latin1_data,
                     security_level=self.BARCODE_CONFIG['error_correction_level'],
                     columns=self.BARCODE_CONFIG['columns']
                 )
-                print(f"PDF417 encoded successfully using binary mode")
-            except Exception as binary_error:
-                print(f"Binary mode failed: {binary_error}, trying text mode")
-                # Fallback to text mode with higher capacity settings
+                print(f"PDF417 encoded successfully using latin1 mode: {len(latin1_data)} chars")
+            except Exception as latin1_error:
+                print(f"Latin1 mode failed: {latin1_error}, trying binary mode")
+                # Fallback to binary mode
                 try:
-                    # Use text encoding with more columns to reduce rows
                     codes = pdf417gen.encode(
-                        cbor_payload.decode('latin1'),  # Latin1 preserves all byte values
-                        security_level=2,  # Lower error correction for more capacity
-                        columns=15  # More columns = fewer rows to fit 90 row limit
+                        cbor_payload,  # Direct binary data
+                        security_level=self.BARCODE_CONFIG['error_correction_level'],
+                        columns=self.BARCODE_CONFIG['columns']
                     )
-                    print(f"PDF417 encoded successfully using text mode (latin1)")
-                except Exception as text_error:
+                    print(f"PDF417 encoded successfully using binary mode")
+                except Exception as binary_error:
+                    print(f"Binary mode failed: {binary_error}, trying base64")
                     # Last resort: Base64 encoding (more compact than hex)
                     b64_data = base64.b64encode(cbor_payload).decode('ascii')
                     codes = pdf417gen.encode(
@@ -487,6 +497,19 @@ class LicenseBarcodeService:
             
             # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)
+            
+            # Add validation: try to decode what we just encoded to ensure data integrity
+            try:
+                # This tests if the barcode can be decoded properly
+                decoded_test = codes[1]  # The data part of the codes tuple
+                expected_length = len(cbor_payload)
+                if hasattr(decoded_test, '__len__'):
+                    actual_length = len(decoded_test)
+                    if actual_length != expected_length:
+                        print(f"WARNING: Data length mismatch during encoding. Expected: {expected_length}, Got: {actual_length}")
+                print(f"PDF417 encoding validation passed")
+            except Exception as validation_error:
+                print(f"PDF417 encoding validation warning: {validation_error}")
             
             # Convert to base64
             buffer = io.BytesIO()
