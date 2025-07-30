@@ -594,17 +594,15 @@ async def decode_barcode_data(
         # Add base64 encoded image if present
         if has_image:
             import base64
-            import zlib
             
             try:
-                # Decompress image
-                decompressed_img = zlib.decompress(decoded_data['img'])
-                # Convert to base64 for response
-                image_base64 = base64.b64encode(decompressed_img).decode('utf-8')
+                # Image is already in JPEG/PNG format, just encode to base64
+                image_bytes = decoded_data['img']
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
                 response_data["image_base64"] = image_base64
-                response_data["decompressed_image_size"] = len(decompressed_img)
+                response_data["image_format"] = "JPEG/PNG"
             except Exception as e:
-                response_data["image_error"] = f"Failed to decompress image: {str(e)}"
+                response_data["image_error"] = f"Failed to encode image: {str(e)}"
         
         return response_data
         

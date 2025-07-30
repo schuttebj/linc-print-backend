@@ -202,15 +202,10 @@ class LicenseBarcodeService:
             if not isinstance(payload, dict) or "data" not in payload:
                 raise BarcodeDecodingError("Invalid CBOR payload structure")
             
-            # Decompress photo if present
+            # Photo is stored as raw JPEG/PNG bytes, no decompression needed
             if "img" in payload:
-                try:
-                    decompressed_photo = zlib.decompress(payload["img"])
-                    print(f"Photo decompressed: {len(payload['img'])} → {len(decompressed_photo)} bytes")
-                    payload["img"] = decompressed_photo
-                except Exception as e:
-                    self.logger.warning(f"Failed to decompress photo: {e}")
-                    del payload["img"]
+                print(f"Photo found: {len(payload['img'])} bytes (JPEG/PNG format)")
+                # Image bytes are ready to use directly
             
             return payload
             
@@ -330,13 +325,13 @@ class LicenseBarcodeService:
 
     def _process_photo_for_barcode(self, photo_data: bytes) -> Optional[bytes]:
         """
-        Process photo data for barcode embedding using ISO 2:3 aspect ratio and zlib compression
+        Process photo data for barcode embedding using ISO 2:3 aspect ratio and JPEG compression
         
         Args:
             photo_data: Raw image bytes
             
         Returns:
-            Compressed PNG bytes or None if processing fails
+            Compressed JPEG bytes or None if processing fails
         """
         try:
             if not PIL_AVAILABLE:
@@ -370,23 +365,49 @@ class LicenseBarcodeService:
             # Scale to target size while maintaining aspect ratio
             image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             
-            # Save as optimized PNG
+            # Try different compression strategies
+            max_bytes = self.BARCODE_CONFIG['max_image_bytes']
+            
+            # Strategy 1: High quality JPEG
+            for quality in [85, 75, 65, 55, 45, 35, 25, 15]:
+                jpeg_buffer = io.BytesIO()
+                image.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
+                jpeg_bytes = jpeg_buffer.getvalue()
+                
+                if len(jpeg_bytes) <= max_bytes:
+                    print(f"Photo processing: {len(photo_data)} → {len(jpeg_bytes)} JPEG (quality {quality})")
+                    print(f"Final image size: {image.size}")
+                    return jpeg_bytes
+            
+            # Strategy 2: Very low quality JPEG with smaller dimensions
+            smaller_image = image.copy()
+            for scale in [0.8, 0.7, 0.6, 0.5]:
+                new_size = (int(max_width * scale), int(max_height * scale))
+                smaller_image.thumbnail(new_size, Image.Resampling.LANCZOS)
+                
+                for quality in [25, 15, 10, 5]:
+                    jpeg_buffer = io.BytesIO()
+                    smaller_image.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
+                    jpeg_bytes = jpeg_buffer.getvalue()
+                    
+                    if len(jpeg_bytes) <= max_bytes:
+                        print(f"Photo processing: {len(photo_data)} → {len(jpeg_bytes)} JPEG (scale {scale}, quality {quality})")
+                        print(f"Final image size: {smaller_image.size}")
+                        return jpeg_bytes
+            
+            # Strategy 3: PNG with aggressive optimization
             png_buffer = io.BytesIO()
             image.save(png_buffer, format='PNG', optimize=True)
             png_bytes = png_buffer.getvalue()
             
-            # Apply zlib compression
-            compressed_bytes = zlib.compress(png_bytes, level=9)  # Maximum compression
+            if len(png_bytes) <= max_bytes:
+                print(f"Photo processing: {len(photo_data)} → {len(png_bytes)} PNG")
+                print(f"Final image size: {image.size}")
+                return png_bytes
             
-            print(f"Photo processing: {len(photo_data)} → {len(png_bytes)} PNG → {len(compressed_bytes)} compressed")
-            print(f"Final image size: {image.size}, compression ratio: {len(compressed_bytes)/len(png_bytes):.2f}")
-            
-            if len(compressed_bytes) <= self.BARCODE_CONFIG['max_image_bytes']:
-                return compressed_bytes
-            else:
-                self.logger.warning(f"Compressed photo too large: {len(compressed_bytes)} > {self.BARCODE_CONFIG['max_image_bytes']}")
-                return None
-            
+            self.logger.warning(f"Could not compress photo to required size. Best: {len(jpeg_bytes) if 'jpeg_bytes' in locals() else len(png_bytes)} bytes")
+            return None
+                
         except Exception as e:
             self.logger.error(f"Error processing photo for barcode: {e}")
             print(f"Photo processing error: {e}")
