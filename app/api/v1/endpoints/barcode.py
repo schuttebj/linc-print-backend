@@ -319,11 +319,12 @@ async def generate_test_barcode(
                 self.category = type('MockCategory', (), {'value': request.license_codes[0] if request.license_codes else 'B'})()
         
         # Create mock Card object for testing
+        # Create mock Card object for testing
         class MockCard:
             def __init__(self):
-        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
-        location_code = random.choice(location_codes)
-        sequence = random.randint(100000, 999999)
+                location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
+                location_code = random.choice(location_codes)
+                sequence = random.randint(100000, 999999)
                 self.card_number = f"MG{location_code}{sequence:06d}"
         
         person = MockPerson()
