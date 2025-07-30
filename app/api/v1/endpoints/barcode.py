@@ -551,7 +551,7 @@ class BarcodeDecodeRequest(BaseModel):
 
 
 @router.post(
-    "/decode",
+    "/decode-hex",
     summary="Decode scanned barcode hex data",
     description="Decode CBOR-encoded barcode data and extract embedded image"
 )
