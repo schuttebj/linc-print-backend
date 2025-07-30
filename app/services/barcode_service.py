@@ -778,10 +778,10 @@ class LicenseBarcodeService:
                 print(f"PDF417 encoding validation passed")
             except Exception as validation_error:
                 print(f"PDF417 encoding validation warning: {validation_error}")
-                
-                # Convert to base64
-                buffer = io.BytesIO()
-                img.save(buffer, format='PNG')
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
