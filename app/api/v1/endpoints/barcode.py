@@ -293,132 +293,82 @@ async def decode_license_barcode(
 @router.post(
     "/test",
     response_model=BarcodeGenerationResponse,
-    summary="Generate test barcode with license data only",
-    description="Generate a PDF417 barcode with only the actual Madagascar license file data"
+    summary="Generate test barcode using CBOR+zlib encoding",
+    description="Generate a PDF417 barcode with CBOR encoding and zlib compression for optimal size"
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
     current_user: User = Depends(require_permission("licenses.read"))
 ):
-    """Generate test barcode with only actual license file data"""
+    """Generate test barcode using new CBOR+zlib encoding system"""
     try:
-        import uuid
         from datetime import datetime, timedelta
         import random
+        import base64
         
-        # Generate realistic dates
-        first_issue_date = datetime.now() - timedelta(days=1825)  # 5 years ago
-        current_issue_date = datetime.now() - timedelta(days=90)  # 3 months ago  
-        expiry_date = current_issue_date + timedelta(days=1825)   # 5 years from current issue
+        # Create mock Person object for testing
+        class MockPerson:
+            def __init__(self):
+                self.surname = request.person_name.split()[0] if request.person_name else "DOE"
+                self.first_name = " ".join(request.person_name.split()[1:]) if len(request.person_name.split()) > 1 else "JOHN"
+                self.person_nature = "02" if request.sex == "F" else "01"
+                self.birth_date = datetime.strptime(request.date_of_birth, "%Y-%m-%d").date()
         
-        # Generate realistic card number (Madagascar format)
-        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
-        location_code = random.choice(location_codes)
-        sequence = random.randint(100000, 999999)
-        card_number = f"MG{location_code}{sequence:06d}"
+        # Create mock License object for testing  
+        class MockLicense:
+            def __init__(self):
+                self.issue_date = datetime.now() - timedelta(days=90)
+                self.expiry_date = datetime.now() + timedelta(days=1825)
+                self.category = type('MockCategory', (), {'value': request.license_codes[0] if request.license_codes else 'B'})()
         
-        # Generate realistic ID number (Madagascar national ID format)
-        id_number = f"{random.randint(100000000000, 999999999999)}"  # 12-digit ID
+        # Create mock Card object for testing
+        class MockCard:
+            def __init__(self):
+                location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
+                location_code = random.choice(location_codes)
+                sequence = random.randint(100000, 999999)
+                self.card_number = f"MG{location_code}{sequence:06d}"
         
-        # Create barcode with ONLY the actual license file data (using short keys)
-        barcode_data = {
-            # Required system fields
-            "ver": 1,
-            "country": "MG",
-            
-            # Actual license file data ONLY
-            "name": request.person_name.upper(),                    # Initials and Surname
-            "idn": id_number,                                       # ID Number  
-            "card_num": card_number,                               # Card Number
-            "dr": request.driver_restrictions,                     # Driver Restrictions
-            "sex": request.sex,                                    # Sex
-            "dob": request.date_of_birth,                          # Date of Birth
-            "vf": current_issue_date.strftime("%Y-%m-%d"),         # Valid Period Start
-            "vt": expiry_date.strftime("%Y-%m-%d"),                # Valid Period End
-            "codes": request.license_codes,                        # License Codes
-            "vr": request.vehicle_restrictions,                    # Vehicle Restrictions
-            "fi": first_issue_date.strftime("%Y-%m-%d"),           # First Issued Date
-        }
+        person = MockPerson()
+        license = MockLicense()
+        card = MockCard()
         
-        # Add image if requested and space allows
-        # PDF417 constraints: Max 925 codewords (~2.7KB), use ~70% (~1.8KB) for data
-        print(f"Photo inclusion check: include_sample_photo={request.include_sample_photo}, custom_photo_provided={bool(request.custom_photo_base64)}")
+        # Process custom photo if provided
+        photo_bytes = None
+        if request.custom_photo_base64:
+            try:
+                photo_bytes = base64.b64decode(request.custom_photo_base64)
+                print(f"Custom photo decoded: {len(photo_bytes)} bytes")
+            except Exception as e:
+                print(f"Failed to decode custom photo: {e}")
         
-        if request.include_sample_photo or request.custom_photo_base64:
-            # Check space before adding photo
-            json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-            max_photo_size = 500  # Increased photo size for better quality
-            remaining_space = 800 - json_size  # Very conservative total data budget
-            
-            print(f"Space calculation: JSON size={json_size}, remaining_space={remaining_space}, max_photo_size={max_photo_size}")
-            
-            # Only add photo if we have enough space (with some safety margin)
-            if remaining_space >= (max_photo_size + 100):  # 100 byte safety margin
-                print("Space check passed, proceeding with photo processing")
-                try:
-                    photo_to_use = None
-                    
-                    # Use custom photo if provided
-                    if request.custom_photo_base64:
-                        try:
-                            # Decode and process the custom photo properly
-                            import base64
-                            photo_bytes = base64.b64decode(request.custom_photo_base64)
-                            processed_photo = barcode_service._process_photo_for_barcode(photo_bytes)
-                            
-                            if processed_photo and len(processed_photo) <= max_photo_size:
-                                photo_to_use = processed_photo
-                                print(f"Custom photo processed and compressed: {len(processed_photo)} chars")
-                            else:
-                                print(f"Custom photo processing failed or too large: {len(processed_photo) if processed_photo else 0} chars")
-                        except Exception as e:
-                            print(f"Error processing custom photo: {e}")
-                            # Fallback to truncation if processing fails
-                            if len(request.custom_photo_base64) <= max_photo_size:
-                                photo_to_use = request.custom_photo_base64
-                                print(f"Using unprocessed custom photo: {len(request.custom_photo_base64)} chars")
-                            else:
-                                photo_to_use = request.custom_photo_base64[:max_photo_size]
-                                print(f"Custom photo truncated: {len(request.custom_photo_base64)} → {max_photo_size} chars")
-                    
-                    # Generate sample photo if no custom photo or if custom photo failed
-                    if not photo_to_use and request.include_sample_photo:
-                        sample_photo = barcode_service._generate_sample_photo()
-                        print(f"Sample photo generated: {bool(sample_photo)}, size: {len(sample_photo) if sample_photo else 0}")
-                        if sample_photo and len(sample_photo) <= max_photo_size:
-                            photo_to_use = sample_photo
-                        elif sample_photo:
-                            print(f"Sample photo too large: {len(sample_photo)} > {max_photo_size}")
-                    
-                    # Add photo to barcode data
-                    if photo_to_use:
-                        barcode_data["photo"] = photo_to_use
-                        print(f"Photo added to barcode data, length: {len(photo_to_use)} chars")
-                    else:
-                        print("No photo was processed successfully")
-                        
-                except Exception as e:
-                    # Log error but continue without photo
-                    print(f"Photo processing error: {e}")
-                    pass
-            else:
-                print(f"Space check failed: remaining_space={remaining_space} < required={max_photo_size + 50}")
-        else:
-            print("No photo inclusion requested")
+        # Create CBOR payload using new system
+        cbor_payload = barcode_service.create_cbor_payload(
+            license=license,
+            person=person,
+            card=card,
+            photo_data=photo_bytes
+        )
         
-        # Calculate final data size before generating barcode
-        data_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-        print(f"Final data size before PDF417 generation: {data_size} bytes")
+        # Generate PDF417 barcode using CBOR
+        barcode_image = barcode_service.generate_pdf417_barcode_cbor(cbor_payload)
         
-        # Generate PDF417 barcode image
-        barcode_image = barcode_service.generate_pdf417_barcode(barcode_data)
+        # Decode payload for response (to show what's inside)
+        decoded_payload = barcode_service.decode_cbor_payload(cbor_payload)
+        
+        # Convert to display format similar to old JSON structure
+        display_data = decoded_payload.get("data", {})
+        if "img" in decoded_payload:
+            display_data["photo_included"] = True
+            display_data["photo_size"] = len(decoded_payload["img"])
         
         return BarcodeGenerationResponse(
             success=True,
             barcode_image_base64=barcode_image,
-            barcode_data=barcode_data,
-            data_size_bytes=data_size,
-            message=f"License barcode: {card_number} (ID: {id_number}, {data_size} bytes)"
+            barcode_data=display_data,
+            data_size_bytes=len(cbor_payload),
+            message=f"CBOR License barcode: {card.card_number} ({len(cbor_payload)} bytes total, "
+                   f"{'with photo' if photo_bytes else 'no photo'})"
         )
         
     except Exception as e:

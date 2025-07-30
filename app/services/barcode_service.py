@@ -1,23 +1,31 @@
 """
-Madagascar Driver's License Barcode Service
+Madagascar Driver's License Barcode Service - CBOR/zlib Implementation
 Handles PDF417 barcode generation and decoding with complete license data
 
 Features:
-- PDF417 barcode generation with error correction
-- Complete license data embedding (including photo)
-- Barcode decoding and validation
-- Optimized for ~1.8KB data capacity with ECC Level 5
-- Future-proof JSON structure with versioning
+- PDF417 barcode generation with binary payload support
+- CBOR encoding for efficient data structure serialization
+- zlib compression for image data optimization
+- ISO standard 2:3 aspect ratio license photos
+- Optimized for ~1.4KB total capacity with realistic error correction
+- Hex encoding for PDF417 string compatibility
 """
 
-import json
-import base64
 import io
 import uuid
+import zlib
+import binascii
 from datetime import datetime, date
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 from pathlib import Path
 import logging
+
+try:
+    import cbor2
+    CBOR_AVAILABLE = True
+except ImportError:
+    CBOR_AVAILABLE = False
+    logging.warning("cbor2 not available - barcode generation will use fallback")
 
 try:
     import pdf417gen
@@ -58,15 +66,17 @@ class BarcodeDecodingError(LicenseBarcodeError):
 
 
 class LicenseBarcodeService:
-    """Service for generating and decoding PDF417 barcodes for Madagascar driver's licenses"""
+    """Service for generating and decoding PDF417 barcodes using CBOR+zlib encoding"""
     
-    # Barcode configuration for PDF417
+    # Barcode configuration for PDF417 with realistic capacity
     BARCODE_CONFIG = {
-        'columns': 12,  # More columns = fewer rows (max 90 rows limit)
-        'error_correction_level': 2,  # Security level 2 for pdf417gen (~25% correction capacity)
-        'max_data_bytes': 800,  # Very conservative limit for PDF417
-        'max_image_bytes': 500,  # Increased photo size limit for better quality
-        'version': 1  # JSON structure version
+        'columns': 6,  # Optimal balance between size and readability
+        'error_correction_level': 5,  # Good error correction (~25% capacity)
+        'max_payload_bytes': 1400,  # Realistic total budget for resilient barcodes
+        'max_image_bytes': 1000,  # Generous image budget with zlib compression
+        'max_data_bytes': 500,  # License data budget (before compression)
+        'image_max_dimension': (100, 150),  # 2:3 aspect ratio for ISO standard
+        'version': 2  # New CBOR+zlib format version
     }
     
     # Restriction code mappings
@@ -89,6 +99,119 @@ class LicenseBarcodeService:
         self.logger = logging.getLogger(__name__)
         if not BARCODE_AVAILABLE:
             self.logger.warning("Barcode generation running in simulation mode")
+        if not CBOR_AVAILABLE:
+            self.logger.warning("CBOR not available - will use fallback encoding")
+
+    def create_cbor_payload(
+        self, 
+        license: License, 
+        person: Person, 
+        card: Optional[Card] = None,
+        photo_data: Optional[bytes] = None
+    ) -> bytes:
+        """
+        Create CBOR-encoded payload for PDF417 barcode
+        
+        Args:
+            license: License object
+            person: Person object 
+            card: Optional Card object
+            photo_data: Optional photo bytes
+            
+        Returns:
+            CBOR-encoded binary payload
+        """
+        try:
+            if not CBOR_AVAILABLE:
+                raise BarcodeGenerationError("CBOR library not available")
+            
+            # Generate realistic ID number
+            import random
+            id_number = f"{random.randint(100000000000, 999999999999)}"
+            
+            # Build license data structure (optimized for CBOR)
+            license_data = {
+                "v": self.BARCODE_CONFIG['version'],  # version
+                "c": "MG",  # country
+                "n": f"{person.surname.upper()} {person.first_name}",  # name
+                "i": id_number,  # ID number
+                "s": "M" if person.person_nature == "01" else "F",  # sex
+                "b": person.birth_date.strftime("%Y-%m-%d") if person.birth_date else None,  # birth date
+                "f": license.issue_date.strftime("%Y-%m-%d") if license.issue_date else None,  # first issued
+                "t": license.expiry_date.strftime("%Y-%m-%d") if license.expiry_date else None,  # valid to
+                "o": [license.category.value] if license.category else [],  # codes
+                "r": [],  # restrictions (simplified for now)
+            }
+            
+            # Add card number if available
+            if card:
+                license_data["d"] = card.card_number  # card number
+            
+            # Process photo if provided
+            compressed_photo = None
+            if photo_data:
+                compressed_photo = self._process_photo_for_barcode(photo_data)
+            
+            # Create final payload structure
+            payload = {
+                "data": license_data,
+            }
+            
+            # Add photo if successfully processed
+            if compressed_photo:
+                payload["img"] = compressed_photo
+            
+            # Encode with CBOR
+            cbor_payload = cbor2.dumps(payload)
+            
+            print(f"CBOR payload created: data={len(cbor2.dumps(license_data))} bytes, "
+                  f"photo={len(compressed_photo) if compressed_photo else 0} bytes, "
+                  f"total={len(cbor_payload)} bytes")
+            
+            if len(cbor_payload) > self.BARCODE_CONFIG['max_payload_bytes']:
+                raise BarcodeGenerationError(
+                    f"CBOR payload too large: {len(cbor_payload)} > {self.BARCODE_CONFIG['max_payload_bytes']}"
+                )
+            
+            return cbor_payload
+            
+        except Exception as e:
+            raise BarcodeGenerationError(f"Failed to create CBOR payload: {str(e)}")
+
+    def decode_cbor_payload(self, cbor_data: bytes) -> Dict[str, Any]:
+        """
+        Decode CBOR payload from barcode scan
+        
+        Args:
+            cbor_data: CBOR-encoded binary data
+            
+        Returns:
+            Decoded payload dictionary
+        """
+        try:
+            if not CBOR_AVAILABLE:
+                raise BarcodeDecodingError("CBOR library not available")
+            
+            payload = cbor2.loads(cbor_data)
+            
+            # Validate structure
+            if not isinstance(payload, dict) or "data" not in payload:
+                raise BarcodeDecodingError("Invalid CBOR payload structure")
+            
+            # Decompress photo if present
+            if "img" in payload:
+                try:
+                    decompressed_photo = zlib.decompress(payload["img"])
+                    print(f"Photo decompressed: {len(payload['img'])} → {len(decompressed_photo)} bytes")
+                    payload["img"] = decompressed_photo
+                except Exception as e:
+                    self.logger.warning(f"Failed to decompress photo: {e}")
+                    del payload["img"]
+            
+            return payload
+            
+        except Exception as e:
+            raise BarcodeDecodingError(f"Failed to decode CBOR payload: {str(e)}")
 
     def generate_license_barcode_data(
         self, 
@@ -201,147 +324,133 @@ class LicenseBarcodeService:
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate barcode data: {str(e)}")
 
-    def _process_photo_for_barcode(self, photo_data: bytes) -> str:
+    def _process_photo_for_barcode(self, photo_data: bytes) -> Optional[bytes]:
         """
-        Process photo data for barcode embedding - optimized for white background ID photos
-        Resize and compress to fit within size constraints using grayscale and PNG
+        Process photo data for barcode embedding using ISO 2:3 aspect ratio and zlib compression
+        
+        Args:
+            photo_data: Raw image bytes
+            
+        Returns:
+            Compressed PNG bytes or None if processing fails
         """
         try:
             if not PIL_AVAILABLE:
-                # Basic base64 encoding without processing
-                return base64.b64encode(photo_data).decode('utf-8')
+                self.logger.warning("PIL not available for photo processing")
+                return None
             
-            # Open image with PIL
+            # Open and convert to grayscale
             image = Image.open(io.BytesIO(photo_data))
-            
-            # Convert to grayscale for smaller size (ID photos work well in grayscale)
             if image.mode != 'L':
                 image = image.convert('L')
             
-            # Resize to small dimensions for barcode (white background helps compression)
-            max_size = (80, 100)  # Slightly larger for better recognition while still small
-            image.thumbnail(max_size, Image.Resampling.LANCZOS)
+            # Resize maintaining 2:3 aspect ratio (ISO standard for license photos)
+            max_width, max_height = self.BARCODE_CONFIG['image_max_dimension']
             
-            # Try different compression strategies with better quality settings
-            strategies = [
-                ('PNG', {'optimize': True}),  # PNG with optimization
-                ('JPEG', {'quality': 40, 'optimize': True}),  # Reasonable quality JPEG
-                ('JPEG', {'quality': 30, 'optimize': True}),  # Lower quality JPEG
-                ('JPEG', {'quality': 20, 'optimize': True}),  # Low quality JPEG
-                ('JPEG', {'quality': 15, 'optimize': True}),  # Very low quality JPEG
-            ]
+            # Calculate size maintaining aspect ratio
+            original_width, original_height = image.size
+            aspect_ratio = original_width / original_height
+            target_aspect_ratio = 2 / 3  # ISO standard
             
-            best_result = None
-            best_size = float('inf')
+            if aspect_ratio > target_aspect_ratio:
+                # Image is wider than target, crop width
+                new_width = int(original_height * target_aspect_ratio)
+                left = (original_width - new_width) // 2
+                image = image.crop((left, 0, left + new_width, original_height))
+            elif aspect_ratio < target_aspect_ratio:
+                # Image is taller than target, crop height
+                new_height = int(original_width / target_aspect_ratio)
+                top = (original_height - new_height) // 2
+                image = image.crop((0, top, original_width, top + new_height))
             
-            print(f"Processing photo: original size ~{len(base64.b64encode(photo_data).decode('utf-8'))} chars, target: {self.BARCODE_CONFIG['max_image_bytes']}")
+            # Scale to target size while maintaining aspect ratio
+            image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             
-            for format_type, kwargs in strategies:
-                output = io.BytesIO()
-                try:
-                    image.save(output, format=format_type, **kwargs)
-                    encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
-                    print(f"Compression attempt - {format_type} quality {kwargs.get('quality', 'default')}: {encoded_size} bytes")
-                    
-                    if encoded_size < best_size:  # Always track the best result
-                        best_result = base64.b64encode(output.getvalue()).decode('utf-8')
-                        best_size = encoded_size
-                        print(f"New best result: {format_type}, {encoded_size} bytes")
-                        
-                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes']:
-                        print(f"Photo fits target size with {format_type}: {encoded_size} bytes")
-                        break
-                        
-                except Exception as e:
-                    print(f"Failed to compress with {format_type}: {e}")
-                    self.logger.warning(f"Failed to compress with {format_type}: {e}")
-                    continue
+            # Save as optimized PNG
+            png_buffer = io.BytesIO()
+            image.save(png_buffer, format='PNG', optimize=True)
+            png_bytes = png_buffer.getvalue()
             
-            # If still too large, try 1-bit dithering for maximum compression
-            if best_size > self.BARCODE_CONFIG['max_image_bytes']:
-                print("Trying 1-bit dithering for maximum compression...")
-                try:
-                    # Convert to 1-bit (black and white) with dithering
-                    bw_image = image.convert('1', dither=Image.Dither.FLOYDSTEINBERG)
-                    output = io.BytesIO()
-                    bw_image.save(output, format='PNG', optimize=True)
-                    encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
-                    print(f"1-bit dithering result: {encoded_size} bytes")
-                    
-                    if encoded_size < best_size:
-                        best_result = base64.b64encode(output.getvalue()).decode('utf-8')
-                        best_size = encoded_size
-                        print(f"1-bit dithering is new best: {encoded_size} bytes")
-                    
-                except Exception as e:
-                    print(f"Failed 1-bit compression: {e}")
-                    self.logger.warning(f"Failed 1-bit compression: {e}")
+            # Apply zlib compression
+            compressed_bytes = zlib.compress(png_bytes, level=9)  # Maximum compression
             
-            # Return best result (even if larger than target) or try extreme measures
-            if best_result:
-                if best_size <= self.BARCODE_CONFIG['max_image_bytes']:
-                    print(f"Photo successfully compressed to {best_size} bytes")
-                    return best_result
-                else:
-                    print(f"Photo compressed to {best_size} bytes but exceeds target {self.BARCODE_CONFIG['max_image_bytes']}")
-                    # If we're close, try increasing the limit temporarily or return best result
-                    if best_size <= (self.BARCODE_CONFIG['max_image_bytes'] * 1.2):  # Allow 20% over
-                        print("Allowing slightly oversized photo")
-                        return best_result
-                    else:
-                        print("Photo too large even with maximum compression")
-                        return None
+            print(f"Photo processing: {len(photo_data)} → {len(png_bytes)} PNG → {len(compressed_bytes)} compressed")
+            print(f"Final image size: {image.size}, compression ratio: {len(compressed_bytes)/len(png_bytes):.2f}")
+            
+            if len(compressed_bytes) <= self.BARCODE_CONFIG['max_image_bytes']:
+                return compressed_bytes
             else:
-                print("No compression strategy worked")
-                self.logger.warning(f"Could not compress photo - all strategies failed")
+                self.logger.warning(f"Compressed photo too large: {len(compressed_bytes)} > {self.BARCODE_CONFIG['max_image_bytes']}")
                 return None
             
         except Exception as e:
             self.logger.error(f"Error processing photo for barcode: {e}")
+            print(f"Photo processing error: {e}")
             return None
 
-    def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
+    def generate_pdf417_barcode_cbor(self, cbor_payload: bytes) -> str:
         """
-        Generate PDF417 barcode from license data
-        Falls back to QR code if PDF417 is not available
+        Generate PDF417 barcode from CBOR binary payload using hex encoding
         
         Args:
-            barcode_data: Standardized barcode data dictionary
+            cbor_payload: CBOR-encoded binary data
             
         Returns:
             Base64-encoded PNG image of the barcode
         """
         try:
-            # Convert data to JSON string
-            json_data = json.dumps(barcode_data, separators=(',', ':'), ensure_ascii=False)
+            # Convert binary to hex string for PDF417 compatibility
+            hex_data = binascii.hexlify(cbor_payload).decode('ascii')
             
-            # Check data size
-            data_bytes = len(json_data.encode('utf-8'))
-            if data_bytes > self.BARCODE_CONFIG['max_data_bytes']:
-                raise BarcodeGenerationError(
-                    f"Data size ({data_bytes} bytes) exceeds maximum ({self.BARCODE_CONFIG['max_data_bytes']} bytes)"
-                )
+            print(f"PDF417 generation: {len(cbor_payload)} bytes → {len(hex_data)} hex chars")
             
-            if BARCODE_AVAILABLE:
-                # Generate PDF417 barcode using pdf417gen with more columns to reduce rows
-                codes = pdf417gen.encode(
-                    json_data, 
-                    security_level=self.BARCODE_CONFIG['error_correction_level'],
-                    columns=self.BARCODE_CONFIG['columns']
+            if not BARCODE_AVAILABLE:
+                return self._generate_barcode_placeholder(f"CBOR-{len(cbor_payload)}-bytes")
+            
+            # Generate PDF417 barcode with optimal settings
+            codes = pdf417gen.encode(
+                hex_data,
+                security_level=self.BARCODE_CONFIG['error_correction_level'],
+                columns=self.BARCODE_CONFIG['columns']
                 )
-                img = pdf417gen.render_image(codes, scale=2, ratio=3)  # Smaller scale
+                
+                # Render to image
+            img = pdf417gen.render_image(codes, scale=2, ratio=3)
                 
                 # Convert to base64
                 buffer = io.BytesIO()
                 img.save(buffer, format='PNG')
+            
+            print(f"PDF417 barcode generated successfully: {img.size}")
                 return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            else:
-                # Fallback - generate placeholder
+        except Exception as e:
+            raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
+
+    def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
+        """
+        Legacy method for JSON-based barcode generation (fallback)
+        """
+        try:
+            import json
+            json_data = json.dumps(barcode_data, separators=(',', ':'), ensure_ascii=False)
+            
+            if not BARCODE_AVAILABLE:
                 return self._generate_barcode_placeholder(json_data)
             
+            codes = pdf417gen.encode(
+                json_data, 
+                security_level=self.BARCODE_CONFIG['error_correction_level'],
+                columns=self.BARCODE_CONFIG['columns']
+            )
+            img = pdf417gen.render_image(codes, scale=2, ratio=3)
+            
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
         except Exception as e:
-            raise BarcodeGenerationError(f"Failed to generate barcode: {str(e)}")
+            raise BarcodeGenerationError(f"Failed to generate legacy barcode: {str(e)}")
 
 
 
@@ -368,29 +477,42 @@ class LicenseBarcodeService:
         except Exception:
             return f"BARCODE_PLACEHOLDER:{len(data)}_bytes"
 
-    def decode_barcode_data(self, json_data: str) -> Dict[str, Any]:
+    def decode_barcode_data_cbor(self, hex_data: str) -> Dict[str, Any]:
         """
-        Decode and validate barcode JSON data
+        Decode CBOR barcode data from hex string
         
         Args:
-            json_data: JSON string from barcode scan
+            hex_data: Hex-encoded string from PDF417 barcode scan
             
         Returns:
-            Parsed and validated barcode data
+            Decoded license data and image
         """
         try:
-            # Parse JSON
+            # Convert hex back to binary
+            cbor_data = binascii.unhexlify(hex_data)
+            
+            # Decode CBOR payload
+            payload = self.decode_cbor_payload(cbor_data)
+            
+            print(f"CBOR decode: {len(hex_data)} hex → {len(cbor_data)} bytes")
+            
+            return payload
+            
+        except Exception as e:
+            raise BarcodeDecodingError(f"Failed to decode CBOR barcode: {str(e)}")
+
+    def decode_barcode_data(self, json_data: str) -> Dict[str, Any]:
+        """
+        Legacy method for JSON barcode decoding (fallback)
+        """
+        try:
+            import json
             data = json.loads(json_data)
-            
-            # Validate structure
             self._validate_barcode_structure(data)
-            
             return data
             
-        except json.JSONDecodeError as e:
-            raise BarcodeDecodingError(f"Invalid JSON in barcode data: {str(e)}")
         except Exception as e:
-            raise BarcodeDecodingError(f"Failed to decode barcode data: {str(e)}")
+            raise BarcodeDecodingError(f"Failed to decode JSON barcode: {str(e)}")
 
     def _validate_barcode_structure(self, data: Dict[str, Any]) -> None:
         """Validate the structure of decoded barcode data"""

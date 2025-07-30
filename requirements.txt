@@ -29,6 +29,10 @@ pillow==10.1.0
 
 # Barcode Generation
 pdf417gen==0.7.1
+cbor2==5.6.2
+
+# Compression
+# zlib is built into Python standard library
 
 # PDF Generation
 reportlab==4.0.7
