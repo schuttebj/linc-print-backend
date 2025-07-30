@@ -15,6 +15,8 @@ import io
 import uuid
 import zlib
 import binascii
+import base64
+import json
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List, Union, Tuple
 from pathlib import Path
@@ -414,17 +416,17 @@ class LicenseBarcodeService:
                 hex_data,
                 security_level=self.BARCODE_CONFIG['error_correction_level'],
                 columns=self.BARCODE_CONFIG['columns']
-                )
-                
-                # Render to image
+            )
+            
+            # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)
-                
-                # Convert to base64
-                buffer = io.BytesIO()
-                img.save(buffer, format='PNG')
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
