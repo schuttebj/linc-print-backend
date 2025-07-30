@@ -91,10 +91,10 @@ class LicenseBarcodeService:
     BARCODE_CONFIG = {
         'columns': 18,  # Maximum columns for highest capacity (very wide barcode)
         'error_correction_level': 1,  # Minimum error correction for maximum capacity
-        'max_payload_bytes': 790,    # 85% of 928 bytes actual library limit
-        'max_image_bytes': 680,      # Slightly increased for better quality
+        'max_payload_bytes': 750,    # More conservative limit to prevent overrun
+        'max_image_bytes': 500,      # Conservative limit for enhanced processing
         'max_data_bytes': 200,       # License data budget (before compression)
-        'image_max_dimension': (150, 100),  # Enhanced for better quality (user's successful target)
+        'image_max_dimension': (120, 80),   # Balanced quality/size (still better than 67x100)
         'version': 3  # New compressed+encrypted format version
     }
     
@@ -640,7 +640,7 @@ class LicenseBarcodeService:
                 
                 if len(jpeg_bytes) <= max_bytes:
                     print(f"Enhanced photo processing: {len(photo_data)} → {len(jpeg_bytes)} JPEG (quality {quality})")
-                    print(f"Final image size: {image.size} (target: 150x100)")
+                    print(f"Final image size: {image.size} (target: 120x80)")
                     print(f"Applied: Custom grayscale + Color quantization (12 colors) + Facial enhancement")
                     return jpeg_bytes
             
