@@ -94,7 +94,7 @@ class LicenseBarcodeService:
         'max_payload_bytes': 790,    # 85% of 928 bytes actual library limit
         'max_image_bytes': 680,      # Slightly increased for better quality
         'max_data_bytes': 200,       # License data budget (before compression)
-        'image_max_dimension': (90, 135),  # Optimized for capacity constraints
+        'image_max_dimension': (150, 100),  # Enhanced for better quality (user's successful target)
         'version': 3  # New compressed+encrypted format version
     }
     
@@ -588,9 +588,9 @@ class LicenseBarcodeService:
                 print(f"Applied custom grayscale formula: (0.10*R + 0.40*G + 0.80*B)")
                 
             except ImportError:
-                # Fallback to standard grayscale if numpy not available
-                image = image.convert('L')
-                print("Numpy not available, using standard grayscale conversion")
+                # Implement custom grayscale using pure PIL (no NumPy needed)
+                image = self._apply_custom_grayscale_pil(image)
+                print("Applied custom grayscale formula using PIL: (0.10*R + 0.40*G + 0.80*B)")
             
             # Step 2: Advanced preprocessing for facial enhancement
             image = self._enhance_facial_features(image)
@@ -598,28 +598,34 @@ class LicenseBarcodeService:
             # Step 3: Color quantization for size reduction (12 colors like user's approach)
             image = self._apply_color_quantization(image, colors=12)
             
-            # Resize maintaining 2:3 aspect ratio (ISO standard for license photos)
-            max_width, max_height = self.BARCODE_CONFIG['image_max_dimension']
+            # Step 4: Smart resolution optimization with 2:3 aspect ratio (ISO standard)
+            target_width, target_height = self.BARCODE_CONFIG['image_max_dimension']  # 150x100
             
             # Calculate size maintaining aspect ratio
             original_width, original_height = image.size
             aspect_ratio = original_width / original_height
             target_aspect_ratio = 2 / 3  # ISO standard
             
-            if aspect_ratio > target_aspect_ratio:
-                # Image is wider than target, crop width
-                new_width = int(original_height * target_aspect_ratio)
-                left = (original_width - new_width) // 2
-                image = image.crop((left, 0, left + new_width, original_height))
-            elif aspect_ratio < target_aspect_ratio:
-                # Image is taller than target, crop height
-                new_height = int(original_width / target_aspect_ratio)
-                top = (original_height - new_height) // 2
-                image = image.crop((0, top, original_width, top + new_height))
+            print(f"Resizing from {original_width}x{original_height} to target {target_width}x{target_height}")
             
-            # Scale to enhanced target size (150x100) while maintaining aspect ratio
-            target_width, target_height = 150, 100  # User's successful dimensions
+            # First crop to correct aspect ratio if needed
+            if abs(aspect_ratio - target_aspect_ratio) > 0.1:  # Only crop if significantly different
+                if aspect_ratio > target_aspect_ratio:
+                    # Image is wider than target, crop width
+                    new_width = int(original_height * target_aspect_ratio)
+                    left = (original_width - new_width) // 2
+                    image = image.crop((left, 0, left + new_width, original_height))
+                    print(f"Cropped width: {original_width} → {new_width}")
+                elif aspect_ratio < target_aspect_ratio:
+                    # Image is taller than target, crop height
+                    new_height = int(original_width / target_aspect_ratio)
+                    top = (original_height - new_height) // 2
+                    image = image.crop((0, top, original_width, top + new_height))
+                    print(f"Cropped height: {original_height} → {new_height}")
+            
+            # Then scale to target size while maintaining aspect ratio
             image.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+            print(f"Final size after thumbnail: {image.size}")
             
             # Try different compression strategies
             max_bytes = self.BARCODE_CONFIG['max_image_bytes']
@@ -641,7 +647,7 @@ class LicenseBarcodeService:
             # Strategy 2: Moderate scaling with better quality balance
             for scale in [0.95, 0.90, 0.85, 0.80, 0.75]:
                 smaller_image = image.copy()
-                new_size = (int(max_width * scale), int(max_height * scale))
+                new_size = (int(target_width * scale), int(target_height * scale))
                 smaller_image.thumbnail(new_size, Image.Resampling.LANCZOS)
                 
                 for quality in [40, 35, 30, 25, 20, 15, 12, 10, 8, 6]:
@@ -658,7 +664,7 @@ class LicenseBarcodeService:
             # Strategy 3: Final fallback with minimal scaling
             for scale in [0.70, 0.65, 0.60, 0.55, 0.50]:
                 smaller_image = image.copy()
-                new_size = (int(max_width * scale), int(max_height * scale))
+                new_size = (int(target_width * scale), int(target_height * scale))
                 smaller_image.thumbnail(new_size, Image.Resampling.LANCZOS)
                 
                 for quality in [15, 12, 10, 8, 6, 5, 4, 3]:
@@ -1143,6 +1149,51 @@ class LicenseBarcodeService:
         except Exception as e:
             print(f"Error in color quantization: {e}")
             return image
+
+    def _apply_custom_grayscale_pil(self, image: 'Image.Image') -> 'Image.Image':
+        """
+        Apply custom grayscale conversion using pure PIL (no NumPy required)
+        Formula: (0.10*R + 0.40*G + 0.80*B) - User's successful approach
+        
+        Args:
+            image: RGB PIL Image
+            
+        Returns:
+            Grayscale PIL Image with custom formula applied
+        """
+        try:
+            if not PIL_AVAILABLE:
+                return image.convert('L')
+                
+            # Split into R, G, B channels
+            r, g, b = image.split()
+            
+            # Apply custom weights using PIL's point() method for efficiency
+            # Convert to grayscale using: 0.10*R + 0.40*G + 0.80*B
+            
+            # Create lookup tables for each channel (0-255 mapping)
+            r_lut = [int(i * 0.10) for i in range(256)]
+            g_lut = [int(i * 0.40) for i in range(256)]  
+            b_lut = [int(i * 0.80) for i in range(256)]
+            
+            # Apply lookup tables to each channel
+            r_weighted = r.point(r_lut)
+            g_weighted = g.point(g_lut)
+            b_weighted = b.point(b_lut)
+            
+            # Combine channels using PIL's blend operations
+            from PIL import ImageChops
+            temp = ImageChops.add(r_weighted, g_weighted)
+            grayscale = ImageChops.add(temp, b_weighted)
+            
+            # Ensure we stay within 0-255 range and convert to proper grayscale
+            grayscale = grayscale.point(lambda x: min(255, x))
+            
+            return grayscale
+            
+        except Exception as e:
+            print(f"Error in custom grayscale conversion: {e}, falling back to standard")
+            return image.convert('L')
 
 
 # Global service instance
