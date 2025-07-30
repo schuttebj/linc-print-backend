@@ -65,7 +65,7 @@ class LicenseBarcodeService:
         'columns': 12,  # More columns = fewer rows (max 90 rows limit)
         'error_correction_level': 2,  # Security level 2 for pdf417gen (~25% correction capacity)
         'max_data_bytes': 800,  # Very conservative limit for PDF417
-        'max_image_bytes': 400,  # Much smaller photo size limit
+        'max_image_bytes': 500,  # Increased photo size limit for better quality
         'version': 1  # JSON structure version
     }
     
@@ -219,15 +219,16 @@ class LicenseBarcodeService:
                 image = image.convert('L')
             
             # Resize to small dimensions for barcode (white background helps compression)
-            max_size = (60, 80)  # Very small for barcode embedding
+            max_size = (80, 100)  # Slightly larger for better recognition while still small
             image.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            # Try different compression strategies with more aggressive settings
+            # Try different compression strategies with better quality settings
             strategies = [
                 ('PNG', {'optimize': True}),  # PNG with optimization
+                ('JPEG', {'quality': 40, 'optimize': True}),  # Reasonable quality JPEG
+                ('JPEG', {'quality': 30, 'optimize': True}),  # Lower quality JPEG
+                ('JPEG', {'quality': 20, 'optimize': True}),  # Low quality JPEG
                 ('JPEG', {'quality': 15, 'optimize': True}),  # Very low quality JPEG
-                ('JPEG', {'quality': 10, 'optimize': True}),  # Extremely low quality JPEG
-                ('JPEG', {'quality': 5, 'optimize': True}),   # Minimal quality JPEG
             ]
             
             best_result = None

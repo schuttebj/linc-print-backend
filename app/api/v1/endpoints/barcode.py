@@ -347,7 +347,7 @@ async def generate_test_barcode(
         if request.include_sample_photo or request.custom_photo_base64:
             # Check space before adding photo
             json_size = len(json.dumps(barcode_data, separators=(',', ':')).encode('utf-8'))
-            max_photo_size = 400  # Very conservative photo size for PDF417
+            max_photo_size = 500  # Increased photo size for better quality
             remaining_space = 800 - json_size  # Very conservative total data budget
             
             print(f"Space calculation: JSON size={json_size}, remaining_space={remaining_space}, max_photo_size={max_photo_size}")
