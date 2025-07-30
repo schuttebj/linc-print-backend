@@ -91,7 +91,7 @@ class LicenseBarcodeService:
     BARCODE_CONFIG = {
         'columns': 18,  # Maximum columns for highest capacity (very wide barcode)
         'error_correction_level': 1,  # Minimum error correction for maximum capacity
-        'max_payload_bytes': 650,   # Reduced to fit base64 overhead (650 * 1.33 = ~865 chars)
+        'max_payload_bytes': 680,   # Increased to accommodate encryption overhead (680 * 1.33 = ~905 chars)
         'max_image_bytes': 600,     # Increased for better quality with compression
         'max_data_bytes': 200,      # License data budget (before compression)
         'image_max_dimension': (100, 150),  # Larger with compression+encryption
