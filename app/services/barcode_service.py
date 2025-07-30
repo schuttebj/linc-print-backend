@@ -74,11 +74,11 @@ class LicenseBarcodeService:
     BARCODE_CONFIG = {
         'columns': 6,  # Optimal balance between size and readability
         'error_correction_level': 5,  # Good error correction (~25% capacity)
-        'max_payload_bytes': 1400,  # Realistic total budget for resilient barcodes
-        'max_image_bytes': 1000,  # Generous image budget with zlib compression
-        'max_data_bytes': 500,  # License data budget (before compression)
-        'image_max_dimension': (100, 150),  # 2:3 aspect ratio for ISO standard
-        'version': 2  # New CBOR+zlib format version
+        'max_payload_bytes': 900,   # Reduced to fit PDF417 capacity (928 max observed)
+        'max_image_bytes': 650,     # Reduced image budget for JPEG compression
+        'max_data_bytes': 300,      # License data budget (before compression)
+        'image_max_dimension': (70, 105),  # Smaller 2:3 aspect ratio for better compression
+        'version': 2  # New CBOR+JPEG format version
     }
     
     # Restriction code mappings
@@ -368,8 +368,8 @@ class LicenseBarcodeService:
             # Try different compression strategies
             max_bytes = self.BARCODE_CONFIG['max_image_bytes']
             
-            # Strategy 1: High quality JPEG
-            for quality in [85, 75, 65, 55, 45, 35, 25, 15]:
+            # Strategy 1: High quality JPEG with smaller target size
+            for quality in [65, 55, 45, 35, 25, 20, 15, 10, 5]:
                 jpeg_buffer = io.BytesIO()
                 image.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
                 jpeg_bytes = jpeg_buffer.getvalue()
@@ -379,13 +379,13 @@ class LicenseBarcodeService:
                     print(f"Final image size: {image.size}")
                     return jpeg_bytes
             
-            # Strategy 2: Very low quality JPEG with smaller dimensions
-            smaller_image = image.copy()
-            for scale in [0.8, 0.7, 0.6, 0.5]:
+            # Strategy 2: Very low quality JPEG with much smaller dimensions
+            for scale in [0.7, 0.6, 0.5, 0.4, 0.3]:
+                smaller_image = image.copy()
                 new_size = (int(max_width * scale), int(max_height * scale))
                 smaller_image.thumbnail(new_size, Image.Resampling.LANCZOS)
                 
-                for quality in [25, 15, 10, 5]:
+                for quality in [20, 15, 10, 8, 5, 3]:
                     jpeg_buffer = io.BytesIO()
                     smaller_image.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
                     jpeg_bytes = jpeg_buffer.getvalue()
