@@ -353,19 +353,24 @@ async def generate_test_barcode(
         
         # For the response, create a regular (unencrypted) payload to show what's inside
         # This is just for testing - in production you wouldn't expose the decrypted content
+        # Don't include photo in display payload to avoid size limits
         display_payload = barcode_service.create_cbor_payload(
             license=license,
             person=person,
             card=card,
-            photo_data=photo_bytes
+            photo_data=None  # Exclude photo to keep size down
         )
         decoded_payload = barcode_service.decode_cbor_payload(display_payload)
         
         # Convert to display format similar to old JSON structure
         display_data = decoded_payload.get("data", {})
-        if "img" in decoded_payload:
+        
+        # Manually add photo info since we excluded it from display payload
+        if photo_bytes:
             display_data["photo_included"] = True
-            display_data["photo_size"] = len(decoded_payload["img"])
+            display_data["photo_size"] = len(photo_bytes)
+        else:
+            display_data["photo_included"] = False
         
         return BarcodeGenerationResponse(
             success=True,
