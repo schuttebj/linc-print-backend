@@ -29,7 +29,7 @@ pillow==10.1.0
 
 # Compression & Encryption
 zstandard==0.22.0
-cryptography==41.0.8
+cryptography==42.0.8
 
 # Barcode Generation
 pdf417gen==0.7.1
