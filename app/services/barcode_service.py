@@ -129,23 +129,25 @@ class LicenseBarcodeService:
             import random
             id_number = f"{random.randint(100000000000, 999999999999)}"
             
-            # Build license data structure (optimized for CBOR)
+            # Build license data structure using standard short field names
             license_data = {
-                "v": self.BARCODE_CONFIG['version'],  # version
-                "c": "MG",  # country
-                "n": f"{person.surname.upper()} {person.first_name}",  # name
-                "i": id_number,  # ID number
-                "s": "M" if person.person_nature == "01" else "F",  # sex
-                "b": person.birth_date.strftime("%Y-%m-%d") if person.birth_date else None,  # birth date
-                "f": license.issue_date.strftime("%Y-%m-%d") if license.issue_date else None,  # first issued
-                "t": license.expiry_date.strftime("%Y-%m-%d") if license.expiry_date else None,  # valid to
-                "o": [license.category.value] if license.category else [],  # codes
-                "r": [],  # restrictions (simplified for now)
+                "ver": self.BARCODE_CONFIG['version'],  # version
+                "country": "MG",  # country
+                "name": f"{person.surname.upper()} {person.first_name}",  # name
+                "idn": id_number,  # ID number
+                "sex": "M" if person.person_nature == "01" else "F",  # sex
+                "dob": person.birth_date.strftime("%Y-%m-%d") if person.birth_date else None,  # date of birth
+                "fi": license.issue_date.strftime("%Y-%m-%d") if license.issue_date else None,  # first issued
+                "vf": license.issue_date.strftime("%Y-%m-%d") if license.issue_date else None,  # valid from (current issue)
+                "vt": license.expiry_date.strftime("%Y-%m-%d") if license.expiry_date else None,  # valid to
+                "codes": [license.category.value] if license.category else [],  # license codes
+                "dr": [],  # driver restrictions (simplified for now)
+                "vr": [],  # vehicle restrictions (simplified for now)
             }
             
             # Add card number if available
             if card:
-                license_data["d"] = card.card_number  # card number
+                license_data["card_num"] = card.card_number  # card number
             
             # Process photo if provided
             compressed_photo = None
@@ -412,17 +414,17 @@ class LicenseBarcodeService:
                 hex_data,
                 security_level=self.BARCODE_CONFIG['error_correction_level'],
                 columns=self.BARCODE_CONFIG['columns']
-            )
-            
-            # Render to image
+                )
+                
+                # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)
-            
-            # Convert to base64
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")

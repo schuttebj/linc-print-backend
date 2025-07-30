@@ -138,7 +138,7 @@ class TestBarcodeRequest(BaseModel):
     vehicle_restrictions: List[str] = []
     driver_restrictions: List[str] = []
     include_sample_photo: bool = True
-    custom_photo_base64: Optional[str] = None  # For testing with custom 8-bit images
+    custom_photo_base64: Optional[str] = None  # Base64 encoded JPEG/PNG image (any format, will be processed)
     include_professional_permit: bool = False
     include_address_data: bool = True
     include_medical_data: bool = True
@@ -149,17 +149,13 @@ class TestBarcodeRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "person_name": "RANDRIANARISOA Marie",
-                "date_of_birth": "1990-05-12",
+                "date_of_birth": "1990-01-01",
                 "sex": "F",
                 "license_codes": ["B", "EB"],
-                "vehicle_restrictions": ["auto"],
+                "vehicle_restrictions": [],
                 "driver_restrictions": ["glasses"],
-                "include_sample_photo": True,
-                "custom_photo_base64": None,
-                "include_professional_permit": False,
-                "include_address_data": True,
-                "include_medical_data": True,
-                "include_license_history": True,
+                "include_sample_photo": true,
+                "custom_photo_base64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCABgAEgBAREA/8QAHAAAAQQDAQAAAAAAAAAAAAAABwADBQYCBAgB/8QAPxAAAgEEAAQCBgMNCQAAAAAAAQIDAAQFEQYSITFBUQciImFxgRQVYggyQkRygpGTobGywdEjNFNUdIOSlKL/2gAIAQEAAD8AP9KlSpUqVYsuxWu8eqYGfxBHTJ2h/wB0VIKyugZSCrDYI8RXtMXV5b2UavcyrGrNygt4ny/ZTIy9gRsXUdL63sP81HXhzOPH4yvyU/0rE5qw8Jifgjf0py3vra9d1gdmZAC21I1v40M8rNiwIlxSTxFAwmEp2d9NddkefaidjTzY63J/w1/cK2qi83BHcJZRyqGQ3ScynsRo0+uHxyjQsoAPyBWQxdgO1nB/wFZfV9kPxSD9WK9FjZjtawfqxTkUUMXMsSRpruEAFAuOYsrMx2Tsn40a8SebF2x84k/hFbtaGU72X+qT+db9KlSrFUCu7b++IP7NVzxDc+wdeVHjBNzYSybzgT+EVI1HZdljS0diAq3KEk9gOvWtO54ssLUtzRXbqi8zMkPQDzOyDWFnxrgrycQC9SKUkAJKQuyfnqrBSpVy6kzop0fCujOGjzcO48+dvGf/AAtSxOhQ642z92c19UW0DMIljdQrAF5G5u/2VAB9+zQr4ss+KcxcMJ7+2BI0QilNa8OlVJuFM1br676xTnQbVQx/RRx9B3E1/msDkcbkeZpsZMiqznZCODpfkVbXuIHhRVpGuWlwHEoB3gsn/wBR/wCldHcMK8fDePSVGSRbeJXRhoqwRQQfeDUo6sxGn0PEa3uh/dhbLjrOZO6mU2QtYT7PtaIBVh8QU7e8UPs3xzg8rkhFa2kkT9g5Knn+QNVvIcSY+KUwASu/iF0APiTV19CkcUnGGYu/pPIz2MYS3J6upf2nI+yQBv7Zo51i50Kj1wWIIBXHWpB6g+rFb0FvDawiKCJIo17Kg0B8qcqh8Q21lYXmR9bGJorsCWWLoB16Eee99ST5jXahGuGw8WeS8lMNqpO0Mh0qgdBv9wFV64xllf5We45klAkJYqdg0zlctecO21te4XI3FjdCYxf2EnKSigMN67jZ7Hoa6t4fyoznDmMyoQJ9NtY7goPwSygkfLdb03RPnQ/9GeIzPD+Nkt7rLW1/imAa0RC5eI76jbAaXX4PXR7d6IKyBhWWxQF9IObXA+lm5jljKwZGwtwzaPtOpcD4jWxVXy901/bsIGjEJ9vm5Sxb3dOwqtRzNjl9Y8iiNj1UKQTVWy159NyEkuiAPZAPfpXS/oh9J2FzWMxnCpjltMlaWaQoJCClxyIASpHj0J5SO3idGipcnUQ+NCf0d8Vzsj47IQwRFQGV4nLdSTsHfy7US2uYooXmlkSOJFLO7sFVVHcknoB76oHEHps4Yw/NFYPJl7gfg2x5Yx8ZG7/mg1zrmOLMhn+Ko87k5/WTiZHPKNCMKRpVHgAPD+ZNT7qtxG95irz1MU5JKa2n6PA+6oRoZJbkPcT+uKdumgKjcokQjV9ASFtb8xTOFzN7w/mLbK46RY7u2bmjdkDgHRHYgjsTRn4Y+6FuJZ47Timyh9QxA+mWakFPeyEnmH5OvgalOFcQZrrQJBHtdPGql6X+P5r+7k4Yx1wRj7U8l0yH+8SjuD5qp6a8SCfAUJOdtg76+deE9Se1P217cWvMIpCFb75fA/Kn3yszRcgVVPmK0WdnO2Yk++vKVH3L8TNwhw/d31uR9LlX1Ft9l237X5oBPx1QEZ2diWJJPXZrGlSpUqVKv//Z",
                 "test_scenario": "standard"
             }
         }
@@ -317,8 +313,9 @@ async def generate_test_barcode(
         # Create mock License object for testing  
         class MockLicense:
             def __init__(self):
-                self.issue_date = datetime.now() - timedelta(days=90)
-                self.expiry_date = datetime.now() + timedelta(days=1825)
+                self.issue_date = datetime.now() - timedelta(days=90)  # Current license issue
+                self.first_issue_date = datetime.now() - timedelta(days=1825)  # First issued 5 years ago
+                self.expiry_date = datetime.now() + timedelta(days=1825)  # Expires in 5 years
                 self.category = type('MockCategory', (), {'value': request.license_codes[0] if request.license_codes else 'B'})()
         
         # Create mock Card object for testing
