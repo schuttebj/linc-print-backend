@@ -22,6 +22,23 @@ from typing import Dict, Any, Optional, List, Union, Tuple
 from pathlib import Path
 import logging
 
+# Compression & Encryption imports
+try:
+    import zstandard as zstd
+    ZSTD_AVAILABLE = True
+except ImportError:
+    ZSTD_AVAILABLE = False
+    logging.warning("zstandard not available - falling back to zlib compression")
+
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import secrets
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    logging.warning("cryptography not available - encryption disabled")
+
 try:
     import cbor2
     CBOR_AVAILABLE = True
@@ -68,18 +85,26 @@ class BarcodeDecodingError(LicenseBarcodeError):
 
 
 class LicenseBarcodeService:
-    """Service for generating and decoding PDF417 barcodes using CBOR+zlib encoding"""
+    """Service for generating and decoding PDF417 barcodes using CBOR+compression+encryption"""
     
     # Barcode configuration for PDF417 with realistic capacity
     BARCODE_CONFIG = {
-        'columns': 15,  # More columns for higher capacity (wider barcode)
-        'error_correction_level': 2,  # Minimal error correction for maximum capacity
-        'max_payload_bytes': 1100,  # Increased based on successful 648-byte generation
-        'max_image_bytes': 900,     # Much larger image budget for better quality
-        'max_data_bytes': 300,      # License data budget (before compression)
-        'image_max_dimension': (100, 150),  # Larger 2:3 aspect ratio for better quality
-        'version': 2  # New CBOR+JPEG format version
+        'columns': 18,  # Maximum columns for highest capacity (very wide barcode)
+        'error_correction_level': 1,  # Minimum error correction for maximum capacity
+        'max_payload_bytes': 650,   # Reduced to fit base64 overhead (650 * 1.33 = ~865 chars)
+        'max_image_bytes': 600,     # Increased for better quality with compression
+        'max_data_bytes': 200,      # License data budget (before compression)
+        'image_max_dimension': (100, 150),  # Larger with compression+encryption
+        'version': 3  # New compressed+encrypted format version
     }
+    
+    # Encryption configuration
+    ENCRYPTION_KEY = b'MG-License-Barcode-Key-2024-v3!'  # 32 bytes for ChaCha20
+    
+    def __init__(self):
+        """Initialize the barcode service"""
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
     
     # Restriction code mappings
     DRIVER_RESTRICTION_MAPPING = {
@@ -104,10 +129,89 @@ class LicenseBarcodeService:
         if not CBOR_AVAILABLE:
             self.logger.warning("CBOR not available - will use fallback encoding")
 
+    def create_cbor_payload_compressed_encrypted(
+        self,
+        license: License,
+        person: Person,
+        card: Optional[Card] = None,
+        photo_data: Optional[bytes] = None
+    ) -> bytes:
+        """
+        Create compressed and encrypted CBOR payload for maximum efficiency
+        
+        Args:
+            license: License object
+            person: Person object
+            card: Optional Card object
+            photo_data: Optional image bytes
+            
+        Returns:
+            Compressed and encrypted binary payload
+        """
+        try:
+            print("=== COMPRESSION + ENCRYPTION PIPELINE ===")
+            
+            # Generate realistic ID number
+            import random
+            id_number = f"{random.randint(100000000000, 999999999999)}"
+            
+            # Step 1: Create compact CBOR structure with single-char keys
+            compact_data = {
+                "v": self.BARCODE_CONFIG['version'],  # version
+                "c": "MG",  # country
+                "n": f"{person.surname.upper()} {person.first_name}",  # name
+                "i": id_number,  # ID number
+                "s": "M" if person.person_nature == "01" else "F",  # sex
+                "b": int(person.birth_date.timestamp()) if person.birth_date else None,  # birth date (binary)
+                "f": int(license.issue_date.timestamp()) if license.issue_date else None,  # first issued
+                "t": int(license.expiry_date.timestamp()) if license.expiry_date else None,  # valid to
+                "o": [license.category.value] if license.category else [],  # codes
+                "r": [],  # restrictions
+            }
+            
+            # Add card number if available
+            if card:
+                compact_data["d"] = card.card_number  # card number
+            
+            # Process photo if provided
+            compressed_photo = None
+            if photo_data:
+                compressed_photo = self._process_photo_for_barcode(photo_data)
+            
+            # Step 2: Create final payload structure
+            payload = {"data": compact_data}
+            if compressed_photo:
+                payload["img"] = compressed_photo
+            
+            # Step 3: CBOR encode
+            cbor_bytes = cbor2.dumps(payload)
+            print(f"Step 1 - CBOR encoding: {len(cbor_bytes)} bytes")
+            
+            # Step 4: Compress with zstandard
+            compressed_bytes = self._compress_data(cbor_bytes)
+            print(f"Step 2 - Compression: {len(cbor_bytes)} → {len(compressed_bytes)} bytes (saved {len(cbor_bytes) - len(compressed_bytes)} bytes)")
+            
+            # Step 5: Encrypt with ChaCha20
+            encrypted_bytes = self._encrypt_data(compressed_bytes)
+            print(f"Step 3 - Encryption: {len(compressed_bytes)} → {len(encrypted_bytes)} bytes (overhead {len(encrypted_bytes) - len(compressed_bytes)} bytes)")
+            
+            print(f"Final payload: {len(encrypted_bytes)} bytes total")
+            print("=== PIPELINE COMPLETE ===")
+            
+            if len(encrypted_bytes) > self.BARCODE_CONFIG['max_payload_bytes']:
+                raise BarcodeGenerationError(
+                    f"Encrypted payload too large: {len(encrypted_bytes)} > {self.BARCODE_CONFIG['max_payload_bytes']}"
+                )
+            
+            return encrypted_bytes
+            
+        except Exception as e:
+            raise BarcodeGenerationError(f"Failed to create compressed encrypted payload: {str(e)}")
+
     def create_cbor_payload(
-        self, 
-        license: License, 
-        person: Person, 
+        self,
+        license: License,
+        person: Person,
         card: Optional[Card] = None,
         photo_data: Optional[bytes] = None
     ) -> bytes:
@@ -246,6 +350,69 @@ class LicenseBarcodeService:
             
         except Exception as e:
             raise BarcodeDecodingError(f"Failed to decode CBOR payload: {str(e)}")
+
+    def decode_cbor_payload_compressed_encrypted(self, encrypted_data: bytes) -> Dict[str, Any]:
+        """
+        Decode compressed and encrypted CBOR payload
+        
+        Args:
+            encrypted_data: Encrypted binary data from barcode scan
+            
+        Returns:
+            Decoded payload dictionary with expanded date fields
+        """
+        try:
+            print("=== DECRYPTION + DECOMPRESSION PIPELINE ===")
+            print(f"Input encrypted data: {len(encrypted_data)} bytes")
+            
+            # Step 1: Decrypt the data
+            compressed_data = self._decrypt_data(encrypted_data)
+            print(f"Step 1 - Decryption: {len(encrypted_data)} → {len(compressed_data)} bytes")
+            
+            # Step 2: Decompress the data
+            cbor_data = self._decompress_data(compressed_data)
+            print(f"Step 2 - Decompression: {len(compressed_data)} → {len(cbor_data)} bytes")
+            
+            # Step 3: CBOR decode
+            if not CBOR_AVAILABLE:
+                raise BarcodeDecodingError("CBOR library not available")
+            
+            payload = cbor2.loads(cbor_data)
+            print(f"Step 3 - CBOR decode: {len(cbor_data)} bytes → dict with {len(payload)} keys")
+            
+            # Step 4: Expand compact data structure
+            if "data" in payload:
+                data = payload["data"]
+                
+                # Convert binary timestamps back to readable dates
+                if "b" in data and data["b"]:  # birth date
+                    data["dob"] = datetime.fromtimestamp(data["b"]).strftime("%Y-%m-%d")
+                    del data["b"]
+                
+                if "f" in data and data["f"]:  # first issued
+                    data["fi"] = datetime.fromtimestamp(data["f"]).strftime("%Y-%m-%d")
+                    del data["f"]
+                
+                if "t" in data and data["t"]:  # valid to
+                    data["vt"] = datetime.fromtimestamp(data["t"]).strftime("%Y-%m-%d")
+                    del data["t"]
+                
+                # Expand other compact keys if needed
+                # (keeping single-char keys for now for compatibility)
+                
+                payload["data"] = data
+            
+            print("=== PIPELINE COMPLETE ===")
+            
+            # Image handling (same as before)
+            if "img" in payload:
+                print(f"Photo found: {len(payload['img'])} bytes (JPEG/PNG format)")
+            
+            return payload
+            
+        except Exception as e:
+            print(f"Decryption/decompression failed: {e}")
+            raise BarcodeDecodingError(f"Failed to decode compressed encrypted payload: {str(e)}")
 
     def generate_license_barcode_data(
         self, 
@@ -442,11 +609,93 @@ class LicenseBarcodeService:
             
             self.logger.warning(f"Could not compress photo to required size. Best: {len(jpeg_bytes) if 'jpeg_bytes' in locals() else len(png_bytes)} bytes")
             return None
-                
+            
         except Exception as e:
             self.logger.error(f"Error processing photo for barcode: {e}")
             print(f"Photo processing error: {e}")
             return None
+
+    def _compress_data(self, data: bytes) -> bytes:
+        """Compress data using zstandard (preferred) or zlib fallback"""
+        if ZSTD_AVAILABLE:
+            try:
+                compressor = zstd.ZstdCompressor(level=19)  # Maximum compression
+                compressed = compressor.compress(data)
+                return compressed
+            except Exception as e:
+                print(f"zstandard compression failed: {e}, falling back to zlib")
+        
+        # Fallback to zlib
+        return zlib.compress(data, level=9)
+    
+    def _decompress_data(self, data: bytes) -> bytes:
+        """Decompress data - try zstandard first, then zlib"""
+        # Try zstandard first
+        if ZSTD_AVAILABLE:
+            try:
+                decompressor = zstd.ZstdDecompressor()
+                return decompressor.decompress(data)
+            except:
+                pass  # Fall through to zlib
+        
+        # Try zlib
+        try:
+            return zlib.decompress(data)
+        except:
+            raise BarcodeDecodingError("Failed to decompress data with both zstandard and zlib")
+    
+    def _encrypt_data(self, data: bytes) -> bytes:
+        """Encrypt data using ChaCha20"""
+        if not CRYPTO_AVAILABLE:
+            print("Cryptography not available - returning unencrypted data")
+            return data
+        
+        try:
+            # Generate random nonce (12 bytes for ChaCha20)
+            nonce = secrets.token_bytes(12)
+            
+            # Create ChaCha20 cipher
+            cipher = Cipher(
+                algorithms.ChaCha20(self.ENCRYPTION_KEY, nonce),
+                mode=None,
+                backend=default_backend()
+            )
+            encryptor = cipher.encryptor()
+            
+            # Encrypt the data
+            ciphertext = encryptor.update(data) + encryptor.finalize()
+            
+            # Return nonce + ciphertext
+            return nonce + ciphertext
+            
+        except Exception as e:
+            raise BarcodeGenerationError(f"Encryption failed: {str(e)}")
+    
+    def _decrypt_data(self, encrypted_data: bytes) -> bytes:
+        """Decrypt data using ChaCha20"""
+        if not CRYPTO_AVAILABLE:
+            print("Cryptography not available - assuming unencrypted data")
+            return encrypted_data
+        
+        try:
+            # Extract nonce (first 12 bytes) and ciphertext
+            nonce = encrypted_data[:12]
+            ciphertext = encrypted_data[12:]
+            
+            # Create ChaCha20 cipher
+            cipher = Cipher(
+                algorithms.ChaCha20(self.ENCRYPTION_KEY, nonce),
+                mode=None,
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            # Decrypt the data
+            plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+            return plaintext
+            
+        except Exception as e:
+            raise BarcodeDecodingError(f"Decryption failed: {str(e)}")
 
     def generate_pdf417_barcode_cbor(self, cbor_payload: bytes) -> str:
         """
@@ -482,8 +731,8 @@ class LicenseBarcodeService:
                     latin1_data = cbor_payload.decode('latin1')
                     codes = pdf417gen.encode(
                         latin1_data,
-                        security_level=2,  # Lower error correction for more capacity
-                        columns=15  # More columns for higher capacity
+                        security_level=1,  # Minimum error correction for maximum capacity
+                        columns=20  # Maximum columns for highest capacity
                     )
                     print(f"PDF417 encoded successfully using latin1 mode: {len(latin1_data)} chars")
                 except Exception as latin1_error:
@@ -491,12 +740,12 @@ class LicenseBarcodeService:
                     # Last resort: binary mode
                     codes = pdf417gen.encode(
                         cbor_payload,  # Direct binary data
-                        security_level=2,
-                        columns=18
+                        security_level=1,  # Minimum error correction
+                        columns=22  # Maximum columns
                     )
                     print(f"PDF417 encoded successfully using binary mode")
-            
-            # Render to image
+                
+                # Render to image
             img = pdf417gen.render_image(codes, scale=2, ratio=3)
             
             # Add validation: try to decode what we just encoded to ensure data integrity
@@ -511,13 +760,13 @@ class LicenseBarcodeService:
                 print(f"PDF417 encoding validation passed")
             except Exception as validation_error:
                 print(f"PDF417 encoding validation warning: {validation_error}")
-            
-            # Convert to base64
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")

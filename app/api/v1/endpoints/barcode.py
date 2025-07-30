@@ -321,9 +321,9 @@ async def generate_test_barcode(
         # Create mock Card object for testing
         class MockCard:
             def __init__(self):
-                location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
-                location_code = random.choice(location_codes)
-                sequence = random.randint(100000, 999999)
+        location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
+        location_code = random.choice(location_codes)
+        sequence = random.randint(100000, 999999)
                 self.card_number = f"MG{location_code}{sequence:06d}"
         
         person = MockPerson()
@@ -339,19 +339,26 @@ async def generate_test_barcode(
             except Exception as e:
                 print(f"Failed to decode custom photo: {e}")
         
-        # Create CBOR payload using new system
-        cbor_payload = barcode_service.create_cbor_payload(
+        # Create compressed and encrypted CBOR payload using new system
+        cbor_payload = barcode_service.create_cbor_payload_compressed_encrypted(
             license=license,
             person=person,
             card=card,
             photo_data=photo_bytes
         )
         
-        # Generate PDF417 barcode using CBOR
+        # Generate PDF417 barcode using compressed/encrypted CBOR
         barcode_image = barcode_service.generate_pdf417_barcode_cbor(cbor_payload)
         
-        # Decode payload for response (to show what's inside)
-        decoded_payload = barcode_service.decode_cbor_payload(cbor_payload)
+        # For the response, create a regular (unencrypted) payload to show what's inside
+        # This is just for testing - in production you wouldn't expose the decrypted content
+        display_payload = barcode_service.create_cbor_payload(
+            license=license,
+            person=person,
+            card=card,
+            photo_data=photo_bytes
+        )
+        decoded_payload = barcode_service.decode_cbor_payload(display_payload)
         
         # Convert to display format similar to old JSON structure
         display_data = decoded_payload.get("data", {})
@@ -535,7 +542,7 @@ async def get_barcode_format():
             "card_num": "MG240001234",
             "photo": "<base64_image_data>"
         }
-    }
+    } 
 
 
 class BarcodeDecodeRequest(BaseModel):
@@ -598,8 +605,22 @@ async def decode_barcode_data(
         
         print(f"Decoded using method: {decoding_method}, data length: {len(binary_data)} bytes")
         
-        # Decode CBOR payload
-        decoded_data = barcode_service.decode_cbor_payload(binary_data)
+        # Try to decode as compressed/encrypted payload first, then fallback to regular
+        try:
+            print("Attempting compressed/encrypted decode...")
+            decoded_data = barcode_service.decode_cbor_payload_compressed_encrypted(binary_data)
+            decoding_format = "compressed+encrypted"
+        except Exception as crypto_error:
+            print(f"Compressed/encrypted decode failed: {crypto_error}")
+            print("Falling back to regular CBOR decode...")
+            try:
+                decoded_data = barcode_service.decode_cbor_payload(binary_data)
+                decoding_format = "regular"
+            except Exception as regular_error:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to decode barcode data. Encrypted: {crypto_error}. Regular: {regular_error}"
+                )
         
         # Check if image is present
         has_image = 'img' in decoded_data
@@ -615,7 +636,8 @@ async def decode_barcode_data(
             "image_size_bytes": image_size,
             "total_payload_size": len(binary_data),
             "decoding_method": decoding_method,
-            "message": f"Barcode decoded successfully using {decoding_method}. {'Image found' if has_image else 'No image'} ({len(binary_data)} bytes total)"
+            "decoding_format": decoding_format,
+            "message": f"Barcode decoded successfully using {decoding_method} ({decoding_format}). {'Image found' if has_image else 'No image'} ({len(binary_data)} bytes total)"
         }
         
         # Add base64 encoded image if present
