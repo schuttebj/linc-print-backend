@@ -72,12 +72,12 @@ class LicenseBarcodeService:
     
     # Barcode configuration for PDF417 with realistic capacity
     BARCODE_CONFIG = {
-        'columns': 12,  # Increased columns to reduce rows (max 90 rows limit)
-        'error_correction_level': 3,  # Reduced error correction for more capacity
-        'max_payload_bytes': 700,   # Further reduced to fit PDF417 constraints
-        'max_image_bytes': 500,     # Further reduced image budget
-        'max_data_bytes': 250,      # License data budget (before compression)
-        'image_max_dimension': (60, 90),  # Even smaller 2:3 aspect ratio
+        'columns': 15,  # More columns for higher capacity (wider barcode)
+        'error_correction_level': 2,  # Minimal error correction for maximum capacity
+        'max_payload_bytes': 1100,  # Increased based on successful 648-byte generation
+        'max_image_bytes': 900,     # Much larger image budget for better quality
+        'max_data_bytes': 300,      # License data budget (before compression)
+        'image_max_dimension': (100, 150),  # Larger 2:3 aspect ratio for better quality
         'version': 2  # New CBOR+JPEG format version
     }
     
@@ -403,8 +403,8 @@ class LicenseBarcodeService:
             # Try different compression strategies
             max_bytes = self.BARCODE_CONFIG['max_image_bytes']
             
-            # Strategy 1: High quality JPEG with smaller target size
-            for quality in [65, 55, 45, 35, 25, 20, 15, 10, 5]:
+            # Strategy 1: High quality JPEG - start with much better quality
+            for quality in [85, 75, 65, 55, 50, 45, 40, 35, 30, 25, 20, 15]:
                 jpeg_buffer = io.BytesIO()
                 image.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
                 jpeg_bytes = jpeg_buffer.getvalue()
