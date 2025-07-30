@@ -198,16 +198,38 @@ class LicenseBarcodeService:
             
             payload = cbor2.loads(cbor_data)
             
-            # Validate structure
-            if not isinstance(payload, dict) or "data" not in payload:
-                raise BarcodeDecodingError("Invalid CBOR payload structure")
+            # Validate structure - handle both formats
+            if not isinstance(payload, dict):
+                raise BarcodeDecodingError("CBOR payload must be a dictionary")
             
-            # Photo is stored as raw JPEG/PNG bytes, no decompression needed
-            if "img" in payload:
-                print(f"Photo found: {len(payload['img'])} bytes (JPEG/PNG format)")
-                # Image bytes are ready to use directly
+            # Check if it's the new format with "data" wrapper
+            if "data" in payload:
+                print(f"New format detected: data wrapper found")
+                # Photo is stored as raw JPEG/PNG bytes, no decompression needed
+                if "img" in payload:
+                    print(f"Photo found: {len(payload['img'])} bytes (JPEG/PNG format)")
+                return payload
             
-            return payload
+            # Check if it's the direct format (license data at root level)
+            elif "ver" in payload or "country" in payload or "name" in payload:
+                print(f"Direct format detected: license data at root level")
+                
+                # Extract image if present
+                img_data = None
+                if "img" in payload:
+                    img_data = payload["img"]
+                    print(f"Photo found: {len(img_data)} bytes (JPEG/PNG format)")
+                
+                # Restructure to match expected format
+                license_data = {k: v for k, v in payload.items() if k != "img"}
+                result = {"data": license_data}
+                if img_data:
+                    result["img"] = img_data
+                
+                return result
+            
+            else:
+                raise BarcodeDecodingError("Unknown CBOR payload structure - missing expected fields")
             
         except Exception as e:
             raise BarcodeDecodingError(f"Failed to decode CBOR payload: {str(e)}")
