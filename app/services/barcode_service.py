@@ -222,53 +222,77 @@ class LicenseBarcodeService:
             max_size = (60, 80)  # Very small for barcode embedding
             image.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            # Try different compression strategies
+            # Try different compression strategies with more aggressive settings
             strategies = [
                 ('PNG', {'optimize': True}),  # PNG with optimization
-                ('JPEG', {'quality': 30, 'optimize': True}),  # Low quality JPEG
-                ('JPEG', {'quality': 20, 'optimize': True}),  # Very low quality JPEG
+                ('JPEG', {'quality': 15, 'optimize': True}),  # Very low quality JPEG
+                ('JPEG', {'quality': 10, 'optimize': True}),  # Extremely low quality JPEG
+                ('JPEG', {'quality': 5, 'optimize': True}),   # Minimal quality JPEG
             ]
             
             best_result = None
             best_size = float('inf')
+            
+            print(f"Processing photo: original size ~{len(base64.b64encode(photo_data).decode('utf-8'))} chars, target: {self.BARCODE_CONFIG['max_image_bytes']}")
             
             for format_type, kwargs in strategies:
                 output = io.BytesIO()
                 try:
                     image.save(output, format=format_type, **kwargs)
                     encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
+                    print(f"Compression attempt - {format_type} quality {kwargs.get('quality', 'default')}: {encoded_size} bytes")
                     
-                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes'] and encoded_size < best_size:
+                    if encoded_size < best_size:  # Always track the best result
                         best_result = base64.b64encode(output.getvalue()).decode('utf-8')
                         best_size = encoded_size
-                        self.logger.info(f"Photo compressed with {format_type}: {encoded_size} bytes")
+                        print(f"New best result: {format_type}, {encoded_size} bytes")
+                        
+                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes']:
+                        print(f"Photo fits target size with {format_type}: {encoded_size} bytes")
+                        break
                         
                 except Exception as e:
+                    print(f"Failed to compress with {format_type}: {e}")
                     self.logger.warning(f"Failed to compress with {format_type}: {e}")
                     continue
             
             # If still too large, try 1-bit dithering for maximum compression
-            if best_result is None or best_size > self.BARCODE_CONFIG['max_image_bytes']:
+            if best_size > self.BARCODE_CONFIG['max_image_bytes']:
+                print("Trying 1-bit dithering for maximum compression...")
                 try:
                     # Convert to 1-bit (black and white) with dithering
                     bw_image = image.convert('1', dither=Image.Dither.FLOYDSTEINBERG)
                     output = io.BytesIO()
                     bw_image.save(output, format='PNG', optimize=True)
                     encoded_size = len(base64.b64encode(output.getvalue()).decode('utf-8'))
+                    print(f"1-bit dithering result: {encoded_size} bytes")
                     
-                    if encoded_size <= self.BARCODE_CONFIG['max_image_bytes']:
+                    if encoded_size < best_size:
                         best_result = base64.b64encode(output.getvalue()).decode('utf-8')
                         best_size = encoded_size
-                        self.logger.info(f"Photo compressed with 1-bit dithering: {encoded_size} bytes")
+                        print(f"1-bit dithering is new best: {encoded_size} bytes")
                     
                 except Exception as e:
+                    print(f"Failed 1-bit compression: {e}")
                     self.logger.warning(f"Failed 1-bit compression: {e}")
             
-            # Return best result or None if nothing worked
-            if best_result and best_size <= self.BARCODE_CONFIG['max_image_bytes']:
-                return best_result
+            # Return best result (even if larger than target) or try extreme measures
+            if best_result:
+                if best_size <= self.BARCODE_CONFIG['max_image_bytes']:
+                    print(f"Photo successfully compressed to {best_size} bytes")
+                    return best_result
+                else:
+                    print(f"Photo compressed to {best_size} bytes but exceeds target {self.BARCODE_CONFIG['max_image_bytes']}")
+                    # If we're close, try increasing the limit temporarily or return best result
+                    if best_size <= (self.BARCODE_CONFIG['max_image_bytes'] * 1.2):  # Allow 20% over
+                        print("Allowing slightly oversized photo")
+                        return best_result
+                    else:
+                        print("Photo too large even with maximum compression")
+                        return None
             else:
-                self.logger.warning(f"Could not compress photo to required size. Best: {best_size} bytes")
+                print("No compression strategy worked")
+                self.logger.warning(f"Could not compress photo - all strategies failed")
                 return None
             
         except Exception as e:
