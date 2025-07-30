@@ -567,21 +567,29 @@ async def decode_barcode_data(
         binary_data = None
         decoding_method = "unknown"
         
+        print(f"Input hex_data length: {len(request.hex_data)} characters")
+        print(f"First 40 chars: {request.hex_data[:40]}")
+        
         try:
             # Method 1: Try direct binary (if scanner returns raw bytes as hex)
             binary_data = binascii.unhexlify(request.hex_data)
             decoding_method = "hex"
-        except:
+            print(f"Hex decoding successful: {len(binary_data)} bytes")
+        except Exception as hex_error:
+            print(f"Hex decoding failed: {hex_error}")
             try:
                 # Method 2: Try base64 decoding
                 import base64
                 binary_data = base64.b64decode(request.hex_data)
                 decoding_method = "base64"
-            except:
+                print(f"Base64 decoding successful: {len(binary_data)} bytes")
+            except Exception as b64_error:
+                print(f"Base64 decoding failed: {b64_error}")
                 try:
                     # Method 3: Try latin1 text decoding
                     binary_data = request.hex_data.encode('latin1')
                     decoding_method = "latin1"
+                    print(f"Latin1 encoding successful: {len(binary_data)} bytes")
                 except Exception as e:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,

@@ -196,11 +196,16 @@ class LicenseBarcodeService:
             if not CBOR_AVAILABLE:
                 raise BarcodeDecodingError("CBOR library not available")
             
+            print(f"Attempting to decode CBOR data: {len(cbor_data)} bytes")
+            print(f"First 20 bytes: {cbor_data[:20].hex() if len(cbor_data) >= 20 else cbor_data.hex()}")
+            
             payload = cbor2.loads(cbor_data)
+            print(f"CBOR decoded successfully, type: {type(payload)}")
             
             # Validate structure - handle both formats
             if not isinstance(payload, dict):
-                raise BarcodeDecodingError("CBOR payload must be a dictionary")
+                print(f"Payload is not a dict, it's: {type(payload)}, value: {payload}")
+                raise BarcodeDecodingError(f"CBOR payload must be a dictionary, got {type(payload)}")
             
             # Check if it's the new format with "data" wrapper
             if "data" in payload:
