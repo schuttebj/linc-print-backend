@@ -94,7 +94,7 @@ class LicenseBarcodeService:
         'max_payload_bytes': 750,    # More conservative limit to prevent overrun
         'max_image_bytes': 500,      # Conservative limit for enhanced processing
         'max_data_bytes': 200,       # License data budget (before compression)
-        'image_max_dimension': (120, 80),   # Balanced quality/size (still better than 67x100)
+        'image_max_dimension': (135, 90),   # Closer to user's successful 150x100, but within budget
         'version': 3  # New compressed+encrypted format version
     }
     
@@ -598,34 +598,35 @@ class LicenseBarcodeService:
             # Step 3: Color quantization for size reduction (12 colors like user's approach)
             image = self._apply_color_quantization(image, colors=12)
             
-            # Step 4: Smart resolution optimization with 2:3 aspect ratio (ISO standard)
-            target_width, target_height = self.BARCODE_CONFIG['image_max_dimension']  # 150x100
+            # Step 4: Smart resolution optimization targeting close to 120x80
+            target_width, target_height = self.BARCODE_CONFIG['image_max_dimension']  # 120x80
             
-            # Calculate size maintaining aspect ratio
+            # Calculate current aspect ratio
             original_width, original_height = image.size
-            aspect_ratio = original_width / original_height
-            target_aspect_ratio = 2 / 3  # ISO standard
+            current_aspect = original_width / original_height
+            target_aspect = target_width / target_height  # 120/80 = 1.5
             
             print(f"Resizing from {original_width}x{original_height} to target {target_width}x{target_height}")
+            print(f"Aspect ratios - Current: {current_aspect:.3f}, Target: {target_aspect:.3f}")
             
-            # First crop to correct aspect ratio if needed
-            if abs(aspect_ratio - target_aspect_ratio) > 0.1:  # Only crop if significantly different
-                if aspect_ratio > target_aspect_ratio:
-                    # Image is wider than target, crop width
-                    new_width = int(original_height * target_aspect_ratio)
-                    left = (original_width - new_width) // 2
-                    image = image.crop((left, 0, left + new_width, original_height))
-                    print(f"Cropped width: {original_width} → {new_width}")
-                elif aspect_ratio < target_aspect_ratio:
-                    # Image is taller than target, crop height
-                    new_height = int(original_width / target_aspect_ratio)
+            # Strategy: Force to target aspect ratio first, then resize
+            if abs(current_aspect - target_aspect) > 0.05:  # More sensitive threshold
+                if current_aspect < target_aspect:
+                    # Image is too tall, crop height to make it wider
+                    new_height = int(original_width / target_aspect)
                     top = (original_height - new_height) // 2
                     image = image.crop((0, top, original_width, top + new_height))
-                    print(f"Cropped height: {original_height} → {new_height}")
+                    print(f"Cropped height: {original_height} → {new_height} (to fix aspect ratio)")
+                else:
+                    # Image is too wide, crop width to make it taller  
+                    new_width = int(original_height * target_aspect)
+                    left = (original_width - new_width) // 2
+                    image = image.crop((left, 0, left + new_width, original_height))
+                    print(f"Cropped width: {original_width} → {new_width} (to fix aspect ratio)")
             
-            # Then scale to target size while maintaining aspect ratio
-            image.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
-            print(f"Final size after thumbnail: {image.size}")
+            # Now resize to exact target dimensions (since aspect ratio is correct)
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            print(f"Final size after resize: {image.size}")
             
             # Try different compression strategies
             max_bytes = self.BARCODE_CONFIG['max_image_bytes']
@@ -640,7 +641,7 @@ class LicenseBarcodeService:
                 
                 if len(jpeg_bytes) <= max_bytes:
                     print(f"Enhanced photo processing: {len(photo_data)} → {len(jpeg_bytes)} JPEG (quality {quality})")
-                    print(f"Final image size: {image.size} (target: 120x80)")
+                    print(f"Final image size: {image.size} (target: 135x90)")
                     print(f"Applied: Custom grayscale + Color quantization (12 colors) + Facial enhancement")
                     return jpeg_bytes
             
