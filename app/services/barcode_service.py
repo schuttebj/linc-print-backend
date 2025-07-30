@@ -72,12 +72,12 @@ class LicenseBarcodeService:
     
     # Barcode configuration for PDF417 with realistic capacity
     BARCODE_CONFIG = {
-        'columns': 6,  # Optimal balance between size and readability
-        'error_correction_level': 5,  # Good error correction (~25% capacity)
-        'max_payload_bytes': 900,   # Reduced to fit PDF417 capacity (928 max observed)
-        'max_image_bytes': 650,     # Reduced image budget for JPEG compression
-        'max_data_bytes': 300,      # License data budget (before compression)
-        'image_max_dimension': (70, 105),  # Smaller 2:3 aspect ratio for better compression
+        'columns': 12,  # Increased columns to reduce rows (max 90 rows limit)
+        'error_correction_level': 3,  # Reduced error correction for more capacity
+        'max_payload_bytes': 700,   # Further reduced to fit PDF417 constraints
+        'max_image_bytes': 500,     # Further reduced image budget
+        'max_data_bytes': 250,      # License data budget (before compression)
+        'image_max_dimension': (60, 90),  # Even smaller 2:3 aspect ratio
         'version': 2  # New CBOR+JPEG format version
     }
     
@@ -441,11 +441,11 @@ class LicenseBarcodeService:
                 print(f"Binary mode failed: {binary_error}, trying text mode")
                 # Fallback to text mode with higher capacity settings
                 try:
-                    # Use text encoding with fewer columns for higher capacity
+                    # Use text encoding with more columns to reduce rows
                     codes = pdf417gen.encode(
                         cbor_payload.decode('latin1'),  # Latin1 preserves all byte values
-                        security_level=3,  # Lower error correction for more capacity
-                        columns=4  # Fewer columns = more rows = higher capacity
+                        security_level=2,  # Lower error correction for more capacity
+                        columns=15  # More columns = fewer rows to fit 90 row limit
                     )
                     print(f"PDF417 encoded successfully using text mode (latin1)")
                 except Exception as text_error:
@@ -454,8 +454,8 @@ class LicenseBarcodeService:
                     b64_data = base64.b64encode(cbor_payload).decode('ascii')
                     codes = pdf417gen.encode(
                         b64_data,
-                        security_level=3,
-                        columns=4
+                        security_level=2,
+                        columns=18  # Even more columns for base64 fallback
                     )
                     print(f"PDF417 encoded using base64 fallback: {len(b64_data)} chars")
             
