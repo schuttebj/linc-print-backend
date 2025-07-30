@@ -535,4 +535,81 @@ async def get_barcode_format():
             "card_num": "MG240001234",
             "photo": "<base64_image_data>"
         }
-    } 
+    }
+
+
+class BarcodeDecodeRequest(BaseModel):
+    """Request model for decoding barcode hex data"""
+    hex_data: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "hex_data": "a16464617461ad637665720267636f756e747279624d47646e616d657452414e445249414e415249534f41204d617269656369646e6c37323836343938333434333663736578614663646f626a313939302d30312d30316266696a323032352d30352d30316276666a323032352d30352d30316276746a323033302d30372d32396563636f646573816142626472806276728068636172645f6e756d6b4d475430313530353136393"
+            }
+        }
+
+
+@router.post(
+    "/decode",
+    summary="Decode scanned barcode hex data",
+    description="Decode CBOR-encoded barcode data and extract embedded image"
+)
+async def decode_barcode_data(
+    request: BarcodeDecodeRequest,
+    current_user: User = Depends(require_permission("licenses.read"))
+):
+    """Decode scanned barcode hex data and extract image"""
+    try:
+        import binascii
+        
+        # Convert hex to binary
+        try:
+            binary_data = binascii.unhexlify(request.hex_data)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid hex data: {str(e)}"
+            )
+        
+        # Decode CBOR payload
+        decoded_data = barcode_service.decode_cbor_payload(binary_data)
+        
+        # Check if image is present
+        has_image = 'img' in decoded_data
+        image_size = len(decoded_data['img']) if has_image else 0
+        
+        # Prepare response data
+        license_data = decoded_data.get('data', {})
+        
+        response_data = {
+            "success": True,
+            "license_data": license_data,
+            "has_image": has_image,
+            "image_size_bytes": image_size,
+            "total_payload_size": len(binary_data),
+            "message": f"Barcode decoded successfully. {'Image found' if has_image else 'No image'} ({len(binary_data)} bytes total)"
+        }
+        
+        # Add base64 encoded image if present
+        if has_image:
+            import base64
+            import zlib
+            
+            try:
+                # Decompress image
+                decompressed_img = zlib.decompress(decoded_data['img'])
+                # Convert to base64 for response
+                image_base64 = base64.b64encode(decompressed_img).decode('utf-8')
+                response_data["image_base64"] = image_base64
+                response_data["decompressed_image_size"] = len(decompressed_img)
+            except Exception as e:
+                response_data["image_error"] = f"Failed to decompress image: {str(e)}"
+        
+        return response_data
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to decode barcode: {str(e)}"
+        ) 
