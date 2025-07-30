@@ -99,7 +99,7 @@ class LicenseBarcodeService:
     }
     
     # Encryption configuration
-    ENCRYPTION_KEY = b'MG-License-Barcode-Key-2024-v3!'  # 32 bytes for ChaCha20
+    ENCRYPTION_KEY = b'MG-License-Barcode-Key-2024-v32!'  # 32 bytes for ChaCha20
     
     def __init__(self):
         """Initialize the barcode service"""
