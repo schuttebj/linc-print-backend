@@ -124,6 +124,24 @@ class LicenseBarcodeService:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self._initialize_warnings()
+    
+    def _date_to_timestamp(self, date_obj) -> Optional[int]:
+        """Convert date or datetime object to Unix timestamp"""
+        if date_obj is None:
+            return None
+        
+        if isinstance(date_obj, datetime):
+            return int(date_obj.timestamp())
+        elif isinstance(date_obj, date):
+            # Convert date to datetime at midnight, then to timestamp
+            dt = datetime.combine(date_obj, datetime.min.time())
+            return int(dt.timestamp())
+        else:
+            return None
+    
+    def _initialize_warnings(self):
+        """Initialize service with appropriate warnings"""
         if not BARCODE_AVAILABLE:
             self.logger.warning("Barcode generation running in simulation mode")
         if not CBOR_AVAILABLE:
@@ -162,9 +180,9 @@ class LicenseBarcodeService:
                 "n": f"{person.surname.upper()} {person.first_name}",  # name
                 "i": id_number,  # ID number
                 "s": "M" if person.person_nature == "01" else "F",  # sex
-                "b": int(person.birth_date.timestamp()) if person.birth_date else None,  # birth date (binary)
-                "f": int(license.issue_date.timestamp()) if license.issue_date else None,  # first issued
-                "t": int(license.expiry_date.timestamp()) if license.expiry_date else None,  # valid to
+                "b": self._date_to_timestamp(person.birth_date),  # birth date (binary)
+                "f": self._date_to_timestamp(license.issue_date),  # first issued
+                "t": self._date_to_timestamp(license.expiry_date),  # valid to
                 "o": [license.category.value] if license.category else [],  # codes
                 "r": [],  # restrictions
             }
