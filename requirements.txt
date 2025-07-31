@@ -33,7 +33,7 @@ cryptography==42.0.8
 
 # Barcode Generation
 pdf417gen==0.7.1
-python-zint==1.0.2
+pyzint==0.1.10
 cbor2==5.6.2
 
 # Compression

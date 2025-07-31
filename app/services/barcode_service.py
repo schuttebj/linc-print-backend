@@ -53,10 +53,11 @@ except ImportError:
     BARCODE_AVAILABLE = False
 
 try:
-    import zint
+    import pyzint
     ZINT_AVAILABLE = True
 except ImportError:
     ZINT_AVAILABLE = False
+    print("pyzint not available - falling back to pdf417gen only")
     logging.warning("pdf417gen not available - barcode generation will be simulated")
 
 try:
@@ -1104,13 +1105,13 @@ class LicenseBarcodeService:
                 print(f"PDF417 encoding validation passed")
             except Exception as validation_error:
                 print(f"PDF417 encoding validation warning: {validation_error}")
-            
-            # Convert to base64
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
@@ -1150,7 +1151,7 @@ class LicenseBarcodeService:
                 barcode_image_bytes = self._generate_pdf417_with_zint(payload_bytes)
                 if barcode_image_bytes:
                     print("Successfully generated PDF417 with Zint (higher capacity)")
-                else:
+            else:
                     print("Zint failed, falling back to pdf417gen...")
                     barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
             elif BARCODE_AVAILABLE:
@@ -1172,67 +1173,52 @@ class LicenseBarcodeService:
             return None
 
     def _generate_pdf417_with_zint(self, payload_bytes: bytes) -> Optional[bytes]:
-        """Generate PDF417 using Zint library (preferred for better capacity)"""
+        """Generate PDF417 using pyzint library (preferred for better capacity)"""
         try:
-            print("Using Zint for PDF417 generation...")
+            print("Using pyzint for PDF417 generation...")
             
-            # Create Zint symbol
-            symbol = zint.ZBarcode_Create()
-            symbol.contents.symbology = zint.BARCODE_PDF417
+            # Create pyzint Barcode object for PDF417
+            from pyzint import Barcode, BarCode
+            
+            # Create barcode instance
+            barcode = Barcode()
+            
+            # Set barcode type to PDF417
+            barcode.barcode_type = BarCode.PDF417
             
             # Configure for maximum capacity (30 columns x 90 rows)
-            symbol.contents.option_1 = self.BARCODE_CONFIG['error_correction_level']  # Security level (ECC 4)
-            symbol.contents.option_2 = self.BARCODE_CONFIG['columns']                # Columns (30)
-            symbol.contents.option_3 = self.BARCODE_CONFIG['rows']                   # Rows (90)  
-            symbol.contents.scale = 3.0                                              # Scale factor
+            barcode.option_1 = self.BARCODE_CONFIG['error_correction_level']  # Security level (ECC 4)
+            barcode.option_2 = self.BARCODE_CONFIG['columns']                # Columns (30)
+            barcode.option_3 = self.BARCODE_CONFIG['rows']                   # Rows (90)  
+            barcode.scale = 3.0                                              # Scale factor
             
-            # Encode the data
-            input_data = zint.instr(payload_bytes)
-            result = zint.ZBarcode_Encode_and_Buffer(symbol, input_data, len(payload_bytes), 0)
+            # Set data (pyzint expects string data)
+            data_str = payload_bytes.decode('latin1')
             
-            if result != 0:
-                error_msg = symbol.contents.errtxt.decode('utf-8') if symbol.contents.errtxt else "Unknown error"
-                print(f"Zint encoding failed: {error_msg}")
-                zint.ZBarcode_Delete(symbol)
-                return None
-            
-            # Get bitmap data
-            bitmap = zint.bitmapbuf(symbol)
-            width = symbol.contents.bitmap_width
-            height = symbol.contents.bitmap_height
-            
-            print(f"Zint PDF417 generated: {width}x{height} pixels, {len(payload_bytes)} bytes payload")
-            print(f"PDF417 Configuration: {self.BARCODE_CONFIG['columns']} columns x {self.BARCODE_CONFIG['rows']} rows, ECC level {self.BARCODE_CONFIG['error_correction_level']}")
-            print(f"Capacity utilization: {len(payload_bytes)}/{self.BARCODE_CONFIG['max_payload_bytes']} bytes ({len(payload_bytes)/self.BARCODE_CONFIG['max_payload_bytes']*100:.1f}%)")
-            
-            # Convert bitmap to PNG
-            if PIL_AVAILABLE:
-                # Create PIL Image from bitmap (3 bytes per pixel RGB)
-                image_data = []
-                for i in range(0, len(bitmap), 3):
-                    # Convert RGB to grayscale (barcode is black/white)
-                    r, g, b = bitmap[i], bitmap[i+1], bitmap[i+2]
-                    gray = int(0.299 * r + 0.587 * g + 0.114 * b)
-                    image_data.append(gray)
+            # Generate barcode
+            try:
+                barcode_image = barcode.render(data_str)
                 
-                # Create PIL image
-                image = Image.new('L', (width, height))
-                image.putdata(image_data)
+                print(f"pyzint PDF417 generated: {barcode_image.width}x{barcode_image.height} pixels, {len(payload_bytes)} bytes payload")
+                print(f"PDF417 Configuration: {self.BARCODE_CONFIG['columns']} columns x {self.BARCODE_CONFIG['rows']} rows, ECC level {self.BARCODE_CONFIG['error_correction_level']}")
+                print(f"Capacity utilization: {len(payload_bytes)}/{self.BARCODE_CONFIG['max_payload_bytes']} bytes ({len(payload_bytes)/self.BARCODE_CONFIG['max_payload_bytes']*100:.1f}%)")
                 
-                # Save as PNG
+                # Convert PIL image to PNG bytes
                 barcode_buffer = io.BytesIO()
-                image.save(barcode_buffer, format='PNG')
+                barcode_image.save(barcode_buffer, format='PNG')
                 barcode_image_bytes = barcode_buffer.getvalue()
                 
-                zint.ZBarcode_Delete(symbol)
                 return barcode_image_bytes
-            else:
-                print("PIL not available for image conversion")
-                zint.ZBarcode_Delete(symbol)
+                
+            except Exception as render_error:
+                print(f"pyzint render failed: {str(render_error)}")
                 return None
                 
+        except ImportError:
+            print("pyzint library not available")
+            return None
         except Exception as e:
-            print(f"Zint PDF417 generation failed: {str(e)}")
+            print(f"pyzint PDF417 generation failed: {str(e)}")
             return None
     
     def _generate_pdf417_with_pdf417gen(self, payload_bytes: bytes) -> Optional[bytes]:
