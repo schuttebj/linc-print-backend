@@ -1111,7 +1111,7 @@ class LicenseBarcodeService:
                 img.save(buffer, format='PNG')
             
             print(f"PDF417 barcode generated successfully: {img.size}")
-                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
@@ -1147,13 +1147,16 @@ class LicenseBarcodeService:
             print(f"V4 PDF417 generation: {len(payload_bytes)} bytes binary data")
             
             # Step 3: Generate PDF417 barcode (try Zint first, fallback to pdf417gen)
+            barcode_image_bytes = None
+            
             if ZINT_AVAILABLE:
                 barcode_image_bytes = self._generate_pdf417_with_zint(payload_bytes)
                 if barcode_image_bytes:
                     print("Successfully generated PDF417 with Zint (higher capacity)")
-            else:
+                else:
                     print("Zint failed, falling back to pdf417gen...")
-                    barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
+                    if BARCODE_AVAILABLE:
+                        barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
             elif BARCODE_AVAILABLE:
                 barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
             else:
