@@ -160,8 +160,11 @@ class TestBarcodeRequest(BaseModel):
     sex: str = Field(default="M", description="Gender (M or F)")
     
     # Photo options
-    include_sample_photo: bool = Field(default=True, description="Include a sample photo")
-    custom_photo_base64: Optional[str] = Field(default=None, description="Custom photo as base64 string")
+    include_sample_photo: bool = Field(default=True, description="Include a sample photo for testing")
+    custom_photo_base64: Optional[str] = Field(
+        default=None, 
+        description="Custom photo as base64 string (JPEG/PNG). When provided, this will be used instead of the sample photo. Example: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAg...'"
+    )
     
     class Config:
         json_schema_extra = {
@@ -176,8 +179,8 @@ class TestBarcodeRequest(BaseModel):
                 "vehicle_restrictions": ["AUTO_ONLY"],
                 "driver_restrictions": ["GLASSES"],
                 "sex": "M",
-                "include_sample_photo": True,
-                "custom_photo_base64": None
+                "include_sample_photo": False,
+                "custom_photo_base64": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAYABgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExQQYSUWEHInGBEzKRobHBCNHw8f/aAAwDAQACEQMRAD8A/PyiiigAooooA//Z"
             }
         }
 
@@ -311,7 +314,10 @@ async def decode_license_barcode(
     "/test",
     response_model=BarcodeGenerationResponse,
     summary="Generate test barcode using standardized Madagascar format",
-    description="Generate a PDF417 barcode using PyZint with standardized pipe-delimited Madagascar license format"
+    description="""Generate a PDF417 barcode using PyZint with standardized pipe-delimited Madagascar license format.
+    
+    **Photo Support**: You can include a custom photo by providing base64-encoded image data in the `custom_photo_base64` field. 
+    The image will be automatically resized to 60x90 pixels, converted to grayscale, and optimized with quality stepping (50→45→40→35→30→25→20→15→10) to fit within the barcode size constraints."""
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
