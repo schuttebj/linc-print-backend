@@ -130,33 +130,54 @@ class BarcodeDecodingResponse(BaseModel):
 
 
 class TestBarcodeRequest(BaseModel):
-    """Request model for testing barcode with comprehensive sample data"""
-    person_name: str = "RANDRIANARISOA Marie"
-    date_of_birth: str = "1990-01-01"
-    sex: str = "F"  # M or F
-    license_codes: List[str] = ["B", "EB"]
-    vehicle_restrictions: List[str] = []
-    driver_restrictions: List[str] = []
-    include_sample_photo: bool = True
-    custom_photo_base64: Optional[str] = None  # Base64 encoded JPEG/PNG image (any format, will be processed)
-    include_professional_permit: bool = False
-    include_address_data: bool = True
-    include_medical_data: bool = True
-    include_license_history: bool = True
-    test_scenario: str = "standard"  # standard, professional, restricted, international
+    """Request model for testing barcode with standardized Madagascar license format"""
+    # Field 1: Initials and surname
+    person_name: str = Field(default="BJ SCHUTTE", description="Full name (initials and surname)")
+    
+    # Field 2: ID Number
+    id_number: str = Field(default="456740229624", description="National ID number (12 digits)")
+    
+    # Field 3: Date of Birth  
+    date_of_birth: str = Field(default="19950127", description="Date of birth (YYYYMMDD format)")
+    
+    # Field 4: License Number
+    license_number: str = Field(default="MGD0154747899", description="License number (13 digits)")
+    
+    # Field 5: Valid date range (From - To)
+    valid_from: str = Field(default="20250501", description="Valid from date (YYYYMMDD format)")
+    valid_to: str = Field(default="20300729", description="Valid to date (YYYYMMDD format)")
+    
+    # Field 6: License codes
+    license_codes: List[str] = Field(default=["B", "C"], description="License category codes")
+    
+    # Field 7: Vehicle restrictions
+    vehicle_restrictions: List[str] = Field(default=["AUTO_ONLY"], description="Vehicle restriction codes")
+    
+    # Field 8: Driver restrictions  
+    driver_restrictions: List[str] = Field(default=["GLASSES"], description="Driver restriction codes")
+    
+    # Field 9: Sex
+    sex: str = Field(default="M", description="Gender (M or F)")
+    
+    # Photo options
+    include_sample_photo: bool = Field(default=True, description="Include a sample photo")
+    custom_photo_base64: Optional[str] = Field(default=None, description="Custom photo as base64 string")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "person_name": "RANDRIANARISOA Marie",
-                "date_of_birth": "1990-01-01",
-                "sex": "F",
-                "license_codes": ["B", "EB"],
-                "vehicle_restrictions": [],
-                "driver_restrictions": ["glasses"],
+                "person_name": "BJ SCHUTTE",
+                "id_number": "456740229624", 
+                "date_of_birth": "19950127",
+                "license_number": "MGD0154747899",
+                "valid_from": "20250501",
+                "valid_to": "20300729",
+                "license_codes": ["B", "C"],
+                "vehicle_restrictions": ["AUTO_ONLY"],
+                "driver_restrictions": ["GLASSES"],
+                "sex": "M",
                 "include_sample_photo": True,
-                "custom_photo_base64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCABgAEgBAREA/8QAHAAAAQQDAQAAAAAAAAAAAAAABwADBQYCBAgB/8QAPxAAAgEEAAQCBgMNCQAAAAAAAQIDAAQFEQYSITFBUQciImFxgRQVYggyQkRygpGTobGywdEjNFNUdIOSlKL/2gAIAQEAAD8AP9KlSpUqVYsuxWu8eqYGfxBHTJ2h/wB0VIKyugZSCrDYI8RXtMXV5b2UavcyrGrNygt4ny/ZTIy9gRsXUdL63sP81HXhzOPH4yvyU/0rE5qw8Jifgjf0py3vra9d1gdmZAC21I1v40M8rNiwIlxSTxFAwmEp2d9NddkefaidjTzY63J/w1/cK2qi83BHcJZRyqGQ3ScynsRo0+uHxyjQsoAPyBWQxdgO1nB/wFZfV9kPxSD9WK9FjZjtawfqxTkUUMXMsSRpruEAFAuOYsrMx2Tsn40a8SebF2x84k/hFbtaGU72X+qT+db9KlSrFUCu7b++IP7NVzxDc+wdeVHjBNzYSybzgT+EVI1HZdljS0diAq3KEk9gOvWtO54ssLUtzRXbqi8zMkPQDzOyDWFnxrgrycQC9SKUkAJKQuyfnqrBSpVy6kzop0fCujOGjzcO48+dvGf/AAtSxOhQ642z92c19UW0DMIljdQrAF5G5u/2VAB9+zQr4ss+KcxcMJ7+2BI0QilNa8OlVJuFM1br676xTnQbVQx/RRx9B3E1/msDkcbkeZpsZMiqznZCODpfkVbXuIHhRVpGuWlwHEoB3gsn/wBR/wCldHcMK8fDePSVGSRbeJXRhoqwRQQfeDUo6sxGn0PEa3uh/dhbLjrOZO6mU2QtYT7PtaIBVh8QU7e8UPs3xzg8rkhFa2kkT9g5Knn+QNVvIcSY+KUwASu/iF0APiTV19CkcUnGGYu/pPIz2MYS3J6upf2nI+yQBv7Zo51i50Kj1wWIIBXHWpB6g+rFb0FvDawiKCJIo17Kg0B8qcqh8Q21lYXmR9bGJorsCWWLoB16Eee99ST5jXahGuGw8WeS8lMNqpO0Mh0qgdBv9wFV64xllf5We45klAkJYqdg0zlctecO21te4XI3FjdCYxf2EnKSigMN67jZ7Hoa6t4fyoznDmMyoQJ9NtY7goPwSygkfLdb03RPnQ/9GeIzPD+Nkt7rLW1/imAa0RC5eI76jbAaXX4PXR7d6IKyBhWWxQF9IObXA+lm5jljKwZGwtwzaPtOpcD4jWxVXy901/bsIGjEJ9vm5Sxb3dOwqtRzNjl9Y8iiNj1UKQTVWy159NyEkuiAPZAPfpXS/oh9J2FzWMxnCpjltMlaWaQoJCClxyIASpHj0J5SO3idGipcnUQ+NCf0d8Vzsj47IQwRFQGV4nLdSTsHfy7US2uYooXmlkSOJFLO7sFVVHcknoB76oHEHps4Yw/NFYPJl7gfg2x5Yx8ZG7/mg1zrmOLMhn+Ko87k5/WTiZHPKNCMKRpVHgAPD+ZNT7qtxG95irz1MU5JKa2n6PA+6oRoZJbkPcT+uKdumgKjcokQjV9ASFtb8xTOFzN7w/mLbK46RY7u2bmjdkDgHRHYgjsTRn4Y+6FuJZ47Timyh9QxA+mWakFPeyEnmH5OvgalOFcQZrrQJBHtdPGql6X+P5r+7k4Yx1wRj7U8l0yH+8SjuD5qp6a8SCfAUJOdtg76+deE9Se1P217cWvMIpCFb75fA/Kn3yszRcgVVPmK0WdnO2Yk++vKVH3L8TNwhw/d31uR9LlX1Ft9l237X5oBPx1QEZ2diWJJPXZrGlSpUqVKv//Z",
-                "test_scenario": "standard"
+                "custom_photo_base64": null
             }
         }
 
@@ -289,118 +310,139 @@ async def decode_license_barcode(
 @router.post(
     "/test",
     response_model=BarcodeGenerationResponse,
-    summary="Generate test barcode using NEW V4 pipe-delimited format",
-    description="Generate a PDF417 barcode with pipe-delimited format, zlib compression and lightweight encryption"
+    summary="Generate test barcode using standardized Madagascar format",
+    description="Generate a PDF417 barcode using PyZint with standardized pipe-delimited Madagascar license format"
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
     current_user: User = Depends(require_permission("licenses.read"))
 ):
-    """Generate test barcode using NEW V4 pipe-delimited format"""
+    """Generate test barcode using standardized Madagascar license format"""
     try:
-        from datetime import datetime, timedelta
-        import random
         import base64
+        import zlib
+        import io
+        from PIL import Image
+        import pyzint
         
-        # Create mock Person object for testing
-        class MockPerson:
-            def __init__(self):
-                self.surname = request.person_name.split()[0] if request.person_name else "DOE"
-                self.first_name = " ".join(request.person_name.split()[1:]) if len(request.person_name.split()) > 1 else "JOHN"
-                self.person_nature = "02" if request.sex == "F" else "01"
-                self.birth_date = datetime.strptime(request.date_of_birth, "%Y-%m-%d").date()
+        # Step 1: Create standardized pipe-delimited license data
+        # Format: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
         
-        # Create mock License object for testing  
-        class MockLicense:
-            def __init__(self):
-                self.issue_date = datetime.now() - timedelta(days=90)  # Current license issue
-                self.first_issue_date = datetime.now() - timedelta(days=1825)  # First issued 5 years ago
-                self.expiry_date = datetime.now() + timedelta(days=1825)  # Expires in 5 years
-                self.category = type('MockCategory', (), {'value': request.license_codes[0] if request.license_codes else 'B'})()
+        # Format license codes as comma-separated
+        license_codes_str = ','.join(request.license_codes) if request.license_codes else ""
         
-        # Create mock Card object for testing
-        # Create mock Card object for testing
-        class MockCard:
-            def __init__(self):
-                location_codes = ["T01", "F01", "M01", "A01", "D01", "N01"]
-                location_code = random.choice(location_codes)
-                sequence = random.randint(100000, 999999)
-                self.card_number = f"MG{location_code}{sequence:06d}"
+        # Format vehicle restrictions as comma-separated
+        vehicle_restrictions_str = ','.join(request.vehicle_restrictions) if request.vehicle_restrictions else ""
         
-        person = MockPerson()
-        license = MockLicense()
-        card = MockCard()
+        # Format driver restrictions as comma-separated  
+        driver_restrictions_str = ','.join(request.driver_restrictions) if request.driver_restrictions else ""
         
-        # Process custom photo if provided
-        photo_bytes = None
+        # Format valid date range
+        valid_date_range = f"{request.valid_from}-{request.valid_to}"
+        
+        # Create standardized pipe-delimited format
+        license_data = f"{request.person_name}|{request.id_number}|{request.date_of_birth}|{request.license_number}|{valid_date_range}|{license_codes_str}|{vehicle_restrictions_str}|{driver_restrictions_str}|{request.sex}"
+        license_data_bytes = license_data.encode("utf-8")
+        
+        print(f"Standardized license data: {license_data}")
+        
+        # Step 2: Process image if provided
+        image_bytes = None
         if request.custom_photo_base64:
             try:
-                photo_bytes = base64.b64decode(request.custom_photo_base64)
-                print(f"Custom photo decoded: {len(photo_bytes)} bytes")
+                # Decode custom photo
+                photo_data = base64.b64decode(request.custom_photo_base64)
+                image = Image.open(io.BytesIO(photo_data)).convert("L")
+                image = image.resize((60, 90))
+                
+                # Try different quality levels starting from 50, stepping down by 5
+                for quality in [50, 45, 40, 35, 30, 25, 20, 15, 10]:
+                    img_buffer = io.BytesIO()
+                    image.save(img_buffer, format="JPEG", quality=quality, optimize=True)
+                    image_bytes = img_buffer.getvalue()
+                    
+                    # Check if combined data will fit (rough estimate)
+                    test_combined = license_data_bytes + b"||IMG||" + image_bytes
+                    test_compressed = zlib.compress(test_combined, level=9)
+                    
+                    if len(test_compressed) <= 1800:  # Conservative size limit
+                        print(f"Image processed with quality {quality}: {len(image_bytes)} bytes")
+                        break
+                else:
+                    print("Could not compress image to acceptable size")
+                    image_bytes = None
+                    
             except Exception as e:
-                print(f"Failed to decode custom photo: {e}")
+                print(f"Failed to process custom photo: {e}")
+                image_bytes = None
+        elif request.include_sample_photo:
+            # Generate a simple sample image (60x90 grayscale)
+            image = Image.new('L', (60, 90), color=128)  # Gray background
+            
+            # Add simple pattern for testing
+            for y in range(90):
+                for x in range(60):
+                    if (x + y) % 10 < 5:
+                        image.putpixel((x, y), 180)
+            
+            # Compress with quality 50
+            img_buffer = io.BytesIO()
+            image.save(img_buffer, format="JPEG", quality=50, optimize=True)
+            image_bytes = img_buffer.getvalue()
+            print(f"Sample image generated: {len(image_bytes)} bytes")
         
-        # Convert mock objects to dictionary format for V4 system
-        person_data = {
-            'first_name': person.first_name,
-            'last_name': person.surname,
-            'national_id': card.card_number,  # Using card number as ID for testing
-            'gender': 'F' if person.person_nature == "02" else 'M',
-            'date_of_birth': person.birth_date.strftime('%Y%m%d')
-        }
+        # Step 3: Combine and compress all data (exact format from working code)
+        if image_bytes:
+            combined_data = license_data_bytes + b"||IMG||" + image_bytes
+        else:
+            combined_data = license_data_bytes
+            
+        compressed = zlib.compress(combined_data, level=9)
+        print(f"Compressed payload size: {len(compressed)} bytes")
         
-        license_data = {
-            'license_type': license.category.value,
-            'restrictions': request.license_codes[1:] if len(request.license_codes) > 1 else [],  # Additional codes as restrictions
-            'issue_date': license.issue_date.strftime('%Y%m%d'),
-            'expiry_date': license.expiry_date.strftime('%Y%m%d')
-        }
+        # Step 4: Create PDF417 barcode using PyZint (exact from working code)
+        symbol = pyzint.Barcode.PDF417(compressed, option_1=5)
         
-        card_data = {
-            'card_number': card.card_number
-        }
+        # Step 5: Render as BMP and convert to PNG (exact from working code)
+        bmp_data = symbol.render_bmp()
+        bmp_stream = io.BytesIO(bmp_data)
+        bmp_image = Image.open(bmp_stream)
         
-        # Generate PDF417 barcode using NEW V4 pipe-delimited format  
-        barcode_image_bytes = barcode_service.generate_pdf417_barcode_v4(
-            person_data=person_data,
-            license_data=license_data,
-            card_data=card_data,
-            photo_data=photo_bytes
-        )
+        # Convert to PNG and base64 encode
+        output_buffer = io.BytesIO()
+        bmp_image.save(output_buffer, format="PNG")
+        barcode_b64 = base64.b64encode(output_buffer.getvalue()).decode("utf-8")
         
-        if barcode_image_bytes is None:
-            raise Exception("Failed to generate V4 barcode")
-        
-        # Convert PNG bytes to base64 for response
-        barcode_image_base64 = base64.b64encode(barcode_image_bytes).decode('utf-8')
-        
-        # Create display data for response (showing the pipe-delimited format)
-        pipe_data = f"{person_data['first_name']} {person_data['last_name']}|{license_data['license_type']}|" + \
-                   f"{','.join(license_data['restrictions'])}|{person_data['national_id']}|{person_data['gender']}|" + \
-                   f"{person_data['date_of_birth']}|{license_data['issue_date']}|{license_data['expiry_date']}"
-        
+        # Create response data
         display_data = {
-            "version": 4,
-            "format": "pipe_delimited",
-            "pipe_data": pipe_data,
-            "photo_included": photo_bytes is not None,
-            "photo_size": len(photo_bytes) if photo_bytes else 0,
-            "compression": "zlib",
-            "encryption": "lightweight_xor"
+            "version": 5,
+            "format": "standardized_madagascar_license",
+            "license_data": license_data,
+            "fields": {
+                "person_name": request.person_name,
+                "id_number": request.id_number,
+                "date_of_birth": request.date_of_birth,
+                "license_number": request.license_number,
+                "valid_from": request.valid_from,
+                "valid_to": request.valid_to,
+                "license_codes": request.license_codes,
+                "vehicle_restrictions": request.vehicle_restrictions,
+                "driver_restrictions": request.driver_restrictions,
+                "sex": request.sex
+            },
+            "photo_included": image_bytes is not None,
+            "photo_size": len(image_bytes) if image_bytes else 0,
+            "compression": "zlib_level_9",
+            "barcode_engine": "pyzint_pdf417"
         }
-        
-        # Get payload size for reporting
-        payload_size = len(barcode_service.create_pipe_delimited_payload_v4(
-            person_data, license_data, card_data, photo_bytes
-        ))
         
         return BarcodeGenerationResponse(
             success=True,
-            barcode_image_base64=barcode_image_base64,
+            barcode_image_base64=barcode_b64,
             barcode_data=display_data,
-            data_size_bytes=payload_size,
-            message=f"V4 Pipe-delimited License barcode: {card.card_number} "
-                   f"({payload_size} bytes payload, {'with photo' if photo_bytes else 'no photo'})"
+            data_size_bytes=len(compressed),
+            message=f"Standardized Madagascar license barcode generated: {request.license_number} "
+                   f"({len(compressed)} bytes compressed, {'with photo' if image_bytes else 'no photo'})"
         )
         
     except Exception as e:
@@ -687,4 +729,170 @@ async def decode_barcode_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to decode barcode: {str(e)}"
+        )
+
+
+class MadagascarBarcodeDecodeRequest(BaseModel):
+    """Request model for decoding Madagascar standardized barcode"""
+    hex_data: str = Field(..., description="Hex-encoded barcode data from scanner")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "hex_data": "789c4a722050534856553448494e5454c85648494e4956553449494dd52a3148515051b4aa4a4a5648c849494e4c5555b14e5451b130e4da4e4e4e5548514e4b55b130e4da4e5551b1343a4e4fd554"
+            }
+        }
+
+
+class MadagascarBarcodeDecodeResponse(BaseModel):
+    """Response model for decoded Madagascar barcode"""
+    success: bool
+    license_data: Dict[str, str]
+    has_image: bool
+    image_base64: Optional[str] = None
+    image_size_bytes: int
+    total_payload_size: int
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "license_data": {
+                    "person_name": "BJ SCHUTTE",
+                    "id_number": "456740229624",
+                    "date_of_birth": "19950127", 
+                    "license_number": "MGD0154747899",
+                    "valid_from": "20250501",
+                    "valid_to": "20300729",
+                    "license_codes": ["B", "C"],
+                    "vehicle_restrictions": ["AUTO_ONLY"],
+                    "driver_restrictions": ["GLASSES"],
+                    "sex": "M"
+                },
+                "has_image": True,
+                "image_base64": "/9j/4AAQSkZJRgABA...",
+                "image_size_bytes": 2048,
+                "total_payload_size": 3584,
+                "message": "Madagascar license barcode decoded successfully"
+            }
+        }
+
+
+@router.post(
+    "/decode-madagascar",
+    response_model=MadagascarBarcodeDecodeResponse,
+    summary="Decode Madagascar standardized license barcode",
+    description="Decode standardized Madagascar license barcode with pipe-delimited format"
+)
+async def decode_madagascar_barcode(
+    request: MadagascarBarcodeDecodeRequest,
+    current_user: User = Depends(require_permission("licenses.read"))
+):
+    """Decode Madagascar standardized license barcode"""
+    try:
+        import binascii
+        import base64
+        import zlib
+        
+        print(f"Decoding Madagascar barcode: {len(request.hex_data)} hex characters")
+        
+        # Step 1: Decode hex to binary
+        try:
+            binary_data = binascii.unhexlify(request.hex_data)
+            print(f"Hex decoded to {len(binary_data)} bytes")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid hex data: {str(e)}"
+            )
+        
+        # Step 2: Decompress with zlib
+        try:
+            decompressed_data = zlib.decompress(binary_data)
+            print(f"Decompressed to {len(decompressed_data)} bytes")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to decompress data: {str(e)}"
+            )
+        
+        # Step 3: Check for image separator
+        image_separator = b"||IMG||"
+        has_image = image_separator in decompressed_data
+        
+        if has_image:
+            # Split license data and image
+            parts = decompressed_data.split(image_separator, 1)
+            license_data_bytes = parts[0]
+            image_bytes = parts[1] if len(parts) > 1 else b""
+            print(f"Found image: {len(image_bytes)} bytes")
+        else:
+            license_data_bytes = decompressed_data
+            image_bytes = b""
+            print("No image found in barcode")
+        
+        # Step 4: Parse license data (pipe-delimited format)
+        try:
+            license_data_str = license_data_bytes.decode('utf-8')
+            print(f"License data string: {license_data_str}")
+            
+            # Split by pipes: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
+            fields = license_data_str.split('|')
+            
+            if len(fields) != 9:
+                raise ValueError(f"Expected 9 fields, got {len(fields)}")
+            
+            # Parse valid date range
+            valid_dates = fields[4].split('-') if fields[4] else ['', '']
+            valid_from = valid_dates[0] if len(valid_dates) > 0 else ''
+            valid_to = valid_dates[1] if len(valid_dates) > 1 else ''
+            
+            # Parse license data
+            parsed_data = {
+                "person_name": fields[0],
+                "id_number": fields[1],
+                "date_of_birth": fields[2],
+                "license_number": fields[3],
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+                "license_codes": fields[5].split(',') if fields[5] else [],
+                "vehicle_restrictions": fields[6].split(',') if fields[6] else [],
+                "driver_restrictions": fields[7].split(',') if fields[7] else [],
+                "sex": fields[8]
+            }
+            
+            print(f"Parsed license data: {parsed_data}")
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to parse license data: {str(e)}"
+            )
+        
+        # Step 5: Encode image to base64 if present
+        image_base64 = None
+        if has_image and image_bytes:
+            try:
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                print(f"Image encoded to base64: {len(image_base64)} characters")
+            except Exception as e:
+                print(f"Failed to encode image: {e}")
+        
+        return MadagascarBarcodeDecodeResponse(
+            success=True,
+            license_data=parsed_data,
+            has_image=has_image,
+            image_base64=image_base64,
+            image_size_bytes=len(image_bytes),
+            total_payload_size=len(binary_data),
+            message=f"Madagascar license barcode decoded successfully. License: {parsed_data.get('license_number', 'Unknown')}"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to decode Madagascar barcode: {str(e)}"
         ) 

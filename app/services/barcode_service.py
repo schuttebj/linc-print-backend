@@ -47,16 +47,11 @@ except ImportError:
     logging.warning("cbor2 not available - barcode generation will use fallback")
 
 try:
-    import pdf417gen
-    BARCODE_AVAILABLE = True
-except ImportError:
-    BARCODE_AVAILABLE = False
-
-try:
     import pyzint
     ZINT_AVAILABLE = True
 except ImportError:
     ZINT_AVAILABLE = False
+    logging.warning("pyzint not available - PDF417 barcode generation disabled")
 
 try:
     from PIL import Image
@@ -162,8 +157,8 @@ class LicenseBarcodeService:
     
     def _initialize_warnings(self):
         """Initialize service with appropriate warnings"""
-        if not BARCODE_AVAILABLE:
-            self.logger.warning("Barcode generation running in simulation mode")
+        if not ZINT_AVAILABLE:
+            self.logger.warning("PyZint not available - barcode generation disabled")
         if not CBOR_AVAILABLE:
             self.logger.warning("CBOR not available - will use fallback encoding")
 
@@ -1042,7 +1037,7 @@ class LicenseBarcodeService:
 
     def generate_pdf417_barcode_cbor(self, cbor_payload: bytes) -> str:
         """
-        Generate PDF417 barcode from CBOR binary payload using hex encoding
+        Generate PDF417 barcode from CBOR binary payload using PyZint
         
         Args:
             cbor_payload: CBOR-encoded binary data
@@ -1053,62 +1048,22 @@ class LicenseBarcodeService:
         try:
             print(f"PDF417 generation: {len(cbor_payload)} bytes binary data")
             
-            if not BARCODE_AVAILABLE:
+            if not ZINT_AVAILABLE:
                 return self._generate_barcode_placeholder(f"CBOR-{len(cbor_payload)}-bytes")
             
-            # Use base64 encoding (most reliable for binary data in PDF417)
-            try:
-                # Base64 encoding is safe and reliable for all binary data
-                b64_data = base64.b64encode(cbor_payload).decode('ascii')
-                codes = pdf417gen.encode(
-                    b64_data,
-                    security_level=self.BARCODE_CONFIG['error_correction_level'],
-                    columns=self.BARCODE_CONFIG['columns']
-                )
-                print(f"PDF417 encoded successfully using base64 mode: {len(b64_data)} chars")
-            except Exception as b64_error:
-                print(f"Base64 mode failed: {b64_error}, trying latin1")
-                # Fallback to latin1 mode
-                try:
-                    # Use latin1 encoding which preserves all byte values 0-255
-                    latin1_data = cbor_payload.decode('latin1')
-                    codes = pdf417gen.encode(
-                        latin1_data,
-                        security_level=1,  # Minimum error correction for maximum capacity
-                        columns=20  # Maximum columns for highest capacity
-                    )
-                    print(f"PDF417 encoded successfully using latin1 mode: {len(latin1_data)} chars")
-                except Exception as latin1_error:
-                    print(f"Latin1 mode failed: {latin1_error}, trying binary mode")
-                    # Last resort: binary mode
-                    codes = pdf417gen.encode(
-                        cbor_payload,  # Direct binary data
-                        security_level=1,  # Minimum error correction
-                        columns=22  # Maximum columns
-                    )
-                    print(f"PDF417 encoded successfully using binary mode")
-                
-                # Render to image
-            img = pdf417gen.render_image(codes, scale=2, ratio=3)
+            # Use PyZint with exact working format
+            symbol = pyzint.Barcode.PDF417(cbor_payload, option_1=5)
             
-            # Add validation: try to decode what we just encoded to ensure data integrity
-            try:
-                # This tests if the barcode can be decoded properly
-                decoded_test = codes[1]  # The data part of the codes tuple
-                expected_length = len(cbor_payload)
-                if hasattr(decoded_test, '__len__'):
-                    actual_length = len(decoded_test)
-                    if actual_length != expected_length:
-                        print(f"WARNING: Data length mismatch during encoding. Expected: {expected_length}, Got: {actual_length}")
-                print(f"PDF417 encoding validation passed")
-            except Exception as validation_error:
-                print(f"PDF417 encoding validation warning: {validation_error}")
-                
-                # Convert to base64
-                buffer = io.BytesIO()
-                img.save(buffer, format='PNG')
+            # Render as BMP and convert to PNG
+            bmp_data = symbol.render_bmp()
+            bmp_stream = io.BytesIO(bmp_data)
+            bmp_image = Image.open(bmp_stream)
             
-            print(f"PDF417 barcode generated successfully: {img.size}")
+            # Convert to PNG and base64 encode
+            buffer = io.BytesIO()
+            bmp_image.save(buffer, format='PNG')
+            
+            print(f"PDF417 barcode generated successfully: {bmp_image.size}")
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
         except Exception as e:
@@ -1117,7 +1072,7 @@ class LicenseBarcodeService:
     def generate_pdf417_barcode_v4(self, person_data: Dict[str, Any], license_data: Dict[str, Any], 
                                   card_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> Optional[bytes]:
         """
-        NEW FORMAT: Generate PDF417 barcode using pipe-delimited format
+        NEW FORMAT: Generate PDF417 barcode using PyZint with pipe-delimited format
         
         Args:
             person_data: Person information
@@ -1129,50 +1084,104 @@ class LicenseBarcodeService:
             PNG image bytes of the barcode or None if generation fails
         """
         try:
-            print("=== V4 PDF417 GENERATION ===")
+            print("=== V4 PDF417 GENERATION (PyZint Only) ===")
             
-            # Step 1: Create compressed and encrypted payload
-            payload_bytes = self.create_pipe_delimited_payload_v4(
-                person_data, license_data, card_data, photo_data
-            )
+            if not ZINT_AVAILABLE:
+                raise BarcodeGenerationError("PyZint library not available")
             
-            # Step 2: Check size constraints (warning only, attempt generation anyway)
-            payload_size = len(payload_bytes)
-            max_size = self.BARCODE_CONFIG['max_payload_bytes']
+            # Step 1: Create standardized pipe-delimited license data (no unnecessary location data)
+            import random
+            from datetime import datetime, timedelta
             
-            print(f"Payload size check: {payload_size} bytes (limit: {max_size} bytes, {payload_size/max_size*100:.1f}%)")
+            # Format person name
+            person_name = f"{person_data.get('first_name', '')} {person_data.get('last_name', '')}".strip()
             
-            if payload_size > max_size:
-                print(f"WARNING: Payload exceeds target: {payload_size} > {max_size}")
-                print("Attempting generation anyway - testing actual library limits...")
+            # Generate clean national ID (12 digits) - no location data
+            national_id = f"{random.randint(100000000000, 999999999999)}"
+            
+            # Format dates (YYYYMMDD)
+            birth_date = person_data.get('date_of_birth', '').replace('-', '')
+            
+            # Generate clean license number (13 digits) - no location codes
+            license_number = f"MGD{random.randint(1000000000, 9999999999)}"
+            
+            # Format valid date range
+            valid_from = datetime.now().strftime('%Y%m%d')
+            valid_to = (datetime.now() + timedelta(days=1825)).strftime('%Y%m%d')
+            valid_date_range = f"{valid_from}-{valid_to}"
+            
+            # Get license codes
+            license_codes = license_data.get('license_codes', ['B'])
+            license_codes_str = ','.join(license_codes) if license_codes else 'B'
+            
+            # Get restrictions (remove location-specific restrictions)
+            vehicle_restrictions = license_data.get('vehicle_restrictions', [])
+            vehicle_restrictions_str = ','.join(vehicle_restrictions) if vehicle_restrictions else ''
+            
+            driver_restrictions = license_data.get('driver_restrictions', [])
+            driver_restrictions_str = ','.join(driver_restrictions) if driver_restrictions else ''
+            
+            # Get gender
+            gender = person_data.get('gender', 'M')
+            
+            # Create clean standardized pipe-delimited format (no unnecessary data)
+            # Format: Name|ID|DOB|LicenseNum|ValidFrom-ValidTo|Codes|VehicleRestr|DriverRestr|Sex
+            license_data_str = f"{person_name}|{national_id}|{birth_date}|{license_number}|{valid_date_range}|{license_codes_str}|{vehicle_restrictions_str}|{driver_restrictions_str}|{gender}"
+            license_data_bytes = license_data_str.encode("utf-8")
+            
+            print(f"Clean license data: {license_data_str}")
+            
+            # Step 2: Process image if provided (exact from working code)
+            image_bytes = None
+            if photo_data:
+                try:
+                    image = Image.open(io.BytesIO(photo_data)).convert("L")
+                    image = image.resize((60, 90))
+                    
+                    # Try different quality levels starting from 50, stepping down by 5
+                    for quality in [50, 45, 40, 35, 30, 25, 20, 15, 10]:
+                        img_buffer = io.BytesIO()
+                        image.save(img_buffer, format="JPEG", quality=quality, optimize=True)
+                        image_bytes = img_buffer.getvalue()
+                        
+                        # Check if combined data will fit
+                        test_combined = license_data_bytes + b"||IMG||" + image_bytes
+                        test_compressed = zlib.compress(test_combined, level=9)
+                        
+                        if len(test_compressed) <= 1800:  # Conservative size limit
+                            print(f"Image processed with quality {quality}: {len(image_bytes)} bytes")
+                            break
+                    else:
+                        print("Could not compress image to acceptable size")
+                        image_bytes = None
+                        
+                except Exception as e:
+                    print(f"Failed to process photo: {e}")
+                    image_bytes = None
+            
+            # Step 3: Combine and compress all data (exact format from working code)
+            if image_bytes:
+                combined_data = license_data_bytes + b"||IMG||" + image_bytes
             else:
-                print("✓ Payload size within target constraints")
+                combined_data = license_data_bytes
+                
+            compressed = zlib.compress(combined_data, level=9)
+            print(f"Compressed payload size: {len(compressed)} bytes")
             
-            print(f"V4 PDF417 generation: {len(payload_bytes)} bytes binary data")
+            # Step 4: Create PDF417 barcode using PyZint (exact from working code)
+            symbol = pyzint.Barcode.PDF417(compressed, option_1=5)
             
-            # Step 3: Generate PDF417 barcode (try Zint first for higher capacity)
-            barcode_image_bytes = None
+            # Step 5: Render as BMP and convert to PNG (exact from working code)
+            bmp_data = symbol.render_bmp()
+            bmp_stream = io.BytesIO(bmp_data)
+            bmp_image = Image.open(bmp_stream)
             
-            # Try Zint first (preferred for higher capacity)
-            if ZINT_AVAILABLE:
-                print("Attempting PDF417 generation with pyzint (higher capacity)...")
-                barcode_image_bytes = self._generate_pdf417_with_zint(payload_bytes)
-                if barcode_image_bytes:
-                    print("✓ Successfully generated PDF417 with pyzint")
-                else:
-                    print("pyzint failed, falling back to pdf417gen...")
-                    if BARCODE_AVAILABLE:
-                        barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
-            elif BARCODE_AVAILABLE:
-                print("pyzint not available, using pdf417gen...")
-                barcode_image_bytes = self._generate_pdf417_with_pdf417gen(payload_bytes)
-            else:
-                raise BarcodeGenerationError("No PDF417 library available (pyzint or pdf417gen)")
+            # Convert to PNG
+            output_buffer = io.BytesIO()
+            bmp_image.save(output_buffer, format="PNG")
+            barcode_image_bytes = output_buffer.getvalue()
             
-            if not barcode_image_bytes:
-                raise BarcodeGenerationError("PDF417 generation failed with all available libraries")
-            
-            print("V4 PDF417 barcode generated successfully")
+            print("V4 PDF417 barcode generated successfully using PyZint")
             print("=== V4 PDF417 COMPLETE ===")
             
             return barcode_image_bytes
@@ -1183,41 +1192,32 @@ class LicenseBarcodeService:
             return None
 
     def _generate_pdf417_with_zint(self, payload_bytes: bytes) -> Optional[bytes]:
-        """Generate PDF417 using pyzint library (preferred for higher capacity)"""
+        """Generate PDF417 using pyzint library with exact working format"""
         try:
             import pyzint
-            print("Using pyzint for PDF417 generation...")
+            print("Using pyzint for PDF417 generation (exact working format)...")
             
-            # Convert bytes to string for pyzint (using latin1 encoding)
-            data_str = payload_bytes.decode('latin1')
+            # Step 1: Create PDF417 barcode using PyZint (exact from working code)
+            symbol = pyzint.Barcode.PDF417(payload_bytes, option_1=5)
             
-            # Create PDF417 barcode using pyzint API
-            symbol = pyzint.Barcode.PDF417(data_str)
+            # Step 2: Render as BMP and convert to PNG (exact from working code)
+            bmp_data = symbol.render_bmp()
             
-            # Render to BMP bytes (pyzint's primary format)
-            bmp_bytes = symbol.render_bmp()
-            
-            if not bmp_bytes:
+            if not bmp_data:
                 print("pyzint render_bmp failed - no data returned")
                 return None
             
-            # Convert BMP to PNG using PIL for consistency
-            from PIL import Image
-            import io
-            
-            # Load BMP bytes into PIL
-            bmp_buffer = io.BytesIO(bmp_bytes)
-            image = Image.open(bmp_buffer)
+            bmp_stream = io.BytesIO(bmp_data)
+            bmp_image = Image.open(bmp_stream)
             
             # Convert to PNG bytes
-            png_buffer = io.BytesIO()
-            image.save(png_buffer, format='PNG')
-            png_bytes = png_buffer.getvalue()
+            output_buffer = io.BytesIO()
+            bmp_image.save(output_buffer, format="PNG")
+            png_bytes = output_buffer.getvalue()
             
-            print(f"pyzint PDF417 generated: {image.size} pixels, {len(payload_bytes)} bytes payload")
-            print(f"PDF417 Configuration: PDF417 standard, {len(payload_bytes)} bytes data")
-            print(f"Capacity utilization: {len(payload_bytes)}/{self.BARCODE_CONFIG['max_payload_bytes']} bytes ({len(payload_bytes)/self.BARCODE_CONFIG['max_payload_bytes']*100:.1f}%)")
-            print("✓ pyzint generation successful - higher capacity achieved!")
+            print(f"pyzint PDF417 generated: {bmp_image.size} pixels, {len(payload_bytes)} bytes payload")
+            print(f"PDF417 Configuration: option_1=5 (error correction level)")
+            print("✓ pyzint generation successful using exact working format!")
             
             return png_bytes
             
@@ -1228,63 +1228,30 @@ class LicenseBarcodeService:
             print(f"pyzint PDF417 generation failed: {str(e)}")
             return None
     
-    def _generate_pdf417_with_pdf417gen(self, payload_bytes: bytes) -> Optional[bytes]:
-        """Generate PDF417 using pdf417gen library (fallback)"""
-        try:
-            print("Using pdf417gen for PDF417 generation (fallback)...")
-            
-            # Convert to string for pdf417gen (using latin1 encoding)
-            payload_str = payload_bytes.decode('latin1')
-            
-            # Generate PDF417 with maximum configuration (30 columns, ECC level 4)
-            code = pdf417gen.encode(
-                payload_str,
-                security_level=self.BARCODE_CONFIG['error_correction_level'],
-                columns=self.BARCODE_CONFIG['columns']
-            )
-            
-            print(f"pdf417gen Config: {self.BARCODE_CONFIG['columns']} columns, ECC level {self.BARCODE_CONFIG['error_correction_level']}")
-            print(f"pdf417gen Capacity utilization: {len(payload_bytes)}/{self.BARCODE_CONFIG['max_payload_bytes']} bytes ({len(payload_bytes)/self.BARCODE_CONFIG['max_payload_bytes']*100:.1f}%)")
-            
-            if code is None:
-                print("pdf417gen encoding failed - invalid data")
-                return None
-            
-            # Render to image
-            image = pdf417gen.render_image(code, scale=3, ratio=2)
-            
-            # Save as PNG bytes
-            barcode_buffer = io.BytesIO()
-            image.save(barcode_buffer, format='PNG')
-            barcode_image_bytes = barcode_buffer.getvalue()
-            
-            print(f"pdf417gen PDF417 barcode generated successfully: {image.size}")
-            return barcode_image_bytes
-            
-        except Exception as e:
-            print(f"pdf417gen generation failed: {str(e)}")
-            return None
+
 
     def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
         """
-        Legacy method for JSON-based barcode generation (fallback)
+        Legacy method for JSON-based barcode generation using PyZint
         """
         try:
             import json
             json_data = json.dumps(barcode_data, separators=(',', ':'), ensure_ascii=False)
             
-            if not BARCODE_AVAILABLE:
+            if not ZINT_AVAILABLE:
                 return self._generate_barcode_placeholder(json_data)
             
-            codes = pdf417gen.encode(
-                json_data, 
-                security_level=self.BARCODE_CONFIG['error_correction_level'],
-                columns=self.BARCODE_CONFIG['columns']
-            )
-            img = pdf417gen.render_image(codes, scale=2, ratio=3)
+            # Use PyZint with exact working format
+            symbol = pyzint.Barcode.PDF417(json_data.encode('utf-8'), option_1=5)
             
+            # Render as BMP and convert to PNG
+            bmp_data = symbol.render_bmp()
+            bmp_stream = io.BytesIO(bmp_data)
+            bmp_image = Image.open(bmp_stream)
+            
+            # Convert to PNG and base64 encode
             buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
+            bmp_image.save(buffer, format='PNG')
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
@@ -1293,11 +1260,11 @@ class LicenseBarcodeService:
 
 
     def _generate_barcode_placeholder(self, data: str) -> str:
-        """Generate a placeholder barcode image when PDF417 is not available"""
+        """Generate a placeholder barcode image when PyZint is not available"""
         try:
             if not PIL_AVAILABLE:
                 # Return a simple text representation
-                return f"BARCODE_PLACEHOLDER:{len(data)}_bytes"
+                return f"PYZINT_PLACEHOLDER:{len(data)}_bytes"
             
             # Create a simple placeholder image
             from PIL import Image, ImageDraw, ImageFont
@@ -1305,7 +1272,7 @@ class LicenseBarcodeService:
             img = Image.new('RGB', (400, 100), color='white')
             draw = ImageDraw.Draw(img)
             
-            text = f"PDF417 BARCODE\n{len(data)} bytes"
+            text = f"PDF417 BARCODE (PyZint)\n{len(data)} bytes"
             draw.text((10, 30), text, fill='black')
             
             buffer = io.BytesIO()
@@ -1313,7 +1280,7 @@ class LicenseBarcodeService:
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception:
-            return f"BARCODE_PLACEHOLDER:{len(data)}_bytes"
+            return f"PYZINT_PLACEHOLDER:{len(data)}_bytes"
 
     def decode_barcode_data_cbor(self, hex_data: str) -> Dict[str, Any]:
         """
