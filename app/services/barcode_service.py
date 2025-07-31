@@ -99,6 +99,9 @@ class LicenseBarcodeService:
     'version': 4  # New pipe-delimited format version
 }
     
+    # Static encryption key for development
+    STATIC_ENCRYPTION_KEY = "93E98969AD11D2C8162DD95DB3F69"
+    
     # Lightweight encryption configuration for 3rd party compatibility
     BASE_ENCRYPTION_KEY = b'MadagascarLicenseSystem2024'  # Base key for calculation
     
@@ -673,6 +676,38 @@ class LicenseBarcodeService:
         Lightweight decryption (XOR is symmetric)
         """
         return self._lightweight_encrypt(data, key)  # XOR is symmetric
+    
+    def _static_encrypt(self, data: bytes) -> bytes:
+        """
+        Static key encryption using XOR (length preserving)
+        
+        Args:
+            data: Data to encrypt
+            
+        Returns:
+            Encrypted data (same length as input)
+        """
+        key_bytes = self.STATIC_ENCRYPTION_KEY.encode('utf-8')
+        encrypted = bytearray()
+        
+        for i, byte in enumerate(data):
+            # XOR with rotating key
+            key_byte = key_bytes[i % len(key_bytes)]
+            encrypted.append(byte ^ key_byte)
+        
+        return bytes(encrypted)
+    
+    def _static_decrypt(self, data: bytes) -> bytes:
+        """
+        Static key decryption using XOR (same as encryption for XOR)
+        
+        Args:
+            data: Data to decrypt
+            
+        Returns:
+            Decrypted data (same length as input)
+        """
+        return self._static_encrypt(data)  # XOR is symmetric
 
     def _process_photo_for_barcode_v4(self, photo_data: bytes) -> Optional[str]:
         """

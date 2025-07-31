@@ -316,6 +316,9 @@ async def decode_license_barcode(
     summary="Generate test barcode using standardized Madagascar format",
     description="""Generate a PDF417 barcode using PyZint with standardized pipe-delimited Madagascar license format.
     
+    **Security**: Data is compressed with zlib (level 9) and encrypted with static key XOR encryption (length-preserving).
+    **Pipeline**: License data → compress → encrypt → PDF417 barcode
+    
     **Photo Support**: You can include a custom photo by providing base64-encoded image data in the `custom_photo_base64` field. 
     The image will be automatically resized to 60x90 pixels, converted to grayscale, and optimized with quality stepping (50→45→40→35→30→25→20→15→10) to fit within the barcode size constraints."""
 )
@@ -406,8 +409,12 @@ async def generate_test_barcode(
         compressed = zlib.compress(combined_data, level=9)
         print(f"Compressed payload size: {len(compressed)} bytes")
         
+        # Step 3.5: Encrypt the compressed data (length preserving)
+        encrypted = barcode_service._static_encrypt(compressed)
+        print(f"Encrypted payload size: {len(encrypted)} bytes (same as compressed)")
+        
         # Step 4: Create PDF417 barcode using PyZint (exact from working code)
-        symbol = pyzint.Barcode.PDF417(compressed, option_1=5)
+        symbol = pyzint.Barcode.PDF417(encrypted, option_1=5)
         
         # Step 5: Render as BMP and convert to PNG (exact from working code)
         bmp_data = symbol.render_bmp()
@@ -439,6 +446,7 @@ async def generate_test_barcode(
             "photo_included": image_bytes is not None,
             "photo_size": len(image_bytes) if image_bytes else 0,
             "compression": "zlib_level_9",
+            "encryption": "static_key_xor",
             "barcode_engine": "pyzint_pdf417"
         }
         
@@ -446,9 +454,9 @@ async def generate_test_barcode(
             success=True,
             barcode_image_base64=barcode_b64,
             barcode_data=display_data,
-            data_size_bytes=len(compressed),
+            data_size_bytes=len(encrypted),
             message=f"Standardized Madagascar license barcode generated: {request.license_number} "
-                   f"({len(compressed)} bytes compressed, {'with photo' if image_bytes else 'no photo'})"
+                   f"({len(encrypted)} bytes encrypted, {'with photo' if image_bytes else 'no photo'})"
         )
         
     except Exception as e:
@@ -789,7 +797,7 @@ class MadagascarBarcodeDecodeResponse(BaseModel):
     "/decode-madagascar",
     response_model=MadagascarBarcodeDecodeResponse,
     summary="Decode Madagascar standardized license barcode",
-    description="Decode standardized Madagascar license barcode with pipe-delimited format"
+    description="Decode standardized Madagascar license barcode with pipe-delimited format. Supports hex → decrypt → decompress → parse pipeline."
 )
 async def decode_madagascar_barcode(
     request: MadagascarBarcodeDecodeRequest,
@@ -813,9 +821,19 @@ async def decode_madagascar_barcode(
                 detail=f"Invalid hex data: {str(e)}"
             )
         
-        # Step 2: Decompress with zlib
+        # Step 2: Decrypt with static key
         try:
-            decompressed_data = zlib.decompress(binary_data)
+            decrypted_data = barcode_service._static_decrypt(binary_data)
+            print(f"Decrypted to {len(decrypted_data)} bytes (same as encrypted)")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to decrypt data: {str(e)}"
+            )
+        
+        # Step 3: Decompress with zlib
+        try:
+            decompressed_data = zlib.decompress(decrypted_data)
             print(f"Decompressed to {len(decompressed_data)} bytes")
         except Exception as e:
             raise HTTPException(
@@ -823,7 +841,7 @@ async def decode_madagascar_barcode(
                 detail=f"Failed to decompress data: {str(e)}"
             )
         
-        # Step 3: Check for image separator
+        # Step 4: Check for image separator
         image_separator = b"||IMG||"
         has_image = image_separator in decompressed_data
         
@@ -838,7 +856,7 @@ async def decode_madagascar_barcode(
             image_bytes = b""
             print("No image found in barcode")
         
-        # Step 4: Parse license data (pipe-delimited format)
+        # Step 5: Parse license data (pipe-delimited format)
         try:
             license_data_str = license_data_bytes.decode('utf-8')
             print(f"License data string: {license_data_str}")
@@ -876,7 +894,7 @@ async def decode_madagascar_barcode(
                 detail=f"Failed to parse license data: {str(e)}"
             )
         
-        # Step 5: Encode image to base64 if present
+        # Step 6: Encode image to base64 if present
         image_base64 = None
         if has_image and image_bytes:
             try:
