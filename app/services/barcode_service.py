@@ -91,7 +91,7 @@ class LicenseBarcodeService:
     BARCODE_CONFIG = {
         'columns': 20,  # Maximum columns for highest capacity
         'error_correction_level': 4,  # User specified ECC level 4
-        'max_payload_bytes': 1200,   # User specified max size for testing
+        'max_payload_bytes': 1350,   # Increased to accommodate V4 format with images
         'max_image_bytes': 1150,     # Target ~1150 bytes for 100x150 JPEG
         'max_data_bytes': 400,       # License data budget (before compression)
         'image_max_dimension': (100, 150),  # New format: 100x150 pixels (2:3 aspect)
