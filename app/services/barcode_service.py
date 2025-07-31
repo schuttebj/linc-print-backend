@@ -87,11 +87,11 @@ class BarcodeDecodingError(LicenseBarcodeError):
 class LicenseBarcodeService:
     """Service for generating and decoding PDF417 barcodes using CBOR+compression+encryption"""
     
-    # New PDF417 configuration for pipe-delimited format with lightweight encryption
+    # New PDF417 configuration for pipe-delimited format with MAXIMUM capacity
     BARCODE_CONFIG = {
-        'columns': 20,  # Maximum columns for highest capacity
+        'columns': 30,  # MAXIMUM columns for highest possible capacity
         'error_correction_level': 4,  # User specified ECC level 4
-        'max_payload_bytes': 1350,   # Increased to accommodate V4 format with images
+        'max_payload_bytes': 2000,   # Increased significantly for max capacity testing
         'max_image_bytes': 1150,     # Target ~1150 bytes for 100x150 JPEG
         'max_data_bytes': 400,       # License data budget (before compression)
         'image_max_dimension': (100, 150),  # New format: 100x150 pixels (2:3 aspect)
