@@ -753,7 +753,7 @@ class MadagascarBarcodeDecodeRequest(BaseModel):
 class MadagascarBarcodeDecodeResponse(BaseModel):
     """Response model for decoded Madagascar barcode"""
     success: bool
-    license_data: Dict[str, str]
+    license_data: Dict[str, Any]  # Changed from Dict[str, str] to allow lists
     has_image: bool
     image_base64: Optional[str] = None
     image_size_bytes: int
