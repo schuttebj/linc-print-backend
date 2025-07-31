@@ -177,7 +177,7 @@ class TestBarcodeRequest(BaseModel):
                 "driver_restrictions": ["GLASSES"],
                 "sex": "M",
                 "include_sample_photo": True,
-                "custom_photo_base64": null
+                "custom_photo_base64": None
             }
         }
 
