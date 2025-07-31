@@ -87,19 +87,33 @@ class BarcodeDecodingError(LicenseBarcodeError):
 class LicenseBarcodeService:
     """Service for generating and decoding PDF417 barcodes using CBOR+compression+encryption"""
     
-    # Barcode configuration for PDF417 with 85% of actual 928 byte library limit
+    # New PDF417 configuration for pipe-delimited format with lightweight encryption
     BARCODE_CONFIG = {
-        'columns': 18,  # Maximum columns for highest capacity (very wide barcode)
-        'error_correction_level': 1,  # Minimum error correction for maximum capacity
-        'max_payload_bytes': 750,    # More conservative limit to prevent overrun
-        'max_image_bytes': 500,      # Conservative limit for enhanced processing
-        'max_data_bytes': 200,       # License data budget (before compression)
-        'image_max_dimension': (135, 90),   # Closer to user's successful 150x100, but within budget
-        'version': 3  # New compressed+encrypted format version
+        'columns': 20,  # Maximum columns for highest capacity
+        'error_correction_level': 4,  # User specified ECC level 4
+        'max_payload_bytes': 1200,   # User specified max size for testing
+        'max_image_bytes': 1150,     # Target ~1150 bytes for 100x150 JPEG
+        'max_data_bytes': 400,       # License data budget (before compression)
+        'image_max_dimension': (100, 150),  # New format: 100x150 pixels (2:3 aspect)
+        'version': 4  # New pipe-delimited format version
     }
     
-    # Encryption configuration
-    ENCRYPTION_KEY = b'MG-License-Barcode-Key-2024-v32!'  # 32 bytes for ChaCha20
+    # Lightweight encryption configuration for 3rd party compatibility
+    BASE_ENCRYPTION_KEY = b'MadagascarLicenseSystem2024'  # Base key for calculation
+    
+    @classmethod
+    def _get_time_based_key(cls, timestamp=None):
+        """Generate calculatable encryption key based on time (year+month)"""
+        from datetime import datetime
+        if timestamp is None:
+            timestamp = datetime.now()
+        
+        # Use year and month for predictable key calculation
+        time_component = f"{timestamp.year}{timestamp.month:02d}".encode()
+        
+        # Simple key derivation: base_key + time_component
+        key = cls.BASE_ENCRYPTION_KEY + time_component
+        return key[:32]  # Ensure 32 bytes for consistency
     
     def __init__(self):
         """Initialize the barcode service"""
@@ -543,6 +557,222 @@ class LicenseBarcodeService:
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate barcode data: {str(e)}")
 
+    def create_pipe_delimited_payload_v4(self, person_data: Dict[str, Any], license_data: Dict[str, Any], 
+                                        card_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> str:
+        """
+        NEW FORMAT: Create pipe-delimited payload with zlib compression and lightweight encryption
+        
+        Format: NAME|LICENSE_TYPE|RESTRICTIONS|ID|GENDER|DOB|ISSUE|EXPIRY|BASE64_IMAGE
+        Example: BJ SCHUTTE|B|01,02|456740229624|M|19900101|20250501|20300729|/9j/4AAQSkZJRgABAQEAYABgAAD...
+        
+        Args:
+            person_data: Person information
+            license_data: License information  
+            card_data: Card information
+            photo_data: Optional photo bytes
+            
+        Returns:
+            Compressed and encrypted payload string for PDF417
+        """
+        try:
+            print("=== V4 PIPE-DELIMITED PAYLOAD CREATION ===")
+            
+            # Step 1: Extract and format license data
+            name = f"{person_data.get('first_name', '')} {person_data.get('last_name', '')}".strip().upper()
+            
+            # Map license type (assuming 'B' for standard license)
+            license_type = "B"  # Can be made configurable based on license_data
+            
+            # Format restrictions (convert list to comma-separated)
+            restrictions = license_data.get('restrictions', [])
+            if isinstance(restrictions, list):
+                # Convert restriction names to codes (simplified mapping)
+                restriction_codes = []
+                for restriction in restrictions:
+                    if 'AUTO_ONLY' in str(restriction).upper():
+                        restriction_codes.append('01')
+                    elif 'DAYLIGHT' in str(restriction).upper():
+                        restriction_codes.append('02')
+                    # Add more mappings as needed
+                restrictions_str = ','.join(restriction_codes) if restriction_codes else ''
+            else:
+                restrictions_str = str(restrictions) if restrictions else ''
+            
+            # Format other fields
+            person_id = person_data.get('national_id', '')
+            gender = person_data.get('gender', 'U')[:1].upper()  # First letter only
+            
+            # Format dates (YYYYMMDD)
+            dob = person_data.get('date_of_birth', '')
+            if isinstance(dob, str) and len(dob) >= 8:
+                dob = dob.replace('-', '')[:8]
+            
+            issue_date = license_data.get('issue_date', '')
+            if isinstance(issue_date, str) and len(issue_date) >= 8:
+                issue_date = issue_date.replace('-', '')[:8]
+                
+            expiry_date = license_data.get('expiry_date', '')
+            if isinstance(expiry_date, str) and len(expiry_date) >= 8:
+                expiry_date = expiry_date.replace('-', '')[:8]
+            
+            # Step 2: Process photo to Base64
+            base64_image = ""
+            if photo_data:
+                base64_image = self._process_photo_for_barcode_v4(photo_data)
+                if base64_image is None:
+                    base64_image = ""
+            
+            # Step 3: Create pipe-delimited string
+            pipe_data = f"{name}|{license_type}|{restrictions_str}|{person_id}|{gender}|{dob}|{issue_date}|{expiry_date}"
+            
+            # Combine data with image
+            full_payload = f"{pipe_data}|{base64_image}"
+            
+            print(f"Pipe data: {pipe_data}")
+            print(f"Base64 image length: {len(base64_image)}")
+            print(f"Full payload length: {len(full_payload)} characters")
+            
+            # Step 4: Compress with zlib
+            payload_bytes = full_payload.encode('utf-8')
+            compressed = zlib.compress(payload_bytes, level=9)  # Maximum compression
+            
+            print(f"Compression: {len(payload_bytes)} → {len(compressed)} bytes (saved {len(payload_bytes) - len(compressed)} bytes)")
+            
+            # Step 5: Lightweight encryption (simple XOR with time-based key)
+            encryption_key = self._get_time_based_key()
+            encrypted = self._lightweight_encrypt(compressed, encryption_key)
+            
+            print(f"Encryption: {len(compressed)} → {len(encrypted)} bytes (overhead {len(encrypted) - len(compressed)} bytes)")
+            print(f"Final payload: {len(encrypted)} bytes total")
+            print("=== V4 PAYLOAD COMPLETE ===")
+            
+            return encrypted
+            
+        except Exception as e:
+            self.logger.error(f"Error creating V4 pipe-delimited payload: {e}")
+            raise BarcodeGenerationError(f"Failed to create V4 payload: {str(e)}")
+
+    def _lightweight_encrypt(self, data: bytes, key: bytes) -> bytes:
+        """
+        Lightweight encryption using XOR with key rotation
+        Minimal overhead, calculatable by 3rd parties
+        """
+        encrypted = bytearray()
+        key_len = len(key)
+        
+        for i, byte in enumerate(data):
+            # XOR with rotating key
+            key_byte = key[i % key_len]
+            encrypted.append(byte ^ key_byte)
+        
+        return bytes(encrypted)
+
+    def _lightweight_decrypt(self, data: bytes, key: bytes) -> bytes:
+        """
+        Lightweight decryption (XOR is symmetric)
+        """
+        return self._lightweight_encrypt(data, key)  # XOR is symmetric
+
+    def _process_photo_for_barcode_v4(self, photo_data: bytes) -> Optional[str]:
+        """
+        NEW FORMAT: Process photo for pipe-delimited barcode format
+        
+        Target: 100x150 pixels, JPEG quality 30%, grayscale, Base64 encoded
+        Expected size: ~1150 bytes before Base64 encoding
+        
+        Args:
+            photo_data: Raw image bytes
+            
+        Returns:
+            Base64 encoded JPEG string or None if processing fails
+        """
+        try:
+            if not PIL_AVAILABLE:
+                self.logger.warning("PIL not available for photo processing")
+                return None
+            
+            # Open image in RGB mode for custom processing
+            image = Image.open(io.BytesIO(photo_data))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            print(f"V4 Image processing - Original: {image.size}, mode: {image.mode}")
+            
+            # Step 1: Custom grayscale conversion (user's successful formula)
+            try:
+                import numpy as np
+                rgb_array = np.array(image)
+                
+                # Apply custom grayscale formula: (0.10*R + 0.40*G + 0.80*B)
+                grayscale_array = (
+                    0.10 * rgb_array[:, :, 0] +  # Red
+                    0.40 * rgb_array[:, :, 1] +  # Green  
+                    0.80 * rgb_array[:, :, 2]    # Blue
+                ).astype(np.uint8)
+                
+                image = Image.fromarray(grayscale_array, mode='L')
+                print("Applied custom grayscale formula: (0.10*R + 0.40*G + 0.80*B)")
+                
+            except ImportError:
+                # Fallback to PIL-based custom grayscale
+                image = self._apply_custom_grayscale_pil(image)
+                print("Applied custom grayscale formula using PIL")
+            
+            # Step 2: Resize to exact 100x150 (2:3 aspect ratio)
+            target_width, target_height = 100, 150
+            
+            # Calculate current aspect ratio and crop if needed
+            original_width, original_height = image.size
+            current_aspect = original_width / original_height
+            target_aspect = target_width / target_height  # 100/150 = 0.667
+            
+            print(f"Resizing to {target_width}x{target_height}")
+            print(f"Aspect ratios - Current: {current_aspect:.3f}, Target: {target_aspect:.3f}")
+            
+            # Crop to correct aspect ratio if needed
+            if abs(current_aspect - target_aspect) > 0.05:
+                if current_aspect > target_aspect:
+                    # Image is too wide, crop width
+                    new_width = int(original_height * target_aspect)
+                    left = (original_width - new_width) // 2
+                    image = image.crop((left, 0, left + new_width, original_height))
+                    print(f"Cropped width: {original_width} → {new_width}")
+                else:
+                    # Image is too tall, crop height
+                    new_height = int(original_width / target_aspect)
+                    top = (original_height - new_height) // 2
+                    image = image.crop((0, top, original_width, top + new_height))
+                    print(f"Cropped height: {original_height} → {new_height}")
+            
+            # Resize to exact target dimensions
+            image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            print(f"Final image size: {image.size}")
+            
+            # Step 3: Save as JPEG with quality 30% and baseline compression
+            jpeg_buffer = io.BytesIO()
+            image.save(jpeg_buffer, 
+                      format='JPEG', 
+                      quality=30, 
+                      optimize=True,
+                      progressive=False,  # Use baseline compression
+                      exif=b'',          # Remove metadata
+                      icc_profile=None)   # Remove color profile
+            
+            jpeg_bytes = jpeg_buffer.getvalue()
+            
+            # Step 4: Encode to Base64
+            base64_image = base64.b64encode(jpeg_bytes).decode('utf-8')
+            
+            print(f"V4 Photo processing: {len(photo_data)} → {len(jpeg_bytes)} JPEG → {len(base64_image)} Base64")
+            print(f"Target: ~1150 bytes JPEG, Actual: {len(jpeg_bytes)} bytes")
+            
+            return base64_image
+            
+        except Exception as e:
+            self.logger.error(f"Error processing photo for V4 barcode: {e}")
+            print(f"V4 Photo processing error: {e}")
+            return None
+
     def _process_photo_for_barcode(self, photo_data: bytes) -> Optional[bytes]:
         """
         Enhanced photo optimization for barcode inclusion:
@@ -852,6 +1082,71 @@ class LicenseBarcodeService:
             
         except Exception as e:
             raise BarcodeGenerationError(f"Failed to generate PDF417 barcode: {str(e)}")
+
+    def generate_pdf417_barcode_v4(self, person_data: Dict[str, Any], license_data: Dict[str, Any], 
+                                  card_data: Dict[str, Any], photo_data: Optional[bytes] = None) -> Optional[bytes]:
+        """
+        NEW FORMAT: Generate PDF417 barcode using pipe-delimited format
+        
+        Args:
+            person_data: Person information
+            license_data: License information
+            card_data: Card information  
+            photo_data: Optional photo bytes
+            
+        Returns:
+            PNG image bytes of the barcode or None if generation fails
+        """
+        try:
+            print("=== V4 PDF417 GENERATION ===")
+            
+            # Step 1: Create compressed and encrypted payload
+            payload_bytes = self.create_pipe_delimited_payload_v4(
+                person_data, license_data, card_data, photo_data
+            )
+            
+            # Step 2: Check size constraints
+            if len(payload_bytes) > self.BARCODE_CONFIG['max_payload_bytes']:
+                raise BarcodeGenerationError(
+                    f"V4 payload too large: {len(payload_bytes)} > {self.BARCODE_CONFIG['max_payload_bytes']}"
+                )
+            
+            print(f"V4 PDF417 generation: {len(payload_bytes)} bytes binary data")
+            
+            # Step 3: Generate PDF417 barcode
+            if not BARCODE_AVAILABLE:
+                raise BarcodeGenerationError("pdf417gen library not available")
+            
+            # Convert bytes to string for pdf417gen (using latin1 for binary safety)
+            payload_str = payload_bytes.decode('latin1')
+            
+            # Generate barcode with new configuration
+            code = pdf417gen.encode(
+                payload_str,
+                security_level=self.BARCODE_CONFIG['error_correction_level'],
+                columns=self.BARCODE_CONFIG['columns']
+            )
+            
+            if code is None:
+                raise BarcodeGenerationError("PDF417 encoding failed - invalid data")
+            
+            # Convert to image
+            image = pdf417gen.render_image(code, scale=3, ratio=2)
+            
+            # Convert PIL image to bytes
+            img_buffer = io.BytesIO()
+            image.save(img_buffer, format='PNG')
+            barcode_image_bytes = img_buffer.getvalue()
+            
+            print(f"V4 PDF417 barcode generated successfully: {image.size}")
+            print("=== V4 PDF417 COMPLETE ===")
+            
+            return barcode_image_bytes
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate V4 PDF417 barcode: {e}")
+            print(f"V4 PDF417 generation error: {e}")
+            return None
 
     def generate_pdf417_barcode(self, barcode_data: Dict[str, Any]) -> str:
         """

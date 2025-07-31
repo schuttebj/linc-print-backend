@@ -289,14 +289,14 @@ async def decode_license_barcode(
 @router.post(
     "/test",
     response_model=BarcodeGenerationResponse,
-    summary="Generate test barcode using CBOR+zlib encoding",
-    description="Generate a PDF417 barcode with CBOR encoding and zlib compression for optimal size"
+    summary="Generate test barcode using NEW V4 pipe-delimited format",
+    description="Generate a PDF417 barcode with pipe-delimited format, zlib compression and lightweight encryption"
 )
 async def generate_test_barcode(
     request: TestBarcodeRequest,
     current_user: User = Depends(require_permission("licenses.read"))
 ):
-    """Generate test barcode using new CBOR+zlib encoding system"""
+    """Generate test barcode using NEW V4 pipe-delimited format"""
     try:
         from datetime import datetime, timedelta
         import random
@@ -340,45 +340,67 @@ async def generate_test_barcode(
             except Exception as e:
                 print(f"Failed to decode custom photo: {e}")
         
-        # Create compressed and encrypted CBOR payload using new system
-        cbor_payload = barcode_service.create_cbor_payload_compressed_encrypted(
-            license=license,
-            person=person,
-            card=card,
+        # Convert mock objects to dictionary format for V4 system
+        person_data = {
+            'first_name': person.first_name,
+            'last_name': person.surname,
+            'national_id': card.card_number,  # Using card number as ID for testing
+            'gender': 'F' if person.person_nature == "02" else 'M',
+            'date_of_birth': person.birth_date.strftime('%Y%m%d')
+        }
+        
+        license_data = {
+            'license_type': license.category.value,
+            'restrictions': request.license_codes[1:] if len(request.license_codes) > 1 else [],  # Additional codes as restrictions
+            'issue_date': license.issue_date.strftime('%Y%m%d'),
+            'expiry_date': license.expiry_date.strftime('%Y%m%d')
+        }
+        
+        card_data = {
+            'card_number': card.card_number
+        }
+        
+        # Generate PDF417 barcode using NEW V4 pipe-delimited format  
+        barcode_image_bytes = barcode_service.generate_pdf417_barcode_v4(
+            person_data=person_data,
+            license_data=license_data,
+            card_data=card_data,
             photo_data=photo_bytes
         )
         
-        # Generate PDF417 barcode using compressed/encrypted CBOR
-        barcode_image = barcode_service.generate_pdf417_barcode_cbor(cbor_payload)
+        if barcode_image_bytes is None:
+            raise Exception("Failed to generate V4 barcode")
         
-        # For the response, create a regular (unencrypted) payload to show what's inside
-        # This is just for testing - in production you wouldn't expose the decrypted content
-        # Don't include photo in display payload to avoid size limits
-        display_payload = barcode_service.create_cbor_payload(
-            license=license,
-            person=person,
-            card=card,
-            photo_data=None  # Exclude photo to keep size down
-        )
-        decoded_payload = barcode_service.decode_cbor_payload(display_payload)
+        # Convert PNG bytes to base64 for response
+        barcode_image_base64 = base64.b64encode(barcode_image_bytes).decode('utf-8')
         
-        # Convert to display format similar to old JSON structure
-        display_data = decoded_payload.get("data", {})
+        # Create display data for response (showing the pipe-delimited format)
+        pipe_data = f"{person_data['first_name']} {person_data['last_name']}|{license_data['license_type']}|" + \
+                   f"{','.join(license_data['restrictions'])}|{person_data['national_id']}|{person_data['gender']}|" + \
+                   f"{person_data['date_of_birth']}|{license_data['issue_date']}|{license_data['expiry_date']}"
         
-        # Manually add photo info since we excluded it from display payload
-        if photo_bytes:
-            display_data["photo_included"] = True
-            display_data["photo_size"] = len(photo_bytes)
-        else:
-            display_data["photo_included"] = False
+        display_data = {
+            "version": 4,
+            "format": "pipe_delimited",
+            "pipe_data": pipe_data,
+            "photo_included": photo_bytes is not None,
+            "photo_size": len(photo_bytes) if photo_bytes else 0,
+            "compression": "zlib",
+            "encryption": "lightweight_xor"
+        }
+        
+        # Get payload size for reporting
+        payload_size = len(barcode_service.create_pipe_delimited_payload_v4(
+            person_data, license_data, card_data, photo_bytes
+        ))
         
         return BarcodeGenerationResponse(
             success=True,
-            barcode_image_base64=barcode_image,
+            barcode_image_base64=barcode_image_base64,
             barcode_data=display_data,
-            data_size_bytes=len(cbor_payload),
-            message=f"CBOR License barcode: {card.card_number} ({len(cbor_payload)} bytes total, "
-                   f"{'with photo' if photo_bytes else 'no photo'})"
+            data_size_bytes=payload_size,
+            message=f"V4 Pipe-delimited License barcode: {card.card_number} "
+                   f"({payload_size} bytes payload, {'with photo' if photo_bytes else 'no photo'})"
         )
         
     except Exception as e:
