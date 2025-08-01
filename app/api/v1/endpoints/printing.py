@@ -1502,8 +1502,8 @@ async def regenerate_print_job_files(
             "card_number": print_job.card_number
         }
         
-        # Generate card files
-        card_files = madagascar_card_generator.generate_card_files(print_job_data)
+        # Generate card files with database session for production barcode API
+        card_files = madagascar_card_generator.generate_card_files(print_job_data, db_session=db)
         
         # Update print job with new file data
         print_job.pdf_files_generated = True

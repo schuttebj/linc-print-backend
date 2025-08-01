@@ -158,8 +158,8 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                 }
                 
                 logger.info(f"Calling card generator for print job {print_job.id}")
-                # Generate card files and save to disk
-                generation_result = madagascar_card_generator.generate_card_files(print_job_data)
+                # Generate card files and save to disk with database session for production barcode API
+                generation_result = madagascar_card_generator.generate_card_files(print_job_data, db_session=db)
                 
                 logger.info(f"Card generation completed for print job {print_job.id}")
                 # Update print job with file paths and metadata (no base64 data stored)

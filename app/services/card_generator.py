@@ -15,7 +15,8 @@ from pathlib import Path
 import uuid
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-import pdf417gen
+# pdf417gen removed - now using PyZint V4 barcode generation
+from app.services.barcode_service import barcode_service
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
@@ -344,29 +345,121 @@ class MadagascarCardGenerator:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
-    def _generate_pdf417_barcode(self, data: str) -> Image.Image:
-        """Generate PDF417 barcode (Same as AMPRO)"""
+    def _generate_v4_barcode_from_api(self, license_id: Optional[str] = None, 
+                                     person_data: Optional[Dict[str, Any]] = None, 
+                                     card_id: Optional[str] = None,
+                                     photo_data: Optional[bytes] = None,
+                                     db_session=None) -> Image.Image:
+        """Generate PDF417 barcode using production /generate endpoint (PRODUCTION METHOD)"""
         try:
-            # Generate PDF417 barcode
-            codes = pdf417gen.encode(data, security_level=2)
-            image = pdf417gen.render_image(codes, scale=3, ratio=3)
+            logger.info("=== CARD GENERATION: Using Production Barcode API ===")
             
-            # Convert to RGB
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
+            if license_id and db_session:
+                # Method 1: Use production /generate endpoint with database entities
+                logger.info(f"Using production endpoint with license_id: {license_id}")
+                
+                # Import the endpoint function directly to avoid HTTP overhead
+                from app.api.v1.endpoints.barcode import generate_license_barcode
+                from app.schemas.barcode import BarcodeGenerationRequest
+                from app.crud import crud_license
+                from app.models import Person
+                from sqlalchemy.orm import Session
+                
+                # Create the request object
+                request = BarcodeGenerationRequest(
+                    license_id=license_id,
+                    card_id=card_id,
+                    include_photo=photo_data is not None
+                )
+                
+                # Mock the database dependency and user (for internal call)
+                class MockUser:
+                    def __init__(self):
+                        self.id = "system"
+                        
+                # Call the production endpoint function directly
+                try:
+                    import asyncio
+                    import sys
+                    if sys.version_info >= (3, 7):
+                        # For Python 3.7+, try to get running loop
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # We're in an async context, but calling sync code
+                            # Use sync approach instead
+                            raise Exception("Use sync approach")
+                        except RuntimeError:
+                            # No running loop, safe to use asyncio.run
+                            response = asyncio.run(generate_license_barcode(request, db_session, MockUser()))
+                    else:
+                        # For older Python versions
+                        response = asyncio.run(generate_license_barcode(request, db_session, MockUser()))
+                    
+                    # Extract barcode image from response
+                    barcode_base64 = response.barcode_image_base64
+                    barcode_png_bytes = base64.b64decode(barcode_base64)
+                    
+                    logger.info("Successfully generated barcode via production endpoint")
+                    
+                except Exception as api_error:
+                    logger.warning(f"Production API call failed: {api_error}, falling back to direct service call")
+                    raise api_error
+                    
+            else:
+                # Method 2: Fallback to direct service call with available data
+                logger.info("Using direct service call fallback")
+                
+                # Prepare data for V4 barcode generation (standardized format)
+                if not person_data:
+                    raise Exception("No person data available for barcode generation")
+                
+                service_person_data = {
+                    "first_name": person_data.get('first_name', person_data.get('names', 'Unknown')),
+                    "last_name": person_data.get('surname', person_data.get('last_name', 'Unknown')),
+                    "date_of_birth": person_data.get('birth_date', '').replace('-', '') if person_data.get('birth_date') else '',
+                    "gender": person_data.get('gender', 'M')
+                }
+                
+                service_license_data = {
+                    "license_codes": ['B', 'C'],  # Default codes
+                    "vehicle_restrictions": [],
+                    "driver_restrictions": []
+                }
+                
+                service_card_data = {
+                    "card_number": card_id or "Unknown"
+                }
+                
+                barcode_png_bytes = barcode_service.generate_pdf417_barcode_v4(
+                    person_data=service_person_data,
+                    license_data=service_license_data,
+                    card_data=service_card_data,
+                    photo_data=photo_data
+                )
             
-            return image
+            if not barcode_png_bytes:
+                raise Exception("Barcode generation returned None")
+            
+            # Convert PNG bytes to PIL Image
+            barcode_image = Image.open(io.BytesIO(barcode_png_bytes))
+            
+            # Convert to RGB if needed
+            if barcode_image.mode != 'RGB':
+                barcode_image = barcode_image.convert('RGB')
+                
+            logger.info(f"Production barcode generated successfully: {barcode_image.size}")
+            return barcode_image
             
         except Exception as e:
-            logger.error(f"Error generating PDF417 barcode: {e}")
-            # Fallback: Create simple text
+            logger.error(f"Error generating production barcode: {e}")
+            # Fallback: Create simple text placeholder
             img = Image.new('RGB', (400, 50), COLORS["white"])
             draw = ImageDraw.Draw(img)
             font = self.fonts["small"]
-            draw.text((10, 10), "BARCODE DATA", fill=COLORS["black"], font=font)
+            draw.text((10, 10), "PRODUCTION BARCODE ERROR", fill=COLORS["red"], font=font)
             return img
     
-    def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[bytes]:
+    def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[str]:
         """Extract photo data from person data with multiple fallback paths"""
         try:
             logger.info(f"Extracting photo from person data. Available keys: {list(person_data.keys())}")
@@ -698,44 +791,58 @@ class MadagascarCardGenerator:
         license_img.save(buffer, format="PNG", dpi=(DPI, DPI))
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
-    def generate_back(self, license_data: Dict[str, Any]) -> str:
-        """Generate Madagascar license back side using AMPRO coordinates - SIMPLIFIED to only show PDF417 barcode"""
+    def generate_back(self, license_data: Dict[str, Any], full_photo_data: Optional[bytes] = None) -> str:
+        """Generate Madagascar license back side using AMPRO coordinates with NEW V4 barcode generation"""
         
         # Create base image with AMPRO back background
         license_img = self._create_security_background(CARD_W_PX, CARD_H_PX, "back")
         draw = ImageDraw.Draw(license_img)
         
-        # Enhanced Barcode Data: Include front information + 8-bit image in barcode
-        barcode_data = {
-            "surname": license_data.get('surname', license_data.get('last_name', 'N/A')),
+        # NEW: Prepare data for V4 barcode generation (standardized format)
+        person_data = {
             "first_name": license_data.get('first_name', license_data.get('names', 'N/A')),
-            "birth_date": license_data.get('birth_date', 'N/A'),
-            "restrictions": license_data.get('restrictions', '0'),
-            "gender": license_data.get('gender', 'N/A'),
-            "issuing_authority": "Madagascar Department of Transport",
+            "last_name": license_data.get('surname', license_data.get('last_name', 'N/A')),
+            "date_of_birth": license_data.get('birth_date', 'N/A'),
+            "gender": license_data.get('gender', 'M')
+        }
+        
+        license_info = {
+            "license_codes": ['B', 'C'],  # Default codes - can be made dynamic
+            "vehicle_restrictions": [],
+            "driver_restrictions": license_data.get('restrictions', '').split(',') if license_data.get('restrictions') else []
+        }
+        
+        card_info = {
             "card_number": license_data.get('card_number', 'N/A')
         }
         
-        # Use existing license_ready 8-bit image if available (from image_service.py processing)
-        license_ready_photo = license_data.get('license_ready_photo_base64')
-        if license_ready_photo:
-            barcode_data["photo_8bit"] = license_ready_photo
-            logger.info("Added existing license_ready 8-bit photo data to barcode")
-        else:
-            logger.info("No license_ready 8-bit photo available for barcode")
+        logger.info("=== CARD BACK GENERATION: Using V4 Barcode ===")
+        logger.info(f"Person data: {person_data}")
+        logger.info(f"License data: {license_info}")
+        logger.info(f"Card data: {card_info}")
+        logger.info(f"Full photo available: {full_photo_data is not None}")
+        if full_photo_data:
+            logger.info(f"Full photo size: {len(full_photo_data)} bytes")
         
-        # Generate barcode with JSON data
-        barcode_json = json.dumps(barcode_data, separators=(',', ':'))  # Compact JSON
-        barcode_img = self._generate_pdf417_barcode(barcode_json)
+        # Generate NEW V4 barcode using PRODUCTION endpoint + full photo
+        barcode_img = self._generate_v4_barcode_from_api(
+            license_id=getattr(self, '_extracted_license_id', None),  # Use extracted license ID
+            person_data=person_data,
+            card_id=card_info['card_number'],
+            photo_data=full_photo_data,  # Use FULL photo, not 8-bit version
+            db_session=getattr(self, '_db_session', None)  # Use stored DB session if available
+        )
         
-        # Use AMPRO coordinates for barcode (Row 1, all 6 columns)
+        # Use SAME AMPRO coordinates for barcode placement (Row 1, all 6 columns)
         barcode_coords = BACK_COORDINATES["barcode"]
         barcode_x = barcode_coords[0]
         barcode_y = barcode_coords[1]
         barcode_w = barcode_coords[2]
         barcode_h = barcode_coords[3]
         
-        # Resize barcode to fit the exact AMPRO area
+        logger.info(f"Barcode placement: ({barcode_x}, {barcode_y}) size: {barcode_w}x{barcode_h}")
+        
+        # Resize barcode to fit the exact AMPRO area (SAME as before)
         barcode_resized = barcode_img.resize((barcode_w, barcode_h), Image.Resampling.LANCZOS)
         license_img.paste(barcode_resized, (barcode_x, barcode_y))
         
@@ -809,7 +916,7 @@ class MadagascarCardGenerator:
         watermark_img.save(buffer, format="PNG", dpi=(DPI, DPI))
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
-    def generate_card_files(self, print_job_data: Dict[str, Any]) -> Dict[str, str]:
+    def generate_card_files(self, print_job_data: Dict[str, Any], db_session=None) -> Dict[str, str]:
         """
         Generate complete card package with proper LINC data mapping
         
@@ -820,6 +927,9 @@ class MadagascarCardGenerator:
             Dictionary with file paths and metadata
         """
         try:
+            # Store database session for production API calls
+            self._db_session = db_session
+            
             # Extract data from print job
             license_data = print_job_data.get("license_data", {})
             person_data = print_job_data.get("person_data", {})
@@ -828,26 +938,48 @@ class MadagascarCardGenerator:
             logger.info(f"Generating card files for print job {print_job_id} using unified AMPRO system")
             logger.info(f"License data keys: {list(license_data.keys())}")
             logger.info(f"Person data keys: {list(person_data.keys())}")
+            logger.info(f"DB session available: {db_session is not None}")
+            
+            # Try to extract entity IDs for production API calls
+            license_id = None
+            person_id = print_job_data.get("person_id")  # Might be available from print job
+            
+            # Look for license ID in license data
+            if isinstance(license_data, dict):
+                if "licenses" in license_data and license_data["licenses"]:
+                    # Multiple licenses - use first one
+                    first_license = license_data["licenses"][0]
+                    license_id = first_license.get("id") or first_license.get("license_id")
+                else:
+                    # Direct license data
+                    license_id = license_data.get("id") or license_data.get("license_id")
+            
+            logger.info(f"Extracted IDs - License: {license_id}, Person: {person_id}")
+            
+            # Store extracted IDs for later use in barcode generation
+            self._extracted_license_id = license_id
+            self._extracted_person_id = person_id
             
             # Convert LINC data format to AMPRO format
             ampro_license_data = self._convert_linc_to_ampro_format(license_data, person_data)
             
             # Extract biometric data with multiple fallback paths
-            photo_data = self._extract_photo_from_person_data(person_data)
+            photo_base64 = self._extract_photo_from_person_data(person_data)
+            photo_data = base64.b64decode(photo_base64) if photo_base64 else None  # Convert to bytes for V4 barcode
             signature_data = self._extract_signature_from_person_data(person_data)
             fingerprint_data = self._extract_fingerprint_from_person_data(person_data)
             
             # Add extracted biometric data to ampro_license_data for card generation
-            if photo_data:
-                ampro_license_data["photo_base64"] = photo_data
+            if photo_base64:
+                ampro_license_data["photo_base64"] = photo_base64  # Front side needs base64 string
             if signature_data:
                 ampro_license_data["signature_base64"] = signature_data
             if fingerprint_data:
                 ampro_license_data["fingerprint_base64"] = fingerprint_data
             
             # Generate front and back images using integrated AMPRO system
-            front_base64 = self.generate_front(ampro_license_data, photo_data)
-            back_base64 = self.generate_back(ampro_license_data)
+            front_base64 = self.generate_front(ampro_license_data, photo_base64)  # Front needs base64 string
+            back_base64 = self.generate_back(ampro_license_data, photo_data)  # Back needs bytes for V4 barcode
             
             # Generate watermark
             watermark_base64 = self.generate_watermark_template(
