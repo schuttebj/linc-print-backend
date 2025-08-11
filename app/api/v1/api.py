@@ -21,6 +21,7 @@ from app.api.v1.endpoints import printing
 from app.api.v1.endpoints import transactions
 from app.api.v1.endpoints import test_card_design
 from app.api.v1.endpoints import barcode
+from app.api.v1.endpoints import public
 
 api_router = APIRouter()
 
@@ -40,3 +41,4 @@ api_router.include_router(printing.router, prefix="/printing", tags=["Printing"]
 api_router.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 api_router.include_router(test_card_design.router, prefix="/test-card", tags=["Test Card Design"]) 
 api_router.include_router(barcode.router, prefix="/barcode", tags=["Barcode"]) 
+api_router.include_router(public.router, prefix="/public", tags=["Public"]) 
