@@ -47,24 +47,48 @@ class Settings(BaseSettings):
     
     @property
     def allowed_origins_list(self) -> List[str]:
-        """Convert ALLOWED_ORIGINS string to list and add Vercel preview domains"""
-        if self.ALLOWED_ORIGINS == "*":
+        """Resolve allowed CORS origins from env, supporting CORS_ORIGINS and ALLOWED_ORIGINS.
+
+        Priority: CORS_ORIGINS (if set) → ALLOWED_ORIGINS → defaults.
+        Supports JSON array or comma-separated string. Always augments with
+        required preview and site domains. "*" returns wildcard list.
+        """
+        import os
+        import json
+
+        # 1) Highest priority: CORS_ORIGINS env var (requested by ops)
+        cors_origins_env = os.getenv("CORS_ORIGINS")
+        source_value = cors_origins_env if cors_origins_env is not None else self.ALLOWED_ORIGINS
+
+        if source_value == "*":
             return ["*"]
+
         try:
-            import json
-            origins = json.loads(self.ALLOWED_ORIGINS)
-        except:
-            origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
-            origins = [origin for origin in origins if origin]
-        
-        # Add common Vercel preview patterns
-        preview_patterns = [
+            origins = json.loads(source_value)
+            if isinstance(origins, str):
+                origins = [o.strip() for o in origins.split(",") if o.strip()]
+        except Exception:
+            origins = [o.strip() for o in source_value.split(",") if o.strip()]
+
+        # Add common Vercel preview patterns and requested site domains
+        augment = [
             "https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app",
-            "https://linc-print-frontend-schuttebjs-projects.vercel.app"
+            "https://linc-print-frontend-schuttebjs-projects.vercel.app",
+            # Requested WordPress domains
+            "https://lincsystems.co.za",
+            "https://www.lincsystems.co.za",
         ]
-        origins.extend(preview_patterns)
-        
-        return origins
+        origins.extend(augment)
+
+        # Deduplicate while preserving order
+        seen = set()
+        deduped: List[str] = []
+        for o in origins:
+            if o and o not in seen:
+                seen.add(o)
+                deduped.append(o)
+
+        return deduped
     
     @property
     def allowed_hosts_list(self) -> List[str]:
