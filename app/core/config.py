@@ -70,6 +70,17 @@ class Settings(BaseSettings):
         except Exception:
             origins = [o.strip() for o in source_value.split(",") if o.strip()]
 
+        # If wildcard is present and credentials are enabled globally, replace with explicit defaults
+        if origins == ["*"] or "*" in origins:
+            # Parse ALLOWED_ORIGINS as fallback explicit list
+            try:
+                fallback = json.loads(self.ALLOWED_ORIGINS)
+                if isinstance(fallback, str):
+                    fallback = [o.strip() for o in fallback.split(",") if o.strip()]
+            except Exception:
+                fallback = [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+            origins = fallback or []
+
         # Add common Vercel preview patterns and requested site domains
         augment = [
             "https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app",
@@ -78,7 +89,32 @@ class Settings(BaseSettings):
             "https://lincsystems.co.za",
             "https://www.lincsystems.co.za",
         ]
+        # Optionally include explicit frontend URL(s) from env
+        for env_key in ["FRONTEND_URL", "PUBLIC_FRONTEND_URL", "PUBLIC_WEBSITE_URL", "FRONTEND_ORIGIN"]:
+            val = os.getenv(env_key)
+            if val:
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, list):
+                        augment.extend([v.strip() for v in parsed if isinstance(v, str) and v.strip()])
+                    elif isinstance(parsed, str):
+                        augment.extend([v.strip() for v in parsed.split(",") if v.strip()])
+                except Exception:
+                    augment.extend([v.strip() for v in val.split(",") if v.strip()])
         origins.extend(augment)
+
+        # Remove wildcard if present; with credentials, wildcard is invalid
+        origins = [o for o in origins if o != "*"]
+
+        # If nothing remains, fallback to explicit defaults from ALLOWED_ORIGINS + augment
+        if not origins:
+            try:
+                fallback = json.loads(self.ALLOWED_ORIGINS)
+                if isinstance(fallback, str):
+                    fallback = [o.strip() for o in fallback.split(",") if o.strip()]
+            except Exception:
+                fallback = [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+            origins = [o for o in (fallback + augment) if o]
 
         # Deduplicate while preserving order
         seen = set()
