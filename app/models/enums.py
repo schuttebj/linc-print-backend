@@ -116,12 +116,154 @@ class PhoneCountryCode(PythonEnum):
 
 
 class CountryCode(PythonEnum):
-    """Country codes for document issuance"""
+    """Country codes for document issuance - ISO 3166-1 alpha-2 codes"""
+    # Africa
     MADAGASCAR = "MG"       # Madagascar
-    FRANCE = "FR"           # France
-    UNITED_STATES = "US"    # United States
-    UNITED_KINGDOM = "GB"   # United Kingdom
     SOUTH_AFRICA = "ZA"     # South Africa
+    ALGERIA = "DZ"          # Algeria
+    ANGOLA = "AO"           # Angola
+    BOTSWANA = "BW"         # Botswana
+    CAMEROON = "CM"         # Cameroon
+    EGYPT = "EG"            # Egypt
+    ETHIOPIA = "ET"         # Ethiopia
+    GHANA = "GH"            # Ghana
+    KENYA = "KE"            # Kenya
+    LIBYA = "LY"            # Libya
+    MAURITIUS = "MU"        # Mauritius
+    MOROCCO = "MA"          # Morocco
+    MOZAMBIQUE = "MZ"       # Mozambique
+    NAMIBIA = "NA"          # Namibia
+    NIGERIA = "NG"          # Nigeria
+    REUNION = "RE"          # Réunion
+    SEYCHELLES = "SC"       # Seychelles
+    TANZANIA = "TZ"         # Tanzania
+    TUNISIA = "TN"          # Tunisia
+    UGANDA = "UG"           # Uganda
+    ZAMBIA = "ZM"           # Zambia
+    ZIMBABWE = "ZW"         # Zimbabwe
+    
+    # Europe
+    FRANCE = "FR"           # France
+    UNITED_KINGDOM = "GB"   # United Kingdom
+    GERMANY = "DE"          # Germany
+    ITALY = "IT"            # Italy
+    SPAIN = "ES"            # Spain
+    BELGIUM = "BE"          # Belgium
+    NETHERLANDS = "NL"      # Netherlands
+    SWITZERLAND = "CH"      # Switzerland
+    AUSTRIA = "AT"          # Austria
+    PORTUGAL = "PT"         # Portugal
+    GREECE = "GR"           # Greece
+    NORWAY = "NO"           # Norway
+    SWEDEN = "SE"           # Sweden
+    DENMARK = "DK"          # Denmark
+    FINLAND = "FI"          # Finland
+    POLAND = "PL"           # Poland
+    RUSSIA = "RU"           # Russia
+    UKRAINE = "UA"          # Ukraine
+    CZECH_REPUBLIC = "CZ"   # Czech Republic
+    HUNGARY = "HU"          # Hungary
+    ROMANIA = "RO"          # Romania
+    BULGARIA = "BG"         # Bulgaria
+    CROATIA = "HR"          # Croatia
+    SERBIA = "RS"           # Serbia
+    IRELAND = "IE"          # Ireland
+    LUXEMBOURG = "LU"       # Luxembourg
+    
+    # North America
+    UNITED_STATES = "US"    # United States
+    CANADA = "CA"           # Canada
+    MEXICO = "MX"           # Mexico
+    
+    # South America
+    BRAZIL = "BR"           # Brazil
+    ARGENTINA = "AR"        # Argentina
+    CHILE = "CL"            # Chile
+    COLOMBIA = "CO"         # Colombia
+    PERU = "PE"             # Peru
+    VENEZUELA = "VE"        # Venezuela
+    URUGUAY = "UY"          # Uruguay
+    ECUADOR = "EC"          # Ecuador
+    BOLIVIA = "BO"          # Bolivia
+    PARAGUAY = "PY"         # Paraguay
+    GUYANA = "GY"           # Guyana
+    SURINAME = "SR"         # Suriname
+    
+    # Asia
+    CHINA = "CN"            # China
+    INDIA = "IN"            # India
+    JAPAN = "JP"            # Japan
+    SOUTH_KOREA = "KR"      # South Korea
+    THAILAND = "TH"         # Thailand
+    VIETNAM = "VN"          # Vietnam
+    MALAYSIA = "MY"         # Malaysia
+    SINGAPORE = "SG"        # Singapore
+    INDONESIA = "ID"        # Indonesia
+    PHILIPPINES = "PH"      # Philippines
+    BANGLADESH = "BD"       # Bangladesh
+    PAKISTAN = "PK"         # Pakistan
+    SRI_LANKA = "LK"        # Sri Lanka
+    MYANMAR = "MM"          # Myanmar
+    CAMBODIA = "KH"         # Cambodia
+    LAOS = "LA"             # Laos
+    NEPAL = "NP"            # Nepal
+    BHUTAN = "BT"           # Bhutan
+    MALDIVES = "MV"         # Maldives
+    BRUNEI = "BN"           # Brunei
+    TIMOR_LESTE = "TL"      # Timor-Leste
+    MONGOLIA = "MN"         # Mongolia
+    AFGHANISTAN = "AF"      # Afghanistan
+    IRAN = "IR"             # Iran
+    IRAQ = "IQ"             # Iraq
+    ISRAEL = "IL"           # Israel
+    JORDAN = "JO"           # Jordan
+    LEBANON = "LB"          # Lebanon
+    SYRIA = "SY"            # Syria
+    TURKEY = "TR"           # Turkey
+    SAUDI_ARABIA = "SA"     # Saudi Arabia
+    UAE = "AE"              # United Arab Emirates
+    QATAR = "QA"            # Qatar
+    KUWAIT = "KW"           # Kuwait
+    BAHRAIN = "BH"          # Bahrain
+    OMAN = "OM"             # Oman
+    YEMEN = "YE"            # Yemen
+    
+    # Oceania
+    AUSTRALIA = "AU"        # Australia
+    NEW_ZEALAND = "NZ"      # New Zealand
+    FIJI = "FJ"             # Fiji
+    PAPUA_NEW_GUINEA = "PG" # Papua New Guinea
+    SOLOMON_ISLANDS = "SB"  # Solomon Islands
+    VANUATU = "VU"          # Vanuatu
+    NEW_CALEDONIA = "NC"    # New Caledonia
+    FRENCH_POLYNESIA = "PF" # French Polynesia
+    SAMOA = "WS"            # Samoa
+    TONGA = "TO"            # Tonga
+    PALAU = "PW"            # Palau
+    MARSHALL_ISLANDS = "MH" # Marshall Islands
+    MICRONESIA = "FM"       # Micronesia
+    KIRIBATI = "KI"         # Kiribati
+    TUVALU = "TV"           # Tuvalu
+    NAURU = "NR"            # Nauru
+    
+    # Caribbean & Central America
+    JAMAICA = "JM"          # Jamaica
+    CUBA = "CU"             # Cuba
+    HAITI = "HT"            # Haiti
+    DOMINICAN_REPUBLIC = "DO" # Dominican Republic
+    PUERTO_RICO = "PR"      # Puerto Rico
+    TRINIDAD_AND_TOBAGO = "TT" # Trinidad and Tobago
+    BARBADOS = "BB"         # Barbados
+    BAHAMAS = "BS"          # Bahamas
+    BELIZE = "BZ"           # Belize
+    COSTA_RICA = "CR"       # Costa Rica
+    EL_SALVADOR = "SV"      # El Salvador
+    GUATEMALA = "GT"        # Guatemala
+    HONDURAS = "HN"         # Honduras
+    NICARAGUA = "NI"        # Nicaragua
+    PANAMA = "PA"           # Panama
+    
+    # Other
     OTHER = "OTHER"         # Other countries
 
 
@@ -434,12 +576,154 @@ PHONE_COUNTRY_DISPLAY_NAMES = {
 
 # Country display names mapping for frontend
 COUNTRY_DISPLAY_NAMES = {
-    CountryCode.MADAGASCAR: "MADAGASCAR",
-    CountryCode.FRANCE: "FRANCE",
-    CountryCode.UNITED_STATES: "UNITED STATES", 
-    CountryCode.UNITED_KINGDOM: "UNITED KINGDOM",
-    CountryCode.SOUTH_AFRICA: "SOUTH AFRICA",
-    CountryCode.OTHER: "OTHER",
+    # Africa
+    CountryCode.MADAGASCAR: "Madagascar",
+    CountryCode.SOUTH_AFRICA: "South Africa",
+    CountryCode.ALGERIA: "Algeria",
+    CountryCode.ANGOLA: "Angola",
+    CountryCode.BOTSWANA: "Botswana",
+    CountryCode.CAMEROON: "Cameroon",
+    CountryCode.EGYPT: "Egypt",
+    CountryCode.ETHIOPIA: "Ethiopia",
+    CountryCode.GHANA: "Ghana",
+    CountryCode.KENYA: "Kenya",
+    CountryCode.LIBYA: "Libya",
+    CountryCode.MAURITIUS: "Mauritius",
+    CountryCode.MOROCCO: "Morocco",
+    CountryCode.MOZAMBIQUE: "Mozambique",
+    CountryCode.NAMIBIA: "Namibia",
+    CountryCode.NIGERIA: "Nigeria",
+    CountryCode.REUNION: "Réunion",
+    CountryCode.SEYCHELLES: "Seychelles",
+    CountryCode.TANZANIA: "Tanzania",
+    CountryCode.TUNISIA: "Tunisia",
+    CountryCode.UGANDA: "Uganda",
+    CountryCode.ZAMBIA: "Zambia",
+    CountryCode.ZIMBABWE: "Zimbabwe",
+    
+    # Europe
+    CountryCode.FRANCE: "France",
+    CountryCode.UNITED_KINGDOM: "United Kingdom",
+    CountryCode.GERMANY: "Germany",
+    CountryCode.ITALY: "Italy",
+    CountryCode.SPAIN: "Spain",
+    CountryCode.BELGIUM: "Belgium",
+    CountryCode.NETHERLANDS: "Netherlands",
+    CountryCode.SWITZERLAND: "Switzerland",
+    CountryCode.AUSTRIA: "Austria",
+    CountryCode.PORTUGAL: "Portugal",
+    CountryCode.GREECE: "Greece",
+    CountryCode.NORWAY: "Norway",
+    CountryCode.SWEDEN: "Sweden",
+    CountryCode.DENMARK: "Denmark",
+    CountryCode.FINLAND: "Finland",
+    CountryCode.POLAND: "Poland",
+    CountryCode.RUSSIA: "Russia",
+    CountryCode.UKRAINE: "Ukraine",
+    CountryCode.CZECH_REPUBLIC: "Czech Republic",
+    CountryCode.HUNGARY: "Hungary",
+    CountryCode.ROMANIA: "Romania",
+    CountryCode.BULGARIA: "Bulgaria",
+    CountryCode.CROATIA: "Croatia",
+    CountryCode.SERBIA: "Serbia",
+    CountryCode.IRELAND: "Ireland",
+    CountryCode.LUXEMBOURG: "Luxembourg",
+    
+    # North America
+    CountryCode.UNITED_STATES: "United States",
+    CountryCode.CANADA: "Canada",
+    CountryCode.MEXICO: "Mexico",
+    
+    # South America
+    CountryCode.BRAZIL: "Brazil",
+    CountryCode.ARGENTINA: "Argentina",
+    CountryCode.CHILE: "Chile",
+    CountryCode.COLOMBIA: "Colombia",
+    CountryCode.PERU: "Peru",
+    CountryCode.VENEZUELA: "Venezuela",
+    CountryCode.URUGUAY: "Uruguay",
+    CountryCode.ECUADOR: "Ecuador",
+    CountryCode.BOLIVIA: "Bolivia",
+    CountryCode.PARAGUAY: "Paraguay",
+    CountryCode.GUYANA: "Guyana",
+    CountryCode.SURINAME: "Suriname",
+    
+    # Asia
+    CountryCode.CHINA: "China",
+    CountryCode.INDIA: "India",
+    CountryCode.JAPAN: "Japan",
+    CountryCode.SOUTH_KOREA: "South Korea",
+    CountryCode.THAILAND: "Thailand",
+    CountryCode.VIETNAM: "Vietnam",
+    CountryCode.MALAYSIA: "Malaysia",
+    CountryCode.SINGAPORE: "Singapore",
+    CountryCode.INDONESIA: "Indonesia",
+    CountryCode.PHILIPPINES: "Philippines",
+    CountryCode.BANGLADESH: "Bangladesh",
+    CountryCode.PAKISTAN: "Pakistan",
+    CountryCode.SRI_LANKA: "Sri Lanka",
+    CountryCode.MYANMAR: "Myanmar",
+    CountryCode.CAMBODIA: "Cambodia",
+    CountryCode.LAOS: "Laos",
+    CountryCode.NEPAL: "Nepal",
+    CountryCode.BHUTAN: "Bhutan",
+    CountryCode.MALDIVES: "Maldives",
+    CountryCode.BRUNEI: "Brunei",
+    CountryCode.TIMOR_LESTE: "Timor-Leste",
+    CountryCode.MONGOLIA: "Mongolia",
+    CountryCode.AFGHANISTAN: "Afghanistan",
+    CountryCode.IRAN: "Iran",
+    CountryCode.IRAQ: "Iraq",
+    CountryCode.ISRAEL: "Israel",
+    CountryCode.JORDAN: "Jordan",
+    CountryCode.LEBANON: "Lebanon",
+    CountryCode.SYRIA: "Syria",
+    CountryCode.TURKEY: "Turkey",
+    CountryCode.SAUDI_ARABIA: "Saudi Arabia",
+    CountryCode.UAE: "United Arab Emirates",
+    CountryCode.QATAR: "Qatar",
+    CountryCode.KUWAIT: "Kuwait",
+    CountryCode.BAHRAIN: "Bahrain",
+    CountryCode.OMAN: "Oman",
+    CountryCode.YEMEN: "Yemen",
+    
+    # Oceania
+    CountryCode.AUSTRALIA: "Australia",
+    CountryCode.NEW_ZEALAND: "New Zealand",
+    CountryCode.FIJI: "Fiji",
+    CountryCode.PAPUA_NEW_GUINEA: "Papua New Guinea",
+    CountryCode.SOLOMON_ISLANDS: "Solomon Islands",
+    CountryCode.VANUATU: "Vanuatu",
+    CountryCode.NEW_CALEDONIA: "New Caledonia",
+    CountryCode.FRENCH_POLYNESIA: "French Polynesia",
+    CountryCode.SAMOA: "Samoa",
+    CountryCode.TONGA: "Tonga",
+    CountryCode.PALAU: "Palau",
+    CountryCode.MARSHALL_ISLANDS: "Marshall Islands",
+    CountryCode.MICRONESIA: "Micronesia",
+    CountryCode.KIRIBATI: "Kiribati",
+    CountryCode.TUVALU: "Tuvalu",
+    CountryCode.NAURU: "Nauru",
+    
+    # Caribbean & Central America
+    CountryCode.JAMAICA: "Jamaica",
+    CountryCode.CUBA: "Cuba",
+    CountryCode.HAITI: "Haiti",
+    CountryCode.DOMINICAN_REPUBLIC: "Dominican Republic",
+    CountryCode.PUERTO_RICO: "Puerto Rico",
+    CountryCode.TRINIDAD_AND_TOBAGO: "Trinidad and Tobago",
+    CountryCode.BARBADOS: "Barbados",
+    CountryCode.BAHAMAS: "Bahamas",
+    CountryCode.BELIZE: "Belize",
+    CountryCode.COSTA_RICA: "Costa Rica",
+    CountryCode.EL_SALVADOR: "El Salvador",
+    CountryCode.GUATEMALA: "Guatemala",
+    CountryCode.HONDURAS: "Honduras",
+    CountryCode.NICARAGUA: "Nicaragua",
+    CountryCode.PANAMA: "Panama",
+    
+    # Other
+    CountryCode.OTHER: "Other",
 }
 
 # Document type display names and requirements
