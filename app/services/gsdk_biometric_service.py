@@ -12,6 +12,7 @@ import hashlib
 
 # G-SDK imports (will be available after running install_gsdk_deps.py)
 try:
+    import grpc
     from gsdk.biostar.service import connect_pb2, connect_pb2_grpc
     from gsdk.biostar.service import device_pb2, device_pb2_grpc
     from gsdk.biostar.service import finger_pb2, finger_pb2_grpc
@@ -19,14 +20,50 @@ try:
     from gsdk.biostar.service import auth_pb2, auth_pb2_grpc
     from gsdk.biostar.service import server_pb2, server_pb2_grpc
     GSDK_AVAILABLE = True
-except ImportError:
-    print("⚠️ G-SDK not available. Run install_gsdk_deps.py first.")
+    print("✅ G-SDK dependencies available")
+except ImportError as e:
+    print(f"⚠️ G-SDK not available: {e}")
+    print("📋 To enable G-SDK: run install_gsdk_deps.py and install G-SDK Python client")
     GSDK_AVAILABLE = False
+    # Mock grpc for compatibility
+    class grpc:
+        ssl_channel_credentials = lambda x: None
+        secure_channel = lambda x, y: None
+        class RpcError(Exception):
+            pass
     # Mock classes for development
     class connect_pb2:
         ConnectInfo = lambda **kwargs: None
+        class ConnectRequest:
+            def __init__(self, **kwargs): pass
+        class DisconnectRequest:
+            def __init__(self, **kwargs): pass
+    class connect_pb2_grpc:
+        ConnectStub = lambda x: None
+    class device_pb2:
+        class GetInfoRequest:
+            def __init__(self, **kwargs): pass
+    class device_pb2_grpc:
+        DeviceStub = lambda x: None
     class finger_pb2:
         TEMPLATE_FORMAT_SUPREMA = 0
+        class ScanRequest:
+            def __init__(self, **kwargs): pass
+        class GetImageRequest:
+            def __init__(self, **kwargs): pass
+    class finger_pb2_grpc:
+        FingerStub = lambda x: None
+    class user_pb2_grpc:
+        UserStub = lambda x: None
+    class auth_pb2:
+        class GetConfigRequest:
+            def __init__(self, **kwargs): pass
+        class SetConfigRequest:
+            def __init__(self, **kwargs): pass
+    class auth_pb2_grpc:
+        AuthStub = lambda x: None
+    class server_pb2_grpc:
+        ServerStub = lambda x: None
 
 class GSdkBiometricService:
     """

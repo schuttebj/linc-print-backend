@@ -11,7 +11,25 @@ import logging
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
-from app.services.gsdk_biometric_service import get_gsdk_service, GSdkBiometricService
+try:
+    from app.services.gsdk_biometric_service import get_gsdk_service, GSdkBiometricService, GSDK_AVAILABLE
+except ImportError:
+    # Fallback when G-SDK is not available
+    GSDK_AVAILABLE = False
+    
+    class GSdkBiometricService:
+        def __init__(self):
+            self.is_connected = False
+        
+        async def get_system_status(self):
+            return {
+                'connected': False,
+                'gsdk_available': False,
+                'message': 'G-SDK not installed'
+            }
+    
+    async def get_gsdk_service():
+        return GSdkBiometricService()
 from app.schemas.biometric import (
     FingerprintEnrollRequest, 
     FingerprintEnrollResponse,
@@ -24,6 +42,14 @@ from app.schemas.biometric import (
 
 router = APIRouter()
 
+def check_gsdk_available():
+    """Check if G-SDK is available and raise HTTPException if not"""
+    if not GSDK_AVAILABLE:
+        raise HTTPException(
+            status_code=503, 
+            detail="G-SDK not available. Please install G-SDK dependencies first. Run install_gsdk_deps.py on the server."
+        )
+
 @router.get("/status")
 async def get_gsdk_status(
     gsdk_service: GSdkBiometricService = Depends(get_gsdk_service),
@@ -35,7 +61,7 @@ async def get_gsdk_status(
         return {
             "success": True,
             "status": status,
-            "message": "G-SDK status retrieved successfully"
+            "message": "G-SDK status retrieved successfully" if GSDK_AVAILABLE else "G-SDK not available - install dependencies first"
         }
     except Exception as e:
         logging.error(f"Failed to get G-SDK status: {e}")
@@ -51,6 +77,7 @@ async def initialize_gsdk(
     current_user: User = Depends(get_current_user)
 ):
     """Initialize G-SDK connection to gateway and device"""
+    check_gsdk_available()
     try:
         # Initialize gateway connection
         if not await gsdk_service.initialize():
@@ -83,6 +110,7 @@ async def capture_fingerprint(
     current_user: User = Depends(get_current_user)
 ):
     """Capture fingerprint using G-SDK device"""
+    check_gsdk_available()
     try:
         if not gsdk_service.is_connected:
             raise HTTPException(status_code=400, detail="G-SDK device not connected. Call /initialize first.")
@@ -114,6 +142,7 @@ async def enroll_fingerprint_gsdk(
     current_user: User = Depends(get_current_user)
 ):
     """Enroll fingerprint using G-SDK server-side processing"""
+    check_gsdk_available()
     try:
         if not gsdk_service.is_connected:
             raise HTTPException(status_code=400, detail="G-SDK device not connected. Call /initialize first.")
@@ -154,6 +183,7 @@ async def verify_fingerprint_gsdk(
     current_user: User = Depends(get_current_user)
 ):
     """Verify fingerprint using G-SDK server-side matching"""
+    check_gsdk_available()
     try:
         if not gsdk_service.is_connected:
             raise HTTPException(status_code=400, detail="G-SDK device not connected. Call /initialize first.")
@@ -193,6 +223,7 @@ async def identify_fingerprint_gsdk(
     current_user: User = Depends(get_current_user)
 ):
     """Perform 1:N identification using G-SDK server-side matching"""
+    check_gsdk_available()
     try:
         if not gsdk_service.is_connected:
             raise HTTPException(status_code=400, detail="G-SDK device not connected. Call /initialize first.")
