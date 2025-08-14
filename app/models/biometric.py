@@ -13,19 +13,25 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.ext.declarative import declarative_base
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from app.models.base import BaseModel
+Base = declarative_base()
 
 
-class FingerprintTemplate(BaseModel):
+class FingerprintTemplate(Base):
     """
     Production fingerprint template storage
     Stores raw template bytes for AFIS compatibility and vendor independence
     """
     __tablename__ = "fingerprint_templates"
+
+    # Primary key and timestamps
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="Template unique identifier")
+    created_at = Column(DateTime, nullable=False, default=func.now(), comment="Creation timestamp")
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), comment="Last update timestamp")
 
     # Core identification
     person_id = Column(UUID(as_uuid=True), ForeignKey('persons.id'), nullable=False, index=True, comment="Person this template belongs to")
@@ -76,12 +82,17 @@ class FingerprintTemplate(BaseModel):
         return f"<FingerprintTemplate(person_id={self.person_id}, finger={self.finger_position}, format='{self.template_format}')>"
 
 
-class FingerprintVerificationLog(BaseModel):
+class FingerprintVerificationLog(Base):
     """
     Audit log for fingerprint verification attempts
     Tracks all 1:1 and 1:N matching attempts for security and compliance
     """
     __tablename__ = "fingerprint_verification_logs"
+
+    # Primary key and timestamps
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="Log entry unique identifier")
+    created_at = Column(DateTime, nullable=False, default=func.now(), comment="Creation timestamp")
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), comment="Last update timestamp")
 
     # Verification context
     verification_type = Column(String(10), nullable=False, comment="Type: 1:1 (verify) or 1:N (identify)")
@@ -120,12 +131,17 @@ class FingerprintVerificationLog(BaseModel):
         return f"<FingerprintVerificationLog(type='{self.verification_type}', match={self.match_found}, score={self.match_score})>"
 
 
-class BiometricSystemConfig(BaseModel):
+class BiometricSystemConfig(Base):
     """
     System configuration for biometric matching parameters
     Allows runtime adjustment of security levels and matching thresholds
     """
     __tablename__ = "biometric_system_config"
+
+    # Primary key and timestamps
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="Config entry unique identifier")
+    created_at = Column(DateTime, nullable=False, default=func.now(), comment="Creation timestamp")
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now(), comment="Last update timestamp")
 
     # Configuration key and value
     config_key = Column(String(100), nullable=False, unique=True, comment="Configuration parameter name")
