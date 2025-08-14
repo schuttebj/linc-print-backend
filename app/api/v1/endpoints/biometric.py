@@ -372,6 +372,40 @@ async def get_person_templates(
     ]
 
 
+@router.get("/fingerprint/templates-for-matching", response_model=List[Dict[str, Any]])
+async def get_templates_for_matching(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get fingerprint templates with template data for UFMatcher identification
+    This endpoint returns the actual template Base64 data for client-side UFMatcher
+    """
+    
+    templates = db.query(FingerprintTemplate).filter(
+        FingerprintTemplate.is_active == True
+    ).limit(limit).all()
+    
+    results = []
+    for t in templates:
+        # Convert template bytes back to Base64 for UFMatcher
+        template_base64 = base64.b64encode(t.template_bytes).decode('ascii')
+        
+        results.append({
+            "template_id": str(t.id),
+            "person_id": str(t.person_id),
+            "finger_position": t.finger_position,
+            "template_format": t.template_format,
+            "template_data": template_base64,  # This is what UFMatcher needs
+            "quality_score": t.quality_score,
+            "quality_level": t.quality_level,
+            "enrolled_at": t.created_at.isoformat() if t.created_at else None
+        })
+    
+    return results
+
+
 @router.get("/system/stats", response_model=BiometricSystemStats)
 async def get_system_stats(
     db: Session = Depends(get_db),
