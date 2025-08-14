@@ -422,6 +422,11 @@ async def initialize_biometric_tables(
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            deleted_at TIMESTAMPTZ,
+            deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
             
             -- Core identification
             person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
@@ -445,7 +450,6 @@ async def initialize_biometric_tables(
             scanner_serial VARCHAR(50),
             
             -- Processing flags
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_verified BOOLEAN NOT NULL DEFAULT FALSE,
             
             -- Security and audit
@@ -465,6 +469,11 @@ async def initialize_biometric_tables(
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            deleted_at TIMESTAMPTZ,
+            deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
             
             -- Verification context
             verification_type VARCHAR(10) NOT NULL CHECK (verification_type IN ('1:1', '1:N')),
@@ -501,6 +510,11 @@ async def initialize_biometric_tables(
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            deleted_at TIMESTAMPTZ,
+            deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
             
             -- Configuration key and value
             config_key VARCHAR(100) NOT NULL UNIQUE,
@@ -509,11 +523,7 @@ async def initialize_biometric_tables(
             
             -- Metadata
             description TEXT,
-            category VARCHAR(50),
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            
-            -- Audit
-            updated_by UUID REFERENCES users(id) ON DELETE SET NULL
+            category VARCHAR(50)
         );
         """,
         
