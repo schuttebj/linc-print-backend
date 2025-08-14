@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, text
 import base64
 import hashlib
 import json
@@ -390,7 +390,7 @@ async def get_system_stats(
     total_verifications = db.query(func.count(FingerprintVerificationLog.id)).scalar()
     
     recent_verifications = db.query(func.count(FingerprintVerificationLog.id)).filter(
-        FingerprintVerificationLog.created_at >= func.now() - func.interval('24 hours')
+        FingerprintVerificationLog.created_at >= func.now() - text("interval '24 hours'")
     ).scalar()
     
     return BiometricSystemStats(
