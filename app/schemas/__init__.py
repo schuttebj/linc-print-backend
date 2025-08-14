@@ -23,4 +23,12 @@ from app.schemas.location import (
     LocationSummary, LocationListResponse, LocationStatsResponse,
     LocationQueryParams, UserCodeGenerationResponse,
     OfficeTypeEnum, ProvinceCodeEnum
+)
+
+# Biometric schemas
+from app.schemas.biometric import (
+    FingerprintEnrollRequest, FingerprintEnrollResponse,
+    FingerprintVerifyRequest, FingerprintVerifyResponse,
+    FingerprintIdentifyRequest, FingerprintIdentifyResponse,
+    FingerprintTemplateInfo, BiometricSystemStats
 ) 

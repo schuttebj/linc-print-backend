@@ -22,6 +22,9 @@ from app.models.printing import (
     PrintJob, PrintJobApplication, PrintJobStatusHistory, PrintQueue,
     PrintJobStatus, PrintJobPriority, QualityCheckResult
 )
+from app.models.biometric import (
+    FingerprintTemplate, FingerprintVerificationLog, BiometricSystemConfig
+)
 from app.models.enums import (
     UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus
 ) 
