@@ -23,6 +23,7 @@ from app.api.v1.endpoints import test_card_design
 from app.api.v1.endpoints import barcode
 from app.api.v1.endpoints import public
 from app.api.v1.endpoints import biometric
+from app.api.v1.endpoints import gsdk_biometric
 
 api_router = APIRouter()
 
@@ -43,4 +44,5 @@ api_router.include_router(transactions.router, prefix="/transactions", tags=["Tr
 api_router.include_router(test_card_design.router, prefix="/test-card", tags=["Test Card Design"]) 
 api_router.include_router(barcode.router, prefix="/barcode", tags=["Barcode"]) 
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
-api_router.include_router(biometric.router, prefix="/biometric", tags=["Biometric"]) 
+api_router.include_router(biometric.router, prefix="/biometric", tags=["Biometric"])
+api_router.include_router(gsdk_biometric.router, prefix="/gsdk-biometric", tags=["G-SDK Biometric"]) 

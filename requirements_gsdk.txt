@@ -1,0 +1,7 @@
+# G-SDK Dependencies for Server-Side Biometric Matching
+grpcio>=1.50.0
+grpcio-status>=1.50.0
+protobuf>=3.20.0
+
+# Additional dependencies for G-SDK integration
+cryptography>=3.4.8
