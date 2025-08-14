@@ -19,7 +19,6 @@ import hashlib
 import json
 import time
 from datetime import datetime
-import requests
 
 from app.core.database import get_db
 from app.core.security import get_current_user

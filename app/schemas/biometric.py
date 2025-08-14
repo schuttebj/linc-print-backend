@@ -43,7 +43,7 @@ class FingerprintEnrollRequest(BaseModel):
         return v
 
     class Config:
-        schema_extra = {
+        json_json_schema_extra = {
             "example": {
                 "person_id": "123e4567-e89b-12d3-a456-426614174000",
                 "finger_position": 2,
@@ -71,7 +71,7 @@ class FingerprintEnrollResponse(BaseModel):
     message: str = Field(..., description="Success message")
 
     class Config:
-        schema_extra = {
+        json_json_schema_extra = {
             "example": {
                 "template_id": "789e4567-e89b-12d3-a456-426614174001",
                 "person_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -106,7 +106,7 @@ class FingerprintVerifyRequest(BaseModel):
             raise ValueError('Invalid Base64 probe template data')
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "template_id": "789e4567-e89b-12d3-a456-426614174001",
                 "probe_template_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA...",
@@ -130,7 +130,7 @@ class FingerprintVerifyResponse(BaseModel):
     message: str = Field(..., description="Result message")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "template_id": "789e4567-e89b-12d3-a456-426614174001",
                 "person_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -169,7 +169,7 @@ class FingerprintIdentifyRequest(BaseModel):
             raise ValueError('Invalid Base64 probe template data')
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "probe_template_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA...",
                 "finger_position": 2,
@@ -202,7 +202,7 @@ class FingerprintIdentifyResponse(BaseModel):
     message: str = Field(..., description="Result message")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "matches_found": 1,
                 "matches": [
@@ -238,7 +238,7 @@ class FingerprintTemplateInfo(BaseModel):
     captured_by: Optional[UUID] = Field(None, description="User who captured template")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "template_id": "789e4567-e89b-12d3-a456-426614174001",
                 "person_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -265,7 +265,7 @@ class BiometricSystemStats(BaseModel):
     system_status: str = Field(..., description="System operational status")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_templates": 15420,
                 "total_persons_enrolled": 12350,
@@ -288,7 +288,7 @@ class WebAgentCaptureRequest(BaseModel):
     capture_session_id: Optional[str] = Field(None, description="Session ID for tracking")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "person_id": "123e4567-e89b-12d3-a456-426614174000",
                 "finger_positions": [2, 7],
@@ -308,7 +308,7 @@ class WebAgentCaptureResponse(BaseModel):
     expected_templates: int = Field(..., description="Number of templates expected")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "session_id": "session_123",
                 "instructions": "Please scan right index finger, then left index finger",
