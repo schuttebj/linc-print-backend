@@ -715,6 +715,59 @@ async def reset_biometric_tables(
         raise HTTPException(status_code=500, detail=f"Failed to reset tables: {str(e)}")
 
 
+@router.delete("/fingerprint/templates/{person_id}/{finger_position}")
+async def delete_fingerprint_template(
+    person_id: str,
+    finger_position: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a specific fingerprint template for re-enrollment
+    
+    Args:
+        person_id: UUID of the person
+        finger_position: Finger position (1-10)
+    """
+    try:
+        # Find existing active template for this person and finger
+        existing_template = db.query(FingerprintTemplate).filter(
+            and_(
+                FingerprintTemplate.person_id == person_id,
+                FingerprintTemplate.finger_position == finger_position,
+                FingerprintTemplate.is_active == True
+            )
+        ).first()
+        
+        if not existing_template:
+            return {
+                "message": "No active template found for this person and finger",
+                "deleted": False,
+                "template_id": None
+            }
+        
+        # Delete the associated image file
+        image_deleted = fingerprint_image_service.delete_fingerprint_images(existing_template.id)
+        
+        # Mark template as inactive (soft delete)
+        existing_template.is_active = False
+        db.commit()
+        
+        logger.info(f"Deleted template {existing_template.id} for person {person_id}, finger {finger_position}")
+        
+        return {
+            "message": "Fingerprint template deleted successfully",
+            "deleted": True,
+            "template_id": str(existing_template.id),
+            "image_deleted": image_deleted
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete fingerprint template: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete template: {str(e)}")
+
+
 @router.post("/admin/cleanup-orphaned-images")
 async def cleanup_orphaned_fingerprint_images(
     db: Session = Depends(get_db),
