@@ -18,9 +18,11 @@ import base64
 import hashlib
 import json
 import time
+import logging
 from datetime import datetime
 
 from app.core.database import get_db
+from app.services.fingerprint_image_service import fingerprint_image_service
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
@@ -35,6 +37,7 @@ from app.schemas.biometric import (
 
 router = APIRouter()
 security = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/fingerprint/enroll", response_model=FingerprintEnrollResponse)
@@ -86,7 +89,35 @@ async def enroll_fingerprint(
     ).first()
     
     if existing:
-        raise HTTPException(status_code=409, detail="Identical template already exists for this finger")
+        raise HTTPException(
+            status_code=409, 
+            detail="Duplicate fingerprint template - identical template already exists for this person and finger"
+        )
+    
+    # Handle re-enrollment: check for existing template for same person/finger (different hash)
+    existing_different_template = db.query(FingerprintTemplate).filter(
+        and_(
+            FingerprintTemplate.person_id == request.person_id,
+            FingerprintTemplate.finger_position == request.finger_position,
+            FingerprintTemplate.is_active == True
+        )
+    ).first()
+    
+    # If re-enrolling (different template for same finger), mark old as inactive and clean up files
+    if existing_different_template:
+        logger.info(f"Re-enrolling finger {request.finger_position} for person {request.person_id}")
+        
+        # Mark old template as inactive
+        existing_different_template.is_active = False
+        existing_different_template.deleted_at = datetime.utcnow()
+        existing_different_template.deleted_by = current_user.id
+        
+        # Clean up old fingerprint images
+        try:
+            fingerprint_image_service.delete_fingerprint_images(existing_different_template.id)
+            logger.info(f"Cleaned up fingerprint images for old template {existing_different_template.id}")
+        except Exception as e:
+            logger.warning(f"Failed to clean up old fingerprint images for template {existing_different_template.id}: {e}")
     
     # Create new template record
     template = FingerprintTemplate(
@@ -112,6 +143,38 @@ async def enroll_fingerprint(
     db.commit()
     db.refresh(template)
     
+    # Save captured fingerprint image if provided
+    image_url = None
+    thumbnail_url = None
+    
+    if request.captured_image_base64:
+        try:
+            # Decode the captured image
+            image_data = base64.b64decode(request.captured_image_base64)
+            
+            # Save the image using the fingerprint image service
+            image_path = fingerprint_image_service.save_fingerprint_image(
+                template_id=template.id,
+                image_data=image_data,
+                image_format="BMP"  # BioMini usually returns BMP
+            )
+            
+            # Generate public URL
+            image_url = fingerprint_image_service.get_fingerprint_image_url(template.id)
+            
+            logger.info(f"Fingerprint image saved for template {template.id}")
+            
+            # Console log the image URL for testing
+            if image_url:
+                print(f"\n🖼️  FINGERPRINT IMAGE STORED: {image_url}")
+                print(f"📸 Template ID: {template.id}")
+                print(f"👤 Person ID: {template.person_id}")
+                print(f"🖐️  Finger: {template.finger_position}\n")
+            
+        except Exception as e:
+            # Log error but don't fail the enrollment
+            logger.error(f"Failed to save fingerprint image for template {template.id}: {e}")
+    
     return FingerprintEnrollResponse(
         template_id=template.id,
         person_id=template.person_id,
@@ -121,7 +184,9 @@ async def enroll_fingerprint(
         quality_score=template.quality_score,
         template_hash=template.template_hash,
         enrolled_at=template.created_at,
-        message="Fingerprint template enrolled successfully"
+        message="Fingerprint template enrolled successfully",
+        image_url=image_url,
+        thumbnail_url=None  # No longer using thumbnails
     )
 
 
@@ -366,7 +431,9 @@ async def get_person_templates(
             quality_score=t.quality_score,
             is_verified=t.is_verified,
             enrolled_at=t.created_at,
-            captured_by=t.captured_by
+            captured_by=t.captured_by,
+            image_url=fingerprint_image_service.get_fingerprint_image_url(t.id),
+            thumbnail_url=None  # No longer using thumbnails
         )
         for t in templates
     ]
@@ -625,17 +692,59 @@ async def reset_biometric_tables(
         for sql in drop_commands:
             db.execute(text(sql))
         
+        # Clean up all fingerprint image files
+        try:
+            images_deleted = fingerprint_image_service.delete_all_images()
+            logger.info(f"Deleted {images_deleted} fingerprint images during table reset")
+        except Exception as cleanup_error:
+            logger.warning(f"Failed to cleanup fingerprint images during reset: {cleanup_error}")
+            images_deleted = 0
+        
         db.commit()
         
         return {
             "message": "Biometric tables reset successfully",
             "status": "success",
-            "note": "All biometric data has been cleared. Use /admin/initialize-tables to recreate."
+            "note": "All biometric data has been cleared. Use /admin/initialize-tables to recreate.",
+            "images_deleted": images_deleted
         }
         
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to reset tables: {str(e)}")
+
+
+@router.post("/admin/cleanup-orphaned-images")
+async def cleanup_orphaned_fingerprint_images(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Admin endpoint to clean up orphaned fingerprint images
+    Removes image files that don't have corresponding active templates
+    """
+    try:
+        # Get all active template IDs
+        active_templates = db.query(FingerprintTemplate.id).filter(
+            FingerprintTemplate.is_active == True
+        ).all()
+        
+        active_template_ids = [str(template.id) for template in active_templates]
+        
+        # Clean up orphaned images
+        cleanup_count = fingerprint_image_service.cleanup_orphaned_images(active_template_ids)
+        
+        return {
+            "status": "success",
+            "message": f"Cleaned up {cleanup_count} orphaned fingerprint images",
+            "active_templates": len(active_template_ids),
+            "files_removed": cleanup_count,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup orphaned images: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup orphaned images: {str(e)}")
 
 
 # Helper functions

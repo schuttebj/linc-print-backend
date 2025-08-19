@@ -26,6 +26,8 @@ class FingerprintEnrollRequest(BaseModel):
     capture_software: Optional[str] = Field("WebAgent", max_length=100, description="Capture software")
     scanner_serial: Optional[str] = Field(None, max_length=50, description="Scanner serial number")
     encrypted_key: Optional[str] = Field(None, max_length=100, description="Encryption key if used")
+    # NEW: Captured image data from BioMini scanner
+    captured_image_base64: Optional[str] = Field(None, description="Base64-encoded captured image (BMP/PNG)")
 
     @validator('template_base64')
     def validate_base64(cls, v):
@@ -69,6 +71,8 @@ class FingerprintEnrollResponse(BaseModel):
     template_hash: str = Field(..., description="SHA-256 hash of template")
     enrolled_at: datetime = Field(..., description="Enrollment timestamp")
     message: str = Field(..., description="Success message")
+    # NEW: URL for stored fingerprint image
+    image_url: Optional[str] = Field(None, description="URL to access stored fingerprint image")
 
     class Config:
         json_json_schema_extra = {
@@ -236,6 +240,8 @@ class FingerprintTemplateInfo(BaseModel):
     is_verified: bool = Field(..., description="Whether template is verified")
     enrolled_at: datetime = Field(..., description="Enrollment timestamp")
     captured_by: Optional[UUID] = Field(None, description="User who captured template")
+    # NEW: URL for stored fingerprint image
+    image_url: Optional[str] = Field(None, description="URL to access stored fingerprint image")
 
     class Config:
         json_schema_extra = {
