@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "https://linc-print-frontend.vercel.app,https://linc-print-frontend-git-main-schuttebjs-projects.vercel.app,https://linc-print-frontend-schuttebjs-projects.vercel.app,https://linc-print-frontend-omp9gcyth-schuttebjs-projects.vercel.app,http://localhost:3000,http://localhost:5173"
     ALLOWED_HOSTS: str = "*"
     
+    # Backend URL Configuration (for generating absolute URLs)
+    BACKEND_URL: str = "https://linc-print-backend.onrender.com"
+    
     @property
     def allowed_origins_list(self) -> List[str]:
         """Resolve allowed CORS origins from env, supporting CORS_ORIGINS and ALLOWED_ORIGINS.
@@ -232,6 +235,10 @@ class Settings(BaseSettings):
             return fallback_path
         
         return base_path
+    
+    def get_backend_url(self) -> str:
+        """Get backend URL for generating absolute URLs"""
+        return self.BACKEND_URL.rstrip('/')
 
 
 settings = Settings()

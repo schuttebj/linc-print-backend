@@ -193,8 +193,11 @@ class FingerprintImageService:
         if not file_path:
             return None
         
-        # Construct public URL path
-        return f"/api/v1/files/fingerprints/{template_id}.png"
+        # Get the base URL from settings
+        base_url = self.settings.get_backend_url()
+        
+        # Construct full public URL
+        return f"{base_url}/api/v1/files/fingerprints/{template_id}.png"
     
     def delete_fingerprint_images(self, template_id: uuid.UUID) -> bool:
         """

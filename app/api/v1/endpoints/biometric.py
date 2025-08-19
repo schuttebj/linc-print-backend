@@ -169,7 +169,8 @@ async def enroll_fingerprint(
                 print(f"\n🖼️  FINGERPRINT IMAGE STORED: {image_url}")
                 print(f"📸 Template ID: {template.id}")
                 print(f"👤 Person ID: {template.person_id}")
-                print(f"🖐️  Finger: {template.finger_position}\n")
+                print(f"🖐️  Finger: {template.finger_position}")
+                print(f"🌐 Full URL: {image_url}\n")
             
         except Exception as e:
             # Log error but don't fail the enrollment
