@@ -308,6 +308,11 @@ async def update_issue(
     return issue
 
 
+@router.options("/{issue_id}/assign", include_in_schema=False)
+async def options_assign_issue():
+    """Handle CORS preflight for issue assignment"""
+    return {}
+
 @router.patch("/{issue_id}/assign")
 async def assign_issue(
     *,
@@ -340,6 +345,11 @@ async def assign_issue(
     
     return {"message": "Issue assigned successfully"}
 
+
+@router.options("/{issue_id}/status", include_in_schema=False)
+async def options_update_issue_status():
+    """Handle CORS preflight for status updates"""
+    return {}
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
