@@ -24,7 +24,7 @@ from app.schemas.issue import (
     IssueListResponse, IssueFilter, IssueStatsResponse,
     UserIssueCreate, AutoIssueCreate,
     IssueCommentCreate, IssueCommentResponse,
-    ConsoleLogCapture
+    ConsoleLogCapture, IssueStatusUpdate
 )
 from app.crud import issue as crud_issue, issue_comment as crud_issue_comment
 from app.services.issue_file_manager import IssueFileManager
@@ -340,10 +340,6 @@ async def assign_issue(
     
     return {"message": "Issue assigned successfully"}
 
-
-class IssueStatusUpdate(BaseModel):
-    new_status: IssueStatus
-    resolution_notes: Optional[str] = None
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
