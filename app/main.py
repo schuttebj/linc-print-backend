@@ -532,6 +532,14 @@ async def initialize_users():
                 ("transactions.delete", "Delete Transactions", "Delete or cancel transactions", "transactions", "transaction", "delete"),
                 ("transactions.manage", "Manage Transactions", "Full transaction management access", "transactions", "transaction", "manage"),
                 ("transactions.manage_fees", "Manage Fee Structures", "Update application fee amounts", "transactions", "fee_structure", "manage_fees"),
+                
+                # Issue Tracking Permissions (NEW)
+                ("admin.issues.read", "View Issues", "View all reported issues and bug reports", "admin", "issue", "read"),
+                ("admin.issues.write", "Manage Issues", "Update, assign, and manage issue reports", "admin", "issue", "write"),
+                ("admin.issues.delete", "Delete Issues", "Delete issue reports", "admin", "issue", "delete"),
+                ("admin.issues.stats", "Issue Statistics", "View issue tracking statistics and analytics", "admin", "issue", "stats"),
+                ("issues.create", "Report Issues", "Create new issue reports", "issues", "issue", "create"),
+                ("issues.comment", "Comment on Issues", "Add comments to issue reports", "issues", "issue", "comment"),
             ]
             
             permissions = {}
@@ -568,7 +576,9 @@ async def initialize_users():
                 # Basic location viewing and reports for clerks
                 "locations.read", "reports.basic",
                 # Basic role viewing (needed for user interface)
-                "roles.read", "users.read"
+                "roles.read", "users.read",
+                # Issue tracking - all users can report issues
+                "issues.create", "issues.comment"
             ]
             
             supervisor_permissions = clerk_permissions + [
@@ -598,7 +608,9 @@ async def initialize_users():
                 # Fee management (provincial and national admins can manage fees)
                 "transactions.manage_fees",
                 # Advanced reporting
-                "reports.provincial"
+                "reports.provincial",
+                # Issue management for traffic department heads
+                "admin.issues.read", "admin.issues.write", "admin.issues.stats"
             ]
             
             printer_permissions = [
@@ -609,7 +621,9 @@ async def initialize_users():
                 "printing.quality_check", "printing.regenerate_files", "printing.view_statistics",
                 "cards.read", "cards.track_status",
                 # Basic role viewing (needed for user interface)
-                "roles.read", "users.read"
+                "roles.read", "users.read",
+                # Issue tracking - all users can report issues
+                "issues.create", "issues.comment"
             ]
             
             # Define examiner permissions (authorization and review)
@@ -617,7 +631,9 @@ async def initialize_users():
                 "applications.authorize", "applications.review_authorization",
                 "license_applications.read", "license_applications.approve",
                 # Basic permissions for interface
-                "roles.read", "users.read"
+                "roles.read", "users.read",
+                # Issue tracking - all users can report issues
+                "issues.create", "issues.comment"
             ]
             
             admin_permissions = [perm for perm in permissions.keys()]  # All permissions

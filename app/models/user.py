@@ -149,6 +149,11 @@ class User(BaseModel):
     assigned_locations = relationship("Location", secondary=user_locations, back_populates="assigned_users")
     permission_overrides = relationship("UserPermissionOverride", foreign_keys="UserPermissionOverride.user_id")
     
+    # Issue tracking relationships
+    reported_issues = relationship("Issue", foreign_keys="Issue.reported_by", back_populates="reported_by_user")
+    assigned_issues = relationship("Issue", foreign_keys="Issue.assigned_to", back_populates="assigned_to_user")
+    resolved_issues = relationship("Issue", foreign_keys="Issue.resolved_by", back_populates="resolved_by_user")
+    
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', madagascar_id='{self.madagascar_id_number}', status='{self.status}')>"
     

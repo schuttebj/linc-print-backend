@@ -786,4 +786,41 @@ MADAGASCAR_FEE_DISPLAY = {
     "NEW_LICENSE_HEAVY_TOTAL": "New License (Heavy Vehicle) - Total",
     "LEARNERS_PERMIT_LIGHT_TOTAL": "Learner's Permit (Light Vehicle) - Total",
     "LEARNERS_PERMIT_HEAVY_TOTAL": "Learner's Permit (Heavy Vehicle) - Total",
-} 
+}
+
+
+# Issue Tracking System Enums
+
+class IssueStatus(PythonEnum):
+    """Issue status for the issue tracking system"""
+    NEW = "NEW"                    # Newly reported issue
+    IN_PROGRESS = "IN_PROGRESS"    # Being worked on
+    TESTING = "TESTING"            # In testing phase
+    RESOLVED = "RESOLVED"          # Fix completed, awaiting verification
+    CLOSED = "CLOSED"              # Issue closed/verified
+    CANCELLED = "CANCELLED"        # Issue cancelled/won't fix
+
+
+class IssueCategory(PythonEnum):
+    """Issue categories for classification"""
+    BUG = "BUG"                           # Software bug
+    FEATURE_REQUEST = "FEATURE_REQUEST"   # New feature request
+    PERFORMANCE = "PERFORMANCE"           # Performance issue
+    UI_ISSUE = "UI_ISSUE"                # User interface issue
+    DATA_ERROR = "DATA_ERROR"            # Data-related error
+    OTHER = "OTHER"                      # Other issues
+
+
+class IssuePriority(PythonEnum):
+    """Issue priority levels"""
+    CRITICAL = "CRITICAL"         # System breaking, requires immediate attention
+    HIGH = "HIGH"                # Important issue, should be fixed soon
+    MEDIUM = "MEDIUM"            # Standard priority
+    LOW = "LOW"                  # Low priority, can be addressed later
+
+
+class IssueReportType(PythonEnum):
+    """How the issue was reported"""
+    USER_REPORTED = "USER_REPORTED"         # Manually reported by user
+    AUTO_REPORTED_JS_ERROR = "AUTO_REPORTED_JS_ERROR"     # Automatically captured JS error
+    AUTO_REPORTED_API_ERROR = "AUTO_REPORTED_API_ERROR"   # Automatically captured API error 
