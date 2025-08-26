@@ -308,7 +308,7 @@ async def update_issue(
 
 
 @router.options("/{issue_id}/assign")
-async def options_assign_issue():
+async def options_assign_issue(issue_id: str):
     """Handle CORS preflight for issue assignment"""
     return Response(
         content="",
@@ -356,7 +356,7 @@ async def assign_issue(
 
 
 @router.options("/{issue_id}/status")
-async def options_update_issue_status():
+async def options_update_issue_status(issue_id: str):
     """Handle CORS preflight for status updates"""
     return Response(
         content="",
