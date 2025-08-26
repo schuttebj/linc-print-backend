@@ -36,6 +36,19 @@ logger = logging.getLogger(__name__)
 # Initialize file manager
 file_manager = IssueFileManager()
 
+# Simple CORS preflight handler that catches all OPTIONS requests
+@router.options("/{path:path}")
+async def handle_options_requests(request: Request):
+    """Handle all OPTIONS requests for CORS preflight"""
+    response = Response(content="", status_code=200)
+    origin = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
+
 
 @router.post("/", response_model=IssueDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_issue(
@@ -308,17 +321,6 @@ async def update_issue(
     return issue
 
 
-@router.options("/{issue_id}/assign", include_in_schema=False)
-async def options_assign_issue(request: Request):
-    """Handle CORS preflight for issue assignment"""
-    response = Response(content="", status_code=200)
-    origin = request.headers.get("origin", "*")
-    response.headers["Access-Control-Allow-Origin"] = origin
-    response.headers["Access-Control-Allow-Methods"] = "PATCH, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
-
 @router.patch("/{issue_id}/assign")
 async def assign_issue(
     *,
@@ -351,17 +353,6 @@ async def assign_issue(
     
     return {"message": "Issue assigned successfully"}
 
-
-@router.options("/{issue_id}/status", include_in_schema=False)
-async def options_update_issue_status(request: Request):
-    """Handle CORS preflight for status updates"""
-    response = Response(content="", status_code=200)
-    origin = request.headers.get("origin", "*")
-    response.headers["Access-Control-Allow-Origin"] = origin
-    response.headers["Access-Control-Allow-Methods"] = "PATCH, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
