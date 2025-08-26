@@ -341,13 +341,16 @@ async def assign_issue(
     return {"message": "Issue assigned successfully"}
 
 
+class IssueStatusUpdate(BaseModel):
+    new_status: IssueStatus
+    resolution_notes: Optional[str] = None
+
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
     *,
     db: Session = Depends(get_db),
     issue_id: uuid.UUID,
-    new_status: IssueStatus,
-    resolution_notes: Optional[str] = None,
+    status_update: IssueStatusUpdate,
     current_user: User = Depends(get_current_user)
 ):
     """Update issue status"""
