@@ -16,8 +16,8 @@ from app.models.enums import (
 # Base schemas for issue management
 class IssueBase(BaseModel):
     """Base schema for issue data"""
-    title: str = Field(..., min_length=5, max_length=255, description="Issue title/summary")
-    description: str = Field(..., min_length=10, description="Detailed issue description")
+    title: str = Field(..., min_length=3, max_length=255, description="Issue title/summary")
+    description: str = Field(..., min_length=5, description="Detailed issue description")
     category: IssueCategory = Field(..., description="Issue category")
     priority: IssuePriority = Field(default=IssuePriority.MEDIUM, description="Issue priority level")
     page_url: Optional[str] = Field(None, max_length=1000, description="URL where issue occurred")
@@ -31,7 +31,7 @@ class IssueCreate(IssueBase):
     report_type: IssueReportType = Field(default=IssueReportType.USER_REPORTED, description="How the issue was reported")
     
     # Auto-captured data
-    user_agent: Optional[str] = Field(None, max_length=500, description="Browser/device information")
+    user_agent: Optional[str] = Field(None, max_length=1000, description="Browser/device information")
     error_message: Optional[str] = Field(None, description="Error message if available")
     stack_trace: Optional[str] = Field(None, description="Stack trace for errors")
     console_logs: Optional[List[str]] = Field(None, description="Console log entries")
@@ -39,7 +39,7 @@ class IssueCreate(IssueBase):
     
     # Environment data
     environment: Optional[str] = Field(None, max_length=50, description="Environment (prod/staging/dev)")
-    browser_version: Optional[str] = Field(None, max_length=100, description="Browser version")
+    browser_version: Optional[str] = Field(None, max_length=200, description="Browser version")
     operating_system: Optional[str] = Field(None, max_length=100, description="Operating system")
     
     @validator('console_logs')
