@@ -290,6 +290,12 @@ class IssueStatusUpdate(BaseModel):
     resolution_notes: Optional[str] = None
 
 
+# Issue assignment schema
+class IssueAssignment(BaseModel):
+    """Schema for assigning issues"""
+    assigned_to: uuid.UUID
+
+
 # Forward references for Pydantic
 IssueDetailResponse.model_rebuild()
 IssueCommentResponse.model_rebuild()

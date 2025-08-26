@@ -4,7 +4,7 @@ Comprehensive REST API for issue reporting and management
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Body
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -24,7 +24,7 @@ from app.schemas.issue import (
     IssueListResponse, IssueFilter, IssueStatsResponse,
     UserIssueCreate, AutoIssueCreate,
     IssueCommentCreate, IssueCommentResponse,
-    ConsoleLogCapture, IssueStatusUpdate
+    ConsoleLogCapture, IssueStatusUpdate, IssueAssignment
 )
 from app.crud import issue as crud_issue, issue_comment as crud_issue_comment
 from app.services.issue_file_manager import IssueFileManager
@@ -308,12 +308,17 @@ async def update_issue(
     return issue
 
 
+@router.options("/{issue_id}/assign")
+async def options_issue_assign(issue_id: uuid.UUID):
+    """Handle CORS preflight for issue assignment"""
+    return {"message": "OK"}
+
 @router.patch("/{issue_id}/assign")
 async def assign_issue(
     *,
     db: Session = Depends(get_db),
     issue_id: uuid.UUID,
-    assigned_to: uuid.UUID,
+    assignment: IssueAssignment,
     current_user: User = Depends(get_current_user)
 ):
     """Assign issue to a user (admin only)"""
@@ -326,7 +331,7 @@ async def assign_issue(
     issue = crud_issue.assign_issue(
         db=db,
         issue_id=issue_id,
-        assigned_to=assigned_to,
+        assigned_to=assignment.assigned_to,
         assigned_by=current_user.id
     )
     
@@ -336,10 +341,15 @@ async def assign_issue(
             detail="Issue not found"
         )
     
-    logger.info(f"Issue assigned: {issue_id} to user {assigned_to} by {current_user.id}")
+    logger.info(f"Issue assigned: {issue_id} to user {assignment.assigned_to} by {current_user.id}")
     
     return {"message": "Issue assigned successfully"}
 
+
+@router.options("/{issue_id}/status")
+async def options_issue_status(issue_id: uuid.UUID):
+    """Handle CORS preflight for status updates"""
+    return {"message": "OK"}
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
