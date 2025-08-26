@@ -4,7 +4,7 @@ Comprehensive REST API for issue reporting and management
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Body, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -309,9 +309,15 @@ async def update_issue(
 
 
 @router.options("/{issue_id}/assign", include_in_schema=False)
-async def options_assign_issue():
+async def options_assign_issue(request: Request):
     """Handle CORS preflight for issue assignment"""
-    return {}
+    response = Response(content="", status_code=200)
+    origin = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "PATCH, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 @router.patch("/{issue_id}/assign")
 async def assign_issue(
@@ -347,9 +353,15 @@ async def assign_issue(
 
 
 @router.options("/{issue_id}/status", include_in_schema=False)
-async def options_update_issue_status():
+async def options_update_issue_status(request: Request):
     """Handle CORS preflight for status updates"""
-    return {}
+    response = Response(content="", status_code=200)
+    origin = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "PATCH, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
