@@ -283,6 +283,13 @@ class ConsoleLogCapture(BaseModel):
     include_timestamps: bool = Field(default=True, description="Include timestamps in logs")
 
 
+# Issue status update schema  
+class IssueStatusUpdate(BaseModel):
+    """Schema for updating issue status"""
+    new_status: IssueStatus
+    resolution_notes: Optional[str] = None
+
+
 # Forward references for Pydantic
 IssueDetailResponse.model_rebuild()
 IssueCommentResponse.model_rebuild()
