@@ -376,12 +376,12 @@ async def update_issue_status(
     issue = crud_issue.update_status(
         db=db,
         issue_id=issue_id,
-        new_status=new_status,
+        new_status=status_update.new_status,
         updated_by=current_user.id,
-        resolution_notes=resolution_notes
+        resolution_notes=status_update.resolution_notes
     )
     
-    logger.info(f"Issue status updated: {issue_id} to {new_status.value} by {current_user.id}")
+    logger.info(f"Issue status updated: {issue_id} to {status_update.new_status.value} by {current_user.id}")
     
     return {"message": "Issue status updated successfully"}
 
