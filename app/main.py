@@ -94,6 +94,27 @@ app.add_middleware(
 )
 
 
+# CORS preflight middleware - handle OPTIONS requests before routing
+@app.middleware("http")
+async def handle_cors_preflight(request: Request, call_next):
+    """Handle CORS preflight OPTIONS requests before routing"""
+    if request.method == "OPTIONS":
+        # Get origin from request
+        origin = request.headers.get("origin")
+        
+        # Check if origin is allowed
+        if origin in settings.allowed_origins_list or "*" in settings.allowed_origins_list:
+            response = JSONResponse(content={"message": "OK"})
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Max-Age"] = "86400"
+            return response
+    
+    # Continue with normal request processing
+    return await call_next(request)
+
 # Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
