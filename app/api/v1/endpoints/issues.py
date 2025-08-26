@@ -53,18 +53,29 @@ async def create_issue(
     - Console log capture
     """
     try:
+        # Extract file data before creating issue
+        screenshot_data = getattr(issue_in, 'screenshot_data', None)
+        console_logs = getattr(issue_in, 'console_logs', None)
+        
+        # Create issue data without file fields
+        issue_dict = issue_in.dict(exclude={'screenshot_data', 'console_logs'})
+        
+        # Convert back to Pydantic model for proper validation
+        from app.schemas.issue import IssueCreate
+        issue_data = IssueCreate(**issue_dict)
+        
         # Create the issue
         issue = crud_issue.create_with_reporter(
             db=db, 
-            obj_in=issue_in, 
+            obj_in=issue_data, 
             reported_by=current_user.id
         )
         
         # Handle screenshot if provided
-        if issue_in.screenshot_data:
+        if screenshot_data:
             try:
                 # Decode base64 screenshot
-                screenshot_bytes = base64.b64decode(issue_in.screenshot_data.split(',')[-1])
+                screenshot_bytes = base64.b64decode(screenshot_data.split(',')[-1])
                 
                 # Save screenshot to persistent disk
                 screenshot_info = file_manager.save_screenshot(
@@ -82,11 +93,11 @@ async def create_issue(
                 # Continue without screenshot rather than failing the entire request
         
         # Handle console logs if provided
-        if issue_in.console_logs:
+        if console_logs:
             try:
                 console_logs_info = file_manager.save_console_logs(
                     issue_id=issue.id,
-                    console_logs=issue_in.console_logs,
+                    console_logs=console_logs,
                     created_at=issue.created_at
                 )
                 
