@@ -307,21 +307,6 @@ async def update_issue(
     return issue
 
 
-@router.options("/{issue_id}/assign")
-async def options_assign_issue(issue_id: uuid.UUID):
-    """Handle CORS preflight for issue assignment"""
-    return Response(
-        content="",
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
-
 @router.patch("/{issue_id}/assign")
 async def assign_issue(
     *,
@@ -354,21 +339,6 @@ async def assign_issue(
     
     return {"message": "Issue assigned successfully"}
 
-
-@router.options("/{issue_id}/status")
-async def options_update_issue_status(issue_id: uuid.UUID):
-    """Handle CORS preflight for status updates"""
-    return Response(
-        content="",
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Max-Age": "86400"
-        }
-    )
 
 @router.patch("/{issue_id}/status")
 async def update_issue_status(
