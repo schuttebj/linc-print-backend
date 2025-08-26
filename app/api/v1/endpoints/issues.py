@@ -28,7 +28,7 @@ from app.schemas.issue import (
 )
 from app.crud import issue as crud_issue
 from app.services.issue_file_manager import IssueFileManager
-from app.core.permissions import require_permission
+# Permission checking is done using current_user.has_permission()
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -306,7 +306,11 @@ async def assign_issue(
     current_user: User = Depends(get_current_user)
 ):
     """Assign issue to a user (admin only)"""
-    require_permission(current_user, "admin.issues.write")
+    if not current_user.has_permission("admin.issues.write"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to assign issues"
+        )
     
     issue = crud_issue.issue.assign_issue(
         db=db,
@@ -517,7 +521,11 @@ async def get_issue_statistics(
     current_user: User = Depends(get_current_user)
 ):
     """Get issue statistics (admin only)"""
-    require_permission(current_user, "admin.issues.read")
+    if not current_user.has_permission("admin.issues.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view issue statistics"
+        )
     
     stats = crud_issue.issue.get_statistics(db, days=days)
     
@@ -561,7 +569,11 @@ async def delete_issue(
     current_user: User = Depends(get_current_user)
 ):
     """Delete issue (admin only)"""
-    require_permission(current_user, "admin.issues.delete")
+    if not current_user.has_permission("admin.issues.delete"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to delete issues"
+        )
     
     issue = crud_issue.issue.get(db, issue_id)
     

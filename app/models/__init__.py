@@ -25,6 +25,10 @@ from app.models.printing import (
 from app.models.biometric import (
     FingerprintTemplate, FingerprintVerificationLog, BiometricSystemConfig
 )
+from app.models.issue import (
+    Issue, IssueComment, IssueAttachment
+)
 from app.models.enums import (
-    UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus
+    UserType, RoleHierarchy, LicenseCategory, ApplicationType, ApplicationStatus, PaymentStatus,
+    IssueStatus, IssueCategory, IssuePriority, IssueReportType
 ) 
