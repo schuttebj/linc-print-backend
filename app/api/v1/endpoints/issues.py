@@ -26,7 +26,7 @@ from app.schemas.issue import (
     IssueCommentCreate, IssueCommentResponse,
     ConsoleLogCapture
 )
-from app.crud import issue as crud_issue
+from app.crud import issue as crud_issue, issue_comment as crud_issue_comment
 from app.services.issue_file_manager import IssueFileManager
 # Permission checking is done using current_user.has_permission()
 
@@ -54,7 +54,7 @@ async def create_issue(
     """
     try:
         # Create the issue
-        issue = crud_issue.issue.create_with_reporter(
+        issue = crud_issue.create_with_reporter(
             db=db, 
             obj_in=issue_in, 
             reported_by=current_user.id
@@ -98,7 +98,7 @@ async def create_issue(
                 logger.error(f"Failed to save console logs for issue {issue.id}: {e}")
         
         # Get issue with full details
-        issue_with_details = crud_issue.issue.get_with_details(db, issue.id)
+        issue_with_details = crud_issue.get_with_details(db, issue.id)
         
         logger.info(f"Issue created: {issue.id} by user {current_user.id}")
         
@@ -126,7 +126,7 @@ async def auto_report_issue(
     """
     try:
         # Create the auto-reported issue
-        issue = crud_issue.issue.create_with_reporter(
+        issue = crud_issue.create_with_reporter(
             db=db, 
             obj_in=issue_in, 
             reported_by=current_user.id
@@ -197,7 +197,7 @@ async def get_issues(
     )
     
     # Get filtered issues
-    issues, total = crud_issue.issue.get_filtered(
+    issues, total = crud_issue.get_filtered(
         db=db,
         filter_params=filter_params,
         skip=skip,
@@ -240,7 +240,7 @@ async def get_issue(
     current_user: User = Depends(get_current_user)
 ):
     """Get issue by ID with full details"""
-    issue = crud_issue.issue.get_with_details(db, issue_id)
+    issue = crud_issue.get_with_details(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -271,7 +271,7 @@ async def update_issue(
     current_user: User = Depends(get_current_user)
 ):
     """Update issue (admin only or assigned user)"""
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -290,7 +290,7 @@ async def update_issue(
         )
     
     # Update issue
-    issue = crud_issue.issue.update(db=db, db_obj=issue, obj_in=issue_in)
+    issue = crud_issue.update(db=db, db_obj=issue, obj_in=issue_in)
     
     logger.info(f"Issue updated: {issue_id} by user {current_user.id}")
     
@@ -312,7 +312,7 @@ async def assign_issue(
             detail="Not enough permissions to assign issues"
         )
     
-    issue = crud_issue.issue.assign_issue(
+    issue = crud_issue.assign_issue(
         db=db,
         issue_id=issue_id,
         assigned_to=assigned_to,
@@ -340,7 +340,7 @@ async def update_issue_status(
     current_user: User = Depends(get_current_user)
 ):
     """Update issue status"""
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -359,7 +359,7 @@ async def update_issue_status(
         )
     
     # Update status
-    issue = crud_issue.issue.update_status(
+    issue = crud_issue.update_status(
         db=db,
         issue_id=issue_id,
         new_status=new_status,
@@ -382,7 +382,7 @@ async def create_comment(
 ):
     """Add comment to issue"""
     # Verify issue exists and user has access
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -404,7 +404,7 @@ async def create_comment(
     comment_in.issue_id = issue_id
     
     # Create comment
-    comment = crud_issue.issue_comment.create_with_user(
+    comment = crud_issue_comment.create_with_user(
         db=db,
         obj_in=comment_in,
         created_by=current_user.id
@@ -425,7 +425,7 @@ async def get_issue_comments(
 ):
     """Get comments for an issue"""
     # Verify issue exists and user has access
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -445,7 +445,7 @@ async def get_issue_comments(
         include_internal = False  # Regular users can't see internal comments
     
     # Get comments
-    comments = crud_issue.issue_comment.get_by_issue(
+    comments = crud_issue_comment.get_by_issue(
         db=db,
         issue_id=issue_id,
         include_internal=include_internal
@@ -463,7 +463,7 @@ async def get_issue_file(
     current_user: User = Depends(get_current_user)
 ):
     """Download issue attachment"""
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -527,7 +527,7 @@ async def get_issue_statistics(
             detail="Not enough permissions to view issue statistics"
         )
     
-    stats = crud_issue.issue.get_statistics(db, days=days)
+    stats = crud_issue.get_statistics(db, days=days)
     
     return IssueStatsResponse(**stats)
 
@@ -542,7 +542,7 @@ async def get_my_issues(
     current_user: User = Depends(get_current_user)
 ):
     """Get issues for current user (reported or assigned)"""
-    issues, total = crud_issue.issue.get_user_issues(
+    issues, total = crud_issue.get_user_issues(
         db=db,
         user_id=current_user.id,
         include_assigned=include_assigned,
@@ -575,7 +575,7 @@ async def delete_issue(
             detail="Not enough permissions to delete issues"
         )
     
-    issue = crud_issue.issue.get(db, issue_id)
+    issue = crud_issue.get(db, issue_id)
     
     if not issue:
         raise HTTPException(
@@ -587,7 +587,7 @@ async def delete_issue(
     file_manager.delete_issue_files(issue.id, issue.created_at)
     
     # Delete issue from database
-    crud_issue.issue.remove(db=db, id=issue_id)
+    crud_issue.remove(db=db, id=issue_id)
     
     logger.info(f"Issue deleted: {issue_id} by user {current_user.id}")
     
