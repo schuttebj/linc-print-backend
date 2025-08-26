@@ -55,13 +55,13 @@ def test_database_connection():
 def create_tables():
     """Create all database tables with proper enum creation"""
     from app.models.base import Base
-    from app.models.enums import LicenseCategory
+    from app.models.enums import LicenseCategory, IssueStatus, IssueCategory, IssuePriority, IssueReportType
     from app.models.transaction import FeeType
     from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult
     from sqlalchemy import text
     
     # Import all models to ensure they're registered with Base.metadata
-    from app.models import user, person, application, transaction, license, card, printing
+    from app.models import user, person, application, transaction, license, card, printing, issue, biometric
     
     print("🔧 Creating database enums before tables...")
     
@@ -126,6 +126,54 @@ def create_tables():
         conn.execute(text(f"CREATE TYPE qualitycheckresult AS ENUM ('{qa_values_str}')"))
         print(f"✅ Created qualitycheckresult enum with {len(qa_values)} values")
         
+        # Create IssueStatus enum
+        print("📋 Creating IssueStatus enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS issuestatus CASCADE"))
+        except Exception:
+            pass
+        
+        issue_status_values = [status.value for status in IssueStatus]
+        issue_status_str = "', '".join(issue_status_values)
+        conn.execute(text(f"CREATE TYPE issuestatus AS ENUM ('{issue_status_str}')"))
+        print(f"✅ Created issuestatus enum with {len(issue_status_values)} values")
+        
+        # Create IssueCategory enum
+        print("📋 Creating IssueCategory enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS issuecategory CASCADE"))
+        except Exception:
+            pass
+        
+        issue_category_values = [category.value for category in IssueCategory]
+        issue_category_str = "', '".join(issue_category_values)
+        conn.execute(text(f"CREATE TYPE issuecategory AS ENUM ('{issue_category_str}')"))
+        print(f"✅ Created issuecategory enum with {len(issue_category_values)} values")
+        
+        # Create IssuePriority enum
+        print("📋 Creating IssuePriority enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS issuepriority CASCADE"))
+        except Exception:
+            pass
+        
+        issue_priority_values = [priority.value for priority in IssuePriority]
+        issue_priority_str = "', '".join(issue_priority_values)
+        conn.execute(text(f"CREATE TYPE issuepriority AS ENUM ('{issue_priority_str}')"))
+        print(f"✅ Created issuepriority enum with {len(issue_priority_values)} values")
+        
+        # Create IssueReportType enum
+        print("📋 Creating IssueReportType enum...")
+        try:
+            conn.execute(text("DROP TYPE IF EXISTS issuereporttype CASCADE"))
+        except Exception:
+            pass
+        
+        issue_report_type_values = [report_type.value for report_type in IssueReportType]
+        issue_report_type_str = "', '".join(issue_report_type_values)
+        conn.execute(text(f"CREATE TYPE issuereporttype AS ENUM ('{issue_report_type_str}')"))
+        print(f"✅ Created issuereporttype enum with {len(issue_report_type_values)} values")
+        
         conn.commit()
     
     print("🔧 Creating all database tables...")
@@ -140,7 +188,7 @@ def drop_tables():
     from sqlalchemy import text
     
     # Import all models to ensure they're registered with Base.metadata
-    from app.models import user, person, application, transaction, license, card, printing
+    from app.models import user, person, application, transaction, license, card, printing, issue, biometric
     
     # First try the normal approach
     try:
@@ -174,6 +222,10 @@ def drop_tables():
                 conn.execute(text("DROP TYPE IF EXISTS printjobstatus CASCADE"))
                 conn.execute(text("DROP TYPE IF EXISTS printjobpriority CASCADE"))
                 conn.execute(text("DROP TYPE IF EXISTS qualitycheckresult CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS issuestatus CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS issuecategory CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS issuepriority CASCADE"))
+                conn.execute(text("DROP TYPE IF EXISTS issuereporttype CASCADE"))
                 
                 conn.commit()
                 print(f"Successfully dropped {len(tables)} tables with CASCADE") 
