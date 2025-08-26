@@ -107,12 +107,22 @@ class IssueResponse(IssueBase):
         from_attributes = True
 
 
+class UserBasicInfo(BaseModel):
+    """Basic user information for issue responses"""
+    id: uuid.UUID
+    username: str
+    madagascar_id: Optional[str] = None
+    full_name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 class IssueDetailResponse(IssueResponse):
     """Detailed schema for issue with relationships"""
     # User relationships (only include basic info for security)
-    reported_by_user: Optional[Dict[str, Any]] = None
-    assigned_to_user: Optional[Dict[str, Any]] = None
-    resolved_by_user: Optional[Dict[str, Any]] = None
+    reported_by_user: Optional[UserBasicInfo] = None
+    assigned_to_user: Optional[UserBasicInfo] = None
+    resolved_by_user: Optional[UserBasicInfo] = None
     
     # Comments
     comments: List['IssueCommentResponse'] = []
