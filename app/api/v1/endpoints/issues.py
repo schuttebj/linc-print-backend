@@ -36,26 +36,6 @@ logger = logging.getLogger(__name__)
 # Initialize file manager
 file_manager = IssueFileManager()
 
-# Debug endpoint to test CORS
-@router.options("/test-cors")
-async def test_cors_options():
-    """Simple test for CORS preflight"""
-    return Response(
-        content="CORS test OK",
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-            "Access-Control-Allow-Credentials": "true"
-        }
-    )
-
-@router.get("/test-cors")
-async def test_cors_get():
-    """Simple test endpoint"""
-    return {"message": "CORS test endpoint working"}
-
 @router.post("/", response_model=IssueDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_issue(
     *,
@@ -328,7 +308,7 @@ async def update_issue(
 
 
 @router.options("/{issue_id}/assign")
-async def options_assign_issue(issue_id: str):
+async def options_assign_issue(issue_id: uuid.UUID):
     """Handle CORS preflight for issue assignment"""
     return Response(
         content="",
@@ -376,7 +356,7 @@ async def assign_issue(
 
 
 @router.options("/{issue_id}/status")
-async def options_update_issue_status(issue_id: str):
+async def options_update_issue_status(issue_id: uuid.UUID):
     """Handle CORS preflight for status updates"""
     return Response(
         content="",
