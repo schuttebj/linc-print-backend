@@ -662,6 +662,47 @@ class UserPermissionOverride(BaseModel):
         return False
 
 
+class ApiRequestLog(BaseModel):
+    """
+    Lightweight API request logging for system monitoring and analytics
+    Separate from detailed transaction audit logs for performance and storage optimization
+    """
+    __tablename__ = "api_request_logs"
+    
+    # Request identification
+    request_id = Column(String(36), nullable=False, unique=True, index=True, comment="Unique request identifier")
+    
+    # Request details
+    method = Column(String(10), nullable=False, comment="HTTP method")
+    endpoint = Column(String(500), nullable=False, comment="API endpoint path")
+    query_params = Column(Text, nullable=True, comment="Query parameters (JSON)")
+    
+    # User context
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True, index=True, comment="User making request")
+    ip_address = Column(String(45), nullable=True, comment="Client IP address")
+    user_agent = Column(Text, nullable=True, comment="Client user agent")
+    
+    # Response details
+    status_code = Column(Integer, nullable=False, comment="HTTP response status code")
+    response_size_bytes = Column(Integer, nullable=True, comment="Response size in bytes")
+    
+    # Performance metrics
+    duration_ms = Column(Integer, nullable=False, comment="Request duration in milliseconds")
+    
+    # Location context
+    location_id = Column(UUID(as_uuid=True), ForeignKey('locations.id'), nullable=True, comment="Location where request originated")
+    
+    # Error tracking
+    error_message = Column(Text, nullable=True, comment="Error message if request failed")
+    
+    # Relationships
+    user = relationship("User")
+    location = relationship("Location")
+    
+    def __repr__(self):
+        return f"<ApiRequestLog(id={self.id}, method={self.method}, endpoint={self.endpoint}, status={self.status_code}, duration={self.duration_ms}ms)>"
+
+
 class SystemUserCounter(BaseModel):
     """Counter for system user username generation"""
     __tablename__ = "system_user_counters"

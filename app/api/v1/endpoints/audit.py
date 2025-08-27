@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
-from app.models.user import User, UserAuditLog
+from app.models.user import User, UserAuditLog, ApiRequestLog
 from app.services.audit_service import MadagascarAuditService, create_user_context
 
 router = APIRouter()
@@ -458,4 +458,302 @@ async def export_audit_logs(
             io.BytesIO(json_str.encode()),
             media_type="application/json",
             headers={"Content-Disposition": f"attachment; filename=audit_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"}
-        ) 
+        )
+
+
+# API Request Log Endpoints (Middleware Logs)
+
+@router.get("/api-requests", summary="List API Request Logs")
+async def list_api_request_logs(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(50, ge=1, le=200, description="Items per page"),
+    method: Optional[str] = Query(None, description="Filter by HTTP method"),
+    endpoint: Optional[str] = Query(None, description="Filter by endpoint (contains)"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    status_code: Optional[int] = Query(None, description="Filter by status code"),
+    min_duration: Optional[int] = Query(None, description="Minimum duration in ms"),
+    max_duration: Optional[int] = Query(None, description="Maximum duration in ms"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    current_user: User = Depends(require_permission("audit.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get paginated list of API request logs from middleware
+    Useful for system monitoring, performance analysis, and usage analytics
+    """
+    # Build query filters
+    query = db.query(ApiRequestLog)
+    
+    if method:
+        query = query.filter_by(method=method.upper())
+    
+    if endpoint:
+        query = query.filter(ApiRequestLog.endpoint.contains(endpoint))
+    
+    if user_id:
+        try:
+            query = query.filter_by(user_id=uuid.UUID(user_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid user ID format"
+            )
+    
+    if status_code:
+        query = query.filter_by(status_code=status_code)
+    
+    if min_duration:
+        query = query.filter(ApiRequestLog.duration_ms >= min_duration)
+    
+    if max_duration:
+        query = query.filter(ApiRequestLog.duration_ms <= max_duration)
+    
+    if start_date:
+        query = query.filter(ApiRequestLog.created_at >= start_date)
+    
+    if end_date:
+        query = query.filter(ApiRequestLog.created_at <= end_date)
+    
+    # Apply ordering and pagination
+    query = query.order_by(ApiRequestLog.created_at.desc())
+    total = query.count()
+    offset = (page - 1) * per_page
+    logs = query.offset(offset).limit(per_page).all()
+    
+    # Convert logs to dict format
+    log_data = []
+    for log in logs:
+        log_dict = {
+            "id": str(log.id),
+            "request_id": log.request_id,
+            "method": log.method,
+            "endpoint": log.endpoint,
+            "query_params": log.query_params,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "status_code": log.status_code,
+            "response_size_bytes": log.response_size_bytes,
+            "duration_ms": log.duration_ms,
+            "location_id": str(log.location_id) if log.location_id else None,
+            "error_message": log.error_message,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        log_data.append(log_dict)
+    
+    # Log this audit access
+    audit_service = MadagascarAuditService(db)
+    user_context = create_user_context(current_user, request)
+    audit_service.log_view_access(
+        resource_type="API_REQUEST_LOGS",
+        resource_id="all",
+        user_context=user_context,
+        screen_reference="ApiRequestLogsPage",
+        endpoint=str(request.url.path),
+        method=request.method
+    )
+    
+    return {
+        "logs": log_data,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": (total + per_page - 1) // per_page,
+        "filters_applied": {
+            "method": method,
+            "endpoint": endpoint,
+            "user_id": user_id,
+            "status_code": status_code,
+            "min_duration": min_duration,
+            "max_duration": max_duration,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None
+        }
+    }
+
+
+@router.get("/api-requests/analytics", summary="API Request Analytics")
+async def get_api_request_analytics(
+    request: Request,
+    hours: int = Query(24, ge=1, le=168, description="Analysis period in hours"),
+    current_user: User = Depends(require_permission("audit.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get API request analytics and performance metrics
+    Useful for system monitoring and capacity planning
+    """
+    from sqlalchemy import func, desc
+    
+    # Calculate time range
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=hours)
+    
+    # Base query for the time period
+    base_query = db.query(ApiRequestLog).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    )
+    
+    # Total requests
+    total_requests = base_query.count()
+    
+    # Success rate
+    successful_requests = base_query.filter(
+        ApiRequestLog.status_code < 400
+    ).count()
+    success_rate = (successful_requests / total_requests * 100) if total_requests > 0 else 0
+    
+    # Average response time
+    avg_duration = db.query(func.avg(ApiRequestLog.duration_ms)).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    ).scalar() or 0
+    
+    # Top endpoints by request count
+    top_endpoints = db.query(
+        ApiRequestLog.endpoint,
+        func.count(ApiRequestLog.id).label('request_count'),
+        func.avg(ApiRequestLog.duration_ms).label('avg_duration')
+    ).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    ).group_by(
+        ApiRequestLog.endpoint
+    ).order_by(
+        desc('request_count')
+    ).limit(10).all()
+    
+    # Status code distribution
+    status_distribution = db.query(
+        ApiRequestLog.status_code,
+        func.count(ApiRequestLog.id).label('count')
+    ).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    ).group_by(
+        ApiRequestLog.status_code
+    ).order_by(
+        desc('count')
+    ).all()
+    
+    # Slowest endpoints
+    slowest_endpoints = db.query(
+        ApiRequestLog.endpoint,
+        func.avg(ApiRequestLog.duration_ms).label('avg_duration'),
+        func.max(ApiRequestLog.duration_ms).label('max_duration'),
+        func.count(ApiRequestLog.id).label('request_count')
+    ).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    ).group_by(
+        ApiRequestLog.endpoint
+    ).order_by(
+        desc('avg_duration')
+    ).limit(10).all()
+    
+    # Most active users
+    active_users = db.query(
+        ApiRequestLog.user_id,
+        func.count(ApiRequestLog.id).label('request_count')
+    ).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time,
+        ApiRequestLog.user_id.isnot(None)
+    ).group_by(
+        ApiRequestLog.user_id
+    ).order_by(
+        desc('request_count')
+    ).limit(10).all()
+    
+    # Error rate by endpoint
+    error_endpoints = db.query(
+        ApiRequestLog.endpoint,
+        func.count(ApiRequestLog.id).label('total_requests'),
+        func.count(
+            func.case([(ApiRequestLog.status_code >= 400, 1)])
+        ).label('error_requests')
+    ).filter(
+        ApiRequestLog.created_at >= start_time,
+        ApiRequestLog.created_at <= end_time
+    ).group_by(
+        ApiRequestLog.endpoint
+    ).having(
+        func.count(ApiRequestLog.id) > 5  # Only endpoints with significant traffic
+    ).all()
+    
+    # Calculate error rates
+    error_analysis = []
+    for endpoint_data in error_endpoints:
+        endpoint, total, errors = endpoint_data
+        error_rate = (errors / total * 100) if total > 0 else 0
+        if error_rate > 0:
+            error_analysis.append({
+                "endpoint": endpoint,
+                "total_requests": total,
+                "error_requests": errors,
+                "error_rate_percent": round(error_rate, 2)
+            })
+    
+    # Sort by error rate
+    error_analysis.sort(key=lambda x: x["error_rate_percent"], reverse=True)
+    
+    # Log this analytics access
+    audit_service = MadagascarAuditService(db)
+    user_context = create_user_context(current_user, request)
+    audit_service.log_view_access(
+        resource_type="API_REQUEST_ANALYTICS",
+        resource_id=f"last_{hours}_hours",
+        user_context=user_context,
+        screen_reference="ApiAnalyticsPage",
+        endpoint=str(request.url.path),
+        method=request.method
+    )
+    
+    return {
+        "period": {
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "hours": hours
+        },
+        "overview": {
+            "total_requests": total_requests,
+            "successful_requests": successful_requests,
+            "success_rate_percent": round(success_rate, 2),
+            "average_response_time_ms": round(avg_duration, 2)
+        },
+        "top_endpoints": [
+            {
+                "endpoint": ep.endpoint,
+                "request_count": ep.request_count,
+                "avg_duration_ms": round(ep.avg_duration, 2)
+            }
+            for ep in top_endpoints
+        ],
+        "status_code_distribution": [
+            {
+                "status_code": status.status_code,
+                "count": status.count
+            }
+            for status in status_distribution
+        ],
+        "slowest_endpoints": [
+            {
+                "endpoint": ep.endpoint,
+                "avg_duration_ms": round(ep.avg_duration, 2),
+                "max_duration_ms": ep.max_duration,
+                "request_count": ep.request_count
+            }
+            for ep in slowest_endpoints
+        ],
+        "most_active_users": [
+            {
+                "user_id": str(user.user_id),
+                "request_count": user.request_count
+            }
+            for user in active_users
+        ],
+        "error_analysis": error_analysis[:10]  # Top 10 endpoints with highest error rates
+    } 

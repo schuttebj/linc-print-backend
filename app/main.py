@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import create_tables, get_db
+from app.core.audit_middleware import setup_audit_middleware
 from app.api.v1.api import api_router
 
 # Configure logging
@@ -92,6 +93,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Add audit middleware for API request logging
+setup_audit_middleware(app)
 
 
 
@@ -213,6 +217,7 @@ Available Admin Endpoints:
 - /admin/reset-database: Complete database reset with data initialization
 - /admin/fix-license-enum: Fix LicenseCategory enum values
 - /admin/fix-fee-structures-schema: Fix fee_structures table schema
+- /admin/init-audit-middleware-table: Create api_request_logs table for audit middleware
 - /admin/init-users: Initialize default users and roles
 - /admin/init-locations: Initialize Madagascar locations
 - /admin/init-location-users: Initialize location-based users
@@ -311,6 +316,104 @@ async def initialize_tables():
             content={
                 "status": "error",
                 "message": f"Failed to create tables: {str(e)}",
+                "timestamp": time.time()
+            }
+        )
+
+
+@app.post("/admin/init-audit-middleware-table", tags=["Admin"]) 
+async def init_audit_middleware_table():
+    """
+    Initialize API Request Logs Table
+    
+    Creates the api_request_logs table with indexes for the audit middleware system.
+    This table stores comprehensive API request monitoring data including:
+    - Request details (method, endpoint, query parameters)
+    - User context (user ID, IP address, user agent)
+    - Performance metrics (response time, response size)
+    - Status tracking (HTTP status codes, error messages)
+    
+    Only needed if the table doesn't exist or needs to be recreated.
+    The reset-database endpoint automatically includes this table creation.
+    """
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text
+        
+        logger.info("Creating api_request_logs table for audit middleware")
+        
+        with engine.connect() as conn:
+            # Create the api_request_logs table
+            create_table_sql = """
+            CREATE TABLE IF NOT EXISTS api_request_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                deleted_at TIMESTAMPTZ,
+                deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                
+                -- Request identification
+                request_id VARCHAR(36) NOT NULL UNIQUE,
+                
+                -- Request details
+                method VARCHAR(10) NOT NULL,
+                endpoint VARCHAR(500) NOT NULL,
+                query_params TEXT,
+                
+                -- User context
+                user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                
+                -- Response details
+                status_code INTEGER NOT NULL,
+                response_size_bytes INTEGER,
+                
+                -- Performance metrics
+                duration_ms INTEGER NOT NULL,
+                
+                -- Location context
+                location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+                
+                -- Error tracking
+                error_message TEXT
+            );
+            """
+            
+            conn.execute(text(create_table_sql))
+            
+            # Create indexes for better query performance
+            index_sql = [
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_created_at ON api_request_logs(created_at DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_user_id ON api_request_logs(user_id);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_endpoint ON api_request_logs(endpoint);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_status_code ON api_request_logs(status_code);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_duration ON api_request_logs(duration_ms);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_method ON api_request_logs(method);"
+            ]
+            
+            for index in index_sql:
+                conn.execute(text(index))
+                
+            conn.commit()
+            logger.info("Successfully created api_request_logs table and indexes")
+        
+        return {
+            "status": "success",
+            "message": "api_request_logs table created successfully with performance indexes",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create api_request_logs table: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to create api_request_logs table: {str(e)}",
                 "timestamp": time.time()
             }
         )
@@ -1520,11 +1623,28 @@ async def cleanup_biometric_files():
 @app.post("/admin/reset-database", tags=["Admin"])
 async def reset_database():
     """
-    DEVELOPMENT ONLY: Complete database reset
-    Drops all tables, recreates them, and initializes with base data
+    Complete Database Reset and Initialization
+    
+    ⚠️ DEVELOPMENT ONLY: This will permanently delete ALL data!
+    
+    Performs a complete database reset including:
+    1. Drop all existing tables
+    2. Recreate tables with latest schema
+    3. Create API request logs table (audit middleware)
+    4. Clean up orphaned biometric files
+    5. Initialize base users, roles, and permissions
+    6. Initialize Madagascar locations
+    7. Create location-based users
+    8. Initialize fee structures
+    
+    After completion, you can use these credentials:
+    - Admin: admin / Admin123
+    - Test users: clerk1, supervisor1, printer1, examiner1 (see response for passwords)
+    
+    ⚠️ Warning: All previous data will be permanently deleted!
     """
     try:
-        from app.core.database import drop_tables, create_tables
+        from app.core.database import drop_tables, create_tables, engine
         from app.models.enums import LicenseCategory
         
         logger.warning("Resetting entire database - all data will be lost")
@@ -1532,6 +1652,75 @@ async def reset_database():
         # Step 1: Drop and recreate all tables
         drop_tables()
         create_tables()
+        
+        # Step 1.2: Create API request logs table (audit middleware)
+        logger.info("Creating API request logs table...")
+        from sqlalchemy import text
+        audit_table_result = None
+        try:
+            with engine.connect() as conn:
+                # Create the api_request_logs table
+                create_table_sql = """
+                CREATE TABLE IF NOT EXISTS api_request_logs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    deleted_at TIMESTAMPTZ,
+                    deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                    
+                    -- Request identification
+                    request_id VARCHAR(36) NOT NULL UNIQUE,
+                    
+                    -- Request details
+                    method VARCHAR(10) NOT NULL,
+                    endpoint VARCHAR(500) NOT NULL,
+                    query_params TEXT,
+                    
+                    -- User context
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    ip_address VARCHAR(45),
+                    user_agent TEXT,
+                    
+                    -- Response details
+                    status_code INTEGER NOT NULL,
+                    response_size_bytes INTEGER,
+                    
+                    -- Performance metrics
+                    duration_ms INTEGER NOT NULL,
+                    
+                    -- Location context
+                    location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+                    
+                    -- Error tracking
+                    error_message TEXT
+                );
+                """
+                
+                conn.execute(text(create_table_sql))
+                
+                # Create indexes for better query performance
+                index_sql = [
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_created_at ON api_request_logs(created_at DESC);",
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_user_id ON api_request_logs(user_id);",
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_endpoint ON api_request_logs(endpoint);",
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_status_code ON api_request_logs(status_code);",
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_duration ON api_request_logs(duration_ms);",
+                    "CREATE INDEX IF NOT EXISTS idx_api_request_logs_method ON api_request_logs(method);"
+                ]
+                
+                for index in index_sql:
+                    conn.execute(text(index))
+                    
+                conn.commit()
+                audit_table_result = {"status": "success", "message": "API request logs table created successfully"}
+                logger.info("API request logs table and indexes created successfully")
+                
+        except Exception as audit_error:
+            logger.error(f"Failed to create API request logs table: {audit_error}")
+            audit_table_result = {"status": "error", "message": str(audit_error)}
         
         # Step 1.5: Clean up orphaned biometric files
         logger.info("Cleaning up biometric files...")
@@ -1581,6 +1770,7 @@ async def reset_database():
             "warning": "All previous data has been permanently deleted",
             "steps_completed": [
                 "Tables dropped and recreated",
+                "API request logs table created with indexes",
                 "Biometric files cleaned up",
                 "Base users and roles initialized (including EXAMINER role)",
                 "Madagascar locations initialized",
@@ -1589,6 +1779,7 @@ async def reset_database():
             ],
             "summary": {
                 "enum_values_created": len(enum_values),
+                "api_request_logs_table": audit_table_result.get("status", "unknown") if audit_table_result else "not_attempted",
                 "biometric_files_removed": files_cleaned.get("files_removed", 0),
                 "biometric_folders_removed": files_cleaned.get("folders_removed", 0),
                 "permissions_created": users_result.get("permissions_created", 0) if isinstance(users_result, dict) else 0,
