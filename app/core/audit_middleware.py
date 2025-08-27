@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.user import ApiRequestLog
-from app.api.v1.endpoints.auth import get_current_user_from_token
+from app.core.security import verify_token
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +95,10 @@ class AuditMiddleware(BaseHTTPMiddleware):
     async def _get_user_id_from_token(self, token: str) -> Optional[str]:
         """Extract user ID from JWT token"""
         try:
-            from app.core.security import decode_access_token
-            payload = decode_access_token(token)
-            return payload.get("sub")  # 'sub' contains user_id in JWT
+            payload = verify_token(token)
+            if payload:
+                return payload.get("sub")  # 'sub' contains user_id in JWT
+            return None
         except Exception:
             return None
     

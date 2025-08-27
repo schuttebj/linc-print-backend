@@ -64,7 +64,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Madagascar License System...")
     
-    # Note: Table creation disabled during startup to prevent schema conflicts
+    # Check critical tables and create if needed
+    await check_and_create_critical_tables()
+    
+    # Note: Main table creation disabled during startup to prevent schema conflicts
     # Use /admin/reset-database or /admin/init-tables endpoints for database management
     logger.info("Database table auto-creation disabled - use admin endpoints for database management")
     
@@ -72,6 +75,130 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Madagascar License System...")
+
+
+async def check_and_create_critical_tables():
+    """
+    Check if critical tables exist and create them if needed
+    Safe to run on deployment - only creates missing tables
+    """
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text, inspect
+        
+        # Check what tables exist
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        # Define critical tables that must exist for the system to function
+        critical_tables = [
+            'users',
+            'roles', 
+            'permissions',
+            'user_roles',
+            'locations',
+            'user_audit_logs',
+            'api_request_logs'
+        ]
+        
+        missing_tables = [table for table in critical_tables if table not in existing_tables]
+        
+        if not missing_tables:
+            logger.info("✅ All critical tables exist")
+            return
+            
+        logger.info(f"🔧 Missing critical tables: {missing_tables}")
+        
+        # If core tables are missing, suggest using full initialization
+        core_tables = ['users', 'roles', 'permissions', 'locations']
+        missing_core = [table for table in core_tables if table in missing_tables]
+        
+        if missing_core:
+            logger.warning(f"⚠️ Core system tables missing: {missing_core}")
+            logger.warning("⚠️ This indicates a fresh database or corruption")
+            logger.warning("⚠️ Use /admin/reset-database or /admin/init-tables for full initialization")
+            logger.warning("⚠️ Continuing startup - some features may not work until tables are created")
+            return
+            
+        # Only create audit tables if core system exists
+        if 'api_request_logs' in missing_tables:
+            await create_api_request_logs_table()
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to check critical tables: {e}")
+        logger.info("⚠️ Continuing startup - use manual endpoints if needed")
+
+
+async def create_api_request_logs_table():
+    """Create the API request logs table with indexes"""
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text
+        
+        logger.info("🔧 Creating API request logs table...")
+        
+        with engine.connect() as conn:
+            # Create the api_request_logs table
+            create_table_sql = """
+            CREATE TABLE IF NOT EXISTS api_request_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                deleted_at TIMESTAMPTZ,
+                deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+                
+                -- Request identification
+                request_id VARCHAR(36) NOT NULL UNIQUE,
+                
+                -- Request details
+                method VARCHAR(10) NOT NULL,
+                endpoint VARCHAR(500) NOT NULL,
+                query_params TEXT,
+                
+                -- User context
+                user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                
+                -- Response details
+                status_code INTEGER NOT NULL,
+                response_size_bytes INTEGER,
+                
+                -- Performance metrics
+                duration_ms INTEGER NOT NULL,
+                
+                -- Location context
+                location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+                
+                -- Error tracking
+                error_message TEXT
+            );
+            """
+            
+            conn.execute(text(create_table_sql))
+            
+            # Create indexes for better query performance
+            index_sql = [
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_created_at ON api_request_logs(created_at DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_user_id ON api_request_logs(user_id);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_endpoint ON api_request_logs(endpoint);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_status_code ON api_request_logs(status_code);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_duration ON api_request_logs(duration_ms);",
+                "CREATE INDEX IF NOT EXISTS idx_api_request_logs_method ON api_request_logs(method);"
+            ]
+            
+            for index in index_sql:
+                conn.execute(text(index))
+                
+            conn.commit()
+            logger.info("✅ API request logs table created successfully with indexes")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to create API request logs table: {e}")
+        logger.info("⚠️ Use /admin/init-audit-middleware-table to create manually")
 
 
 # Create FastAPI application
@@ -324,7 +451,7 @@ async def initialize_tables():
 @app.post("/admin/init-audit-middleware-table", tags=["Admin"]) 
 async def init_audit_middleware_table():
     """
-    Initialize API Request Logs Table
+    Manual: Initialize API Request Logs Table
     
     Creates the api_request_logs table with indexes for the audit middleware system.
     This table stores comprehensive API request monitoring data including:
@@ -333,8 +460,15 @@ async def init_audit_middleware_table():
     - Performance metrics (response time, response size)
     - Status tracking (HTTP status codes, error messages)
     
-    Only needed if the table doesn't exist or needs to be recreated.
-    The reset-database endpoint automatically includes this table creation.
+    📋 **When to use this endpoint:**
+    - If the automatic startup check failed
+    - If you want to manually control table creation
+    - If you need to recreate the table after corruption
+    
+    ✅ **Automatic alternative:** The system checks for this table on startup
+    and creates it automatically if missing (recommended for most users).
+    
+    🔄 **Full reset alternative:** /admin/reset-database includes this table creation.
     """
     try:
         from app.core.database import engine
