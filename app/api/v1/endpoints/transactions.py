@@ -12,6 +12,7 @@ from datetime import datetime, date
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.audit_decorators import audit_create, audit_update, audit_delete, get_transaction_by_id
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
@@ -133,6 +134,7 @@ def search_person_for_payment(
 
 
 @router.post("/pos/process-payment", response_model=PaymentResponse)
+@audit_create(resource_type="TRANSACTION", screen_reference="PaymentProcessing")
 def process_payment(
     payment_request: PaymentRequest,
     db: Session = Depends(get_db),
@@ -304,6 +306,11 @@ async def get_fee_structures(
     return crud_fee_structure.get_all(db)
 
 @router.put("/fee-structures/{fee_structure_id}", response_model=FeeStructure)
+@audit_update(
+    resource_type="FEE_STRUCTURE", 
+    screen_reference="FeeStructureForm",
+    get_old_data=lambda db, fee_id: db.query(crud_fee_structure.model).filter(crud_fee_structure.model.id == fee_id).first()
+)
 async def update_fee_structure(
     fee_structure_id: uuid.UUID,
     fee_update: FeeStructureUpdate,
@@ -503,6 +510,7 @@ async def get_fees_by_application_type(
 
 # Card Order Management
 @router.post("/card-orders", response_model=CardOrder)
+@audit_create(resource_type="CARD_ORDER", screen_reference="CardOrderForm")
 def create_card_order(
     card_order_in: CardOrderCreate,
     db: Session = Depends(get_db),

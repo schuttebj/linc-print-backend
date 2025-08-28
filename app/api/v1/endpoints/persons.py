@@ -12,6 +12,7 @@ from uuid import UUID
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.users import require_permission
+from app.core.audit_decorators import audit_create, audit_update, audit_delete, get_person_by_id
 from app.crud import crud_person
 from app.models.user import User
 from app.schemas.person import (
@@ -45,6 +46,7 @@ def require_permission(permission: str):
 
 # Person CRUD endpoints
 @router.post("/", response_model=PersonResponse, status_code=status.HTTP_201_CREATED)
+@audit_create(resource_type="PERSON", screen_reference="PersonForm")
 def create_person(
     *,
     db: Session = Depends(get_db),
@@ -186,6 +188,11 @@ def get_person(
 
 
 @router.put("/{person_id}", response_model=PersonResponse)
+@audit_update(
+    resource_type="PERSON", 
+    screen_reference="PersonForm",
+    get_old_data=get_person_by_id
+)
 def update_person(
     *,
     db: Session = Depends(get_db),
@@ -215,6 +222,11 @@ def update_person(
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
+@audit_delete(
+    resource_type="PERSON", 
+    screen_reference="PersonForm",
+    get_data_before_delete=get_person_by_id
+)
 def delete_person(
     *,
     db: Session = Depends(get_db),

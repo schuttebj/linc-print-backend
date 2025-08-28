@@ -43,6 +43,7 @@ from app.crud.crud_application import (
 from app.crud.crud_license import crud_license
 from app.services.image_service import ImageProcessingService
 from app.core.config import get_settings
+from app.core.audit_decorators import audit_create, audit_update, audit_delete, get_application_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -220,6 +221,7 @@ def get_in_progress_applications(
 
 
 @router.post("/", response_model=ApplicationSchema)
+@audit_create(resource_type="APPLICATION", screen_reference="ApplicationForm")
 def create_application(
     *,
     db: Session = Depends(get_db),
@@ -548,6 +550,11 @@ def get_application(
 
 
 @router.put("/{application_id}", response_model=ApplicationSchema)
+@audit_update(
+    resource_type="APPLICATION", 
+    screen_reference="ApplicationForm",
+    get_old_data=get_application_by_id
+)
 def update_application(
     *,
     db: Session = Depends(get_db),
@@ -595,6 +602,11 @@ def update_application(
 
 
 @router.post("/{application_id}/status", response_model=ApplicationSchema)
+@audit_update(
+    resource_type="APPLICATION", 
+    screen_reference="ApplicationStatusForm",
+    get_old_data=get_application_by_id
+)
 def update_application_status(
     *,
     db: Session = Depends(get_db),
