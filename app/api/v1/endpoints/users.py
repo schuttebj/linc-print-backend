@@ -13,6 +13,7 @@ import math
 
 from app.core.database import get_db
 from app.core.security import get_password_hash
+from app.core.audit_decorators import audit_create, audit_update, audit_delete, get_user_by_id
 from app.models.user import User, Role, UserStatus, MadagascarIDType, UserAuditLog
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse, UserListResponse, UserSummary,
@@ -210,6 +211,7 @@ async def get_user_permission_overrides(
 
 
 @router.post("/", response_model=UserResponse, summary="Create User")
+@audit_create(resource_type="USER", screen_reference="UserManagement")
 async def create_user(
     user_data: UserCreate,
     location_id: Optional[uuid.UUID] = Query(None, description="Location ID for location-based users"),
@@ -554,6 +556,11 @@ async def create_national_user(
 
 
 @router.put("/{user_id}", response_model=UserResponse, summary="Update User")
+@audit_update(
+    resource_type="USER", 
+    screen_reference="UserManagement",
+    get_old_data=get_user_by_id
+)
 async def update_user(
     user_id: uuid.UUID,
     user_data: UserUpdate,
@@ -952,6 +959,11 @@ async def remove_user_from_location(
 
 
 @router.post("/{user_id}/assign-roles", response_model=UserResponse, summary="Assign Roles to User")
+@audit_update(
+    resource_type="USER", 
+    screen_reference="RoleAssignment",
+    get_old_data=get_user_by_id
+)
 async def assign_roles_to_user(
     user_id: uuid.UUID,
     role_ids: List[uuid.UUID],

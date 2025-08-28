@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.audit_decorators import audit_create, audit_update, audit_delete
 from app.crud.crud_license import crud_license
 from app.crud.crud_application import crud_application
 from app.models.user import User
@@ -60,6 +61,7 @@ router = APIRouter()
 
 # License Creation Endpoints
 @router.post("/from-application", response_model=LicenseResponse, summary="Create License from Application")
+@audit_create(resource_type="LICENSE", screen_reference="LicenseCreation")
 async def create_license_from_application(
     license_in: LicenseCreateFromApplication,
     db: Session = Depends(get_db),
@@ -91,6 +93,7 @@ async def create_license_from_application(
 
 
 @router.post("/from-authorized-application", response_model=LicenseResponse, summary="Create License from Authorized Application with Restrictions")
+@audit_create(resource_type="LICENSE", screen_reference="LicenseAuthorization")
 async def create_license_from_authorized_application(
     application_id: UUID = Path(..., description="Application ID"),
     authorization_data: AuthorizationData = ...,
@@ -199,6 +202,7 @@ async def create_license_from_authorized_application(
 
 
 @router.post("/manual", response_model=LicenseResponse, summary="Create License Manually")
+@audit_create(resource_type="LICENSE", screen_reference="ManualLicenseCreation")
 async def create_license_manual(
     license_in: LicenseCreate,
     db: Session = Depends(get_db),
@@ -422,6 +426,11 @@ async def search_licenses(
 
 # License Management Endpoints
 @router.put("/{license_id}/status", response_model=LicenseResponse, summary="Update License Status")
+@audit_update(
+    resource_type="LICENSE", 
+    screen_reference="LicenseStatusUpdate",
+    get_old_data=lambda db, license_id: db.query(crud_license.model).filter(crud_license.model.id == license_id).first()
+)
 async def update_license_status(
     license_id: UUID = Path(..., description="License ID"),
     status_update: LicenseStatusUpdate = ...,
@@ -444,6 +453,11 @@ async def update_license_status(
 
 
 @router.put("/{license_id}/restrictions", response_model=LicenseResponse, summary="Update License Restrictions")
+@audit_update(
+    resource_type="LICENSE", 
+    screen_reference="LicenseRestrictions",
+    get_old_data=lambda db, license_id: db.query(crud_license.model).filter(crud_license.model.id == license_id).first()
+)
 async def update_license_restrictions(
     license_id: UUID = Path(..., description="License ID"),
     restrictions_update: LicenseRestrictionsUpdate = ...,
@@ -464,6 +478,11 @@ async def update_license_restrictions(
 
 
 @router.put("/{license_id}/professional-permit", response_model=LicenseResponse, summary="Update Professional Permit")
+@audit_update(
+    resource_type="LICENSE", 
+    screen_reference="ProfessionalPermit",
+    get_old_data=lambda db, license_id: db.query(crud_license.model).filter(crud_license.model.id == license_id).first()
+)
 async def update_professional_permit(
     license_id: UUID = Path(..., description="License ID"),
     permit_update: LicenseProfessionalPermitUpdate = ...,

@@ -24,6 +24,7 @@ from datetime import datetime
 from app.core.database import get_db
 from app.services.fingerprint_image_service import fingerprint_image_service
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.audit_decorators import audit_create, audit_update, audit_delete
 from app.models.user import User
 from app.models.person import Person
 from app.models.application import Application
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/fingerprint/enroll", response_model=FingerprintEnrollResponse)
+@audit_create(resource_type="BIOMETRIC_TEMPLATE", screen_reference="BiometricEnrollment")
 async def enroll_fingerprint(
     request: FingerprintEnrollRequest,
     db: Session = Depends(get_db),
@@ -192,6 +194,7 @@ async def enroll_fingerprint(
 
 
 @router.post("/fingerprint/verify", response_model=FingerprintVerifyResponse)
+@audit_create(resource_type="BIOMETRIC_VERIFICATION", screen_reference="BiometricVerification")
 async def verify_fingerprint(
     request: FingerprintVerifyRequest,
     background_tasks: BackgroundTasks,
@@ -290,6 +293,7 @@ async def verify_fingerprint(
 
 
 @router.post("/fingerprint/identify", response_model=FingerprintIdentifyResponse)
+@audit_create(resource_type="BIOMETRIC_IDENTIFICATION", screen_reference="BiometricIdentification")
 async def identify_fingerprint(
     request: FingerprintIdentifyRequest,
     background_tasks: BackgroundTasks,
@@ -716,6 +720,13 @@ async def reset_biometric_tables(
 
 
 @router.delete("/fingerprint/templates/{person_id}/{finger_position}")
+@audit_delete(
+    resource_type="BIOMETRIC_TEMPLATE", 
+    screen_reference="BiometricManagement",
+    get_data_before_delete=lambda db, person_id: db.query(FingerprintTemplate).filter(
+        FingerprintTemplate.person_id == person_id
+    ).first()
+)
 async def delete_fingerprint_template(
     person_id: str,
     finger_position: int,

@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.audit_decorators import audit_create, audit_update, audit_delete
 from app.crud.crud_printing import crud_print_job, crud_print_queue
 from app.crud.crud_application import crud_application
 from app.crud.crud_license import crud_license
@@ -398,6 +399,7 @@ async def search_person_for_card_ordering(
 
 # Print Job Creation
 @router.post("/jobs", response_model=PrintJobResponse, summary="Create Print Job")
+@audit_create(resource_type="PRINT_JOB", screen_reference="PrintJobCreation")
 async def create_print_job(
     request: PrintJobCreateRequest,
     db: Session = Depends(get_db),
@@ -1007,6 +1009,11 @@ async def assign_job_to_printer(
 
 
 @router.post("/jobs/{job_id}/start", response_model=PrintJobResponse, summary="Start Printing")
+@audit_update(
+    resource_type="PRINT_JOB", 
+    screen_reference="PrintingWorkflow",
+    get_old_data=lambda db, job_id: db.query(crud_print_job.model).filter(crud_print_job.model.id == job_id).first()
+)
 async def start_printing_job(
     job_id: UUID = Path(..., description="Print Job ID"),
     request: PrintJobStartRequest = ...,
@@ -1046,6 +1053,11 @@ async def start_printing_job(
 
 
 @router.post("/jobs/{job_id}/complete", response_model=PrintJobResponse, summary="Complete Printing")
+@audit_update(
+    resource_type="PRINT_JOB", 
+    screen_reference="PrintingWorkflow",
+    get_old_data=lambda db, job_id: db.query(crud_print_job.model).filter(crud_print_job.model.id == job_id).first()
+)
 async def complete_printing_job(
     job_id: UUID = Path(..., description="Print Job ID"),
     request: PrintJobCompleteRequest = ...,
@@ -1090,6 +1102,11 @@ async def start_quality_check(
 
 
 @router.post("/jobs/{job_id}/quality-check", response_model=PrintJobResponse, summary="Quality Check")
+@audit_update(
+    resource_type="PRINT_JOB", 
+    screen_reference="QualityControl",
+    get_old_data=lambda db, job_id: db.query(crud_print_job.model).filter(crud_print_job.model.id == job_id).first()
+)
 async def quality_check_job(
     job_id: UUID = Path(..., description="Print Job ID"),
     request: QualityCheckRequest = ...,

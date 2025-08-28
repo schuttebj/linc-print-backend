@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import math
 
 from app.core.database import get_db
+from app.core.audit_decorators import audit_create, audit_update, audit_delete
 from app.models.user import Role, Permission, User
 from app.schemas.user import (
     RoleCreate, RoleUpdate, RoleResponse, RoleDetailResponse,
@@ -357,6 +358,7 @@ async def get_role(
 
 
 @router.post("/", response_model=RoleResponse, summary="Create Role")
+@audit_create(resource_type="ROLE", screen_reference="RoleManagement")
 async def create_role(
     role_data: RoleCreate,
     request: Request,

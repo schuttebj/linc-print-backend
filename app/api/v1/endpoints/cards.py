@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.audit_decorators import audit_create, audit_update, audit_delete
 from app.crud.crud_card import crud_card, crud_card_production_batch
 from app.models.user import User
 from app.schemas.card import (
@@ -45,6 +46,7 @@ def require_permission(permission: str):
 
 # Card Creation Endpoints
 @router.post("/", response_model=CardResponse, summary="Create New Card")
+@audit_create(resource_type="CARD", screen_reference="CardManagement")
 async def create_card(
     card_in: CardCreate,
     db: Session = Depends(get_db),
@@ -378,6 +380,11 @@ async def update_card(
 
 
 @router.put("/{card_id}/status", response_model=CardResponse, summary="Update Card Status")
+@audit_update(
+    resource_type="CARD", 
+    screen_reference="CardStatusUpdate",
+    get_old_data=lambda db, card_id: db.query(crud_card.model).filter(crud_card.model.id == card_id).first()
+)
 async def update_card_status(
     card_id: UUID = Path(..., description="Card ID"),
     status_update: CardStatusUpdate = ...,
@@ -427,6 +434,11 @@ async def order_card_for_production(
 
 
 @router.post("/{card_id}/collect", response_model=CardResponse, summary="Process Card Collection")
+@audit_update(
+    resource_type="CARD", 
+    screen_reference="CardCollection",
+    get_old_data=lambda db, card_id: db.query(crud_card.model).filter(crud_card.model.id == card_id).first()
+)
 async def collect_card(
     card_id: UUID = Path(..., description="Card ID"),
     collection_data: Dict[str, Any] = ...,
