@@ -34,7 +34,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
             "/ping",
             "/docs",
             "/openapi.json",
-            "/redoc"
+            "/redoc",
+            "/admin/inspect-database",
+            "/admin/init-audit-middleware-table",
+            "/api/v1/audit/api-requests",  # Don't log audit log queries
+            "/api/v1/lookups/",            # Skip frequent lookup calls
+            "/api/v1/health",
+            "/api/v1/ping"
         ]
     
     async def dispatch(self, request: Request, call_next):
@@ -75,8 +81,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
             # Calculate duration
             duration_ms = int((time.time() - start_time) * 1000)
             
-            # Log the request (async to avoid blocking)
-            await self._log_request(
+            # Log the request (non-blocking background task)
+            import asyncio
+            asyncio.create_task(self._log_request(
                 request_id=request_id,
                 request=request,
                 status_code=status_code,
@@ -84,7 +91,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 user_id=user_id,
                 error_message=error_message,
                 response_size=self._get_response_size(response) if response else None
-            )
+            ))
         
         return response
     

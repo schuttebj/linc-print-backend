@@ -41,6 +41,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
 import logging
+import os
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -221,8 +222,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add audit middleware for API request logging
-setup_audit_middleware(app)
+# Add audit middleware for API request logging (can be disabled)
+if not os.getenv("DISABLE_AUDIT_MIDDLEWARE", "").lower() in ["true", "1", "yes"]:
+    setup_audit_middleware(app)
+    logger.info("✅ Audit middleware enabled")
+else:
+    logger.info("⚠️ Audit middleware disabled via DISABLE_AUDIT_MIDDLEWARE environment variable")
 
 
 
@@ -1632,14 +1637,14 @@ async def initialize_fee_structures():
 
 @app.post("/admin/fix-fee-structures-schema", tags=["Admin"])
 async def fix_fee_structures_schema():
-    """Fix the fee_structures table schema by adding the missing fee_type column"""
+    """Fix the fee_structures table schema by cleaning duplicates and adding constraints"""
     try:
         from app.core.database import engine
         from sqlalchemy import text
         from app.models.transaction import FeeType
         
         with engine.connect() as conn:
-            # First, check if fee_type column exists
+            # Check current state
             check_column = conn.execute(text("""
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -1647,50 +1652,85 @@ async def fix_fee_structures_schema():
                 AND column_name = 'fee_type'
             """)).fetchone()
             
-            if check_column:
-                return {
-                    "status": "success",
-                    "message": "fee_type column already exists",
-                    "action": "no_change_needed"
-                }
+            check_constraint = conn.execute(text("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'fee_structures' 
+                AND constraint_name = 'fee_structures_fee_type_unique'
+            """)).fetchone()
             
-            # Add the fee_type column
-            print("🔧 Adding fee_type column to fee_structures table...")
-            conn.execute(text("""
-                ALTER TABLE fee_structures 
-                ADD COLUMN fee_type feetype NOT NULL DEFAULT 'APPLICATION_PROCESSING'
-            """))
+            step_results = []
             
-            # Remove the default after adding
-            conn.execute(text("""
-                ALTER TABLE fee_structures 
-                ALTER COLUMN fee_type DROP DEFAULT
-            """))
+            # Step 1: Add column if missing
+            if not check_column:
+                step_results.append("🔧 Adding fee_type column...")
+                conn.execute(text("""
+                    ALTER TABLE fee_structures 
+                    ADD COLUMN fee_type feetype NOT NULL DEFAULT 'APPLICATION_PROCESSING'
+                """))
+                conn.execute(text("""
+                    ALTER TABLE fee_structures 
+                    ALTER COLUMN fee_type DROP DEFAULT
+                """))
+                step_results.append("✅ fee_type column added")
+            else:
+                step_results.append("✅ fee_type column already exists")
             
-            # Add unique constraint
-            conn.execute(text("""
-                ALTER TABLE fee_structures 
-                ADD CONSTRAINT fee_structures_fee_type_unique UNIQUE (fee_type)
-            """))
+            # Step 2: Check for and clean duplicates
+            duplicates = conn.execute(text("""
+                SELECT fee_type, COUNT(*) as count
+                FROM fee_structures 
+                GROUP BY fee_type 
+                HAVING COUNT(*) > 1
+            """)).fetchall()
+            
+            if duplicates:
+                step_results.append(f"🔧 Found {len(duplicates)} duplicate fee_type groups")
+                
+                for fee_type, count in duplicates:
+                    step_results.append(f"🧹 Cleaning {count} duplicates for fee_type: {fee_type}")
+                    
+                    # Keep the oldest record, delete the rest
+                    conn.execute(text("""
+                        DELETE FROM fee_structures 
+                        WHERE fee_type = :fee_type 
+                        AND id NOT IN (
+                            SELECT id FROM fee_structures 
+                            WHERE fee_type = :fee_type 
+                            ORDER BY created_at ASC 
+                            LIMIT 1
+                        )
+                    """), {"fee_type": fee_type})
+                
+                step_results.append("✅ Duplicates cleaned")
+            else:
+                step_results.append("✅ No duplicates found")
+            
+            # Step 3: Add unique constraint if missing
+            if not check_constraint:
+                step_results.append("🔧 Adding unique constraint...")
+                conn.execute(text("""
+                    ALTER TABLE fee_structures 
+                    ADD CONSTRAINT fee_structures_fee_type_unique UNIQUE (fee_type)
+                """))
+                step_results.append("✅ Unique constraint added")
+            else:
+                step_results.append("✅ Unique constraint already exists")
             
             conn.commit()
             
-            # Verify the column was added
-            verify_column = conn.execute(text("""
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'fee_structures' 
-                AND column_name = 'fee_type'
-            """)).fetchone()
+            # Verify final state
+            final_count = conn.execute(text("SELECT COUNT(*) FROM fee_structures")).scalar()
+            fee_types = conn.execute(text("SELECT fee_type FROM fee_structures ORDER BY fee_type")).fetchall()
             
             return {
                 "status": "success",
-                "message": "fee_type column added successfully to fee_structures table",
-                "verification": {
-                    "column_exists": verify_column is not None,
-                    "column_type": verify_column[1] if verify_column else None
-                },
-                "next_step": "Run database reset again to populate with correct data"
+                "message": "Fee structures schema fixed successfully",
+                "steps_completed": step_results,
+                "final_state": {
+                    "total_records": final_count,
+                    "fee_types": [row[0] for row in fee_types]
+                }
             }
             
     except Exception as e:
