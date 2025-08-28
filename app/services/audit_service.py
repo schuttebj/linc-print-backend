@@ -141,14 +141,30 @@ class MadagascarAuditService:
         """
         changed_fields = self._identify_changed_fields(old_data, new_data)
         
+        # Only store values for fields that actually changed
+        filtered_old_values = {}
+        filtered_new_values = {}
+        
+        for field in changed_fields:
+            if not field.startswith("removed_"):
+                if field in old_data:
+                    filtered_old_values[field] = old_data[field]
+                if field in new_data:
+                    filtered_new_values[field] = new_data[field]
+            else:
+                # For removed fields, keep the old value
+                original_field = field.replace("removed_", "")
+                if original_field in old_data:
+                    filtered_old_values[original_field] = old_data[original_field]
+        
         audit_data = AuditLogData(
             action_type="UPDATE",
             resource_type=resource_type,
             resource_id=resource_id,
             screen_reference=screen_reference,
             validation_codes=validation_codes,
-            old_values=old_data,
-            new_values=new_data,
+            old_values=filtered_old_values,
+            new_values=filtered_new_values,
             changed_fields=changed_fields,
             endpoint=endpoint,
             method=method,

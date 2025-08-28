@@ -26,10 +26,14 @@ class AuditHelper:
         if not model:
             return {}
             
-        exclude_fields = exclude_fields or {
+        # Default fields to exclude from audit tracking
+        default_exclude = {
             'created_at', 'updated_at', 'created_by', 'updated_by', 
-            'is_active', 'deleted_at', 'deleted_by'
+            'is_active', 'deleted_at', 'deleted_by', 'id'
         }
+        
+        exclude_fields = exclude_fields or default_exclude
+        exclude_fields = exclude_fields.union(default_exclude)  # Always exclude these
         
         result = {}
         mapper = inspect(model.__class__)
@@ -159,7 +163,7 @@ def audit_update(
             request: Request = None
             resource_id = None
             
-            # Extract context and try to get old data
+            # Extract context from function arguments
             for arg in args:
                 if isinstance(arg, Session):
                     db = arg
@@ -175,17 +179,17 @@ def audit_update(
                     current_user = value
                 elif key == 'request' and isinstance(value, Request):
                     request = value
-                elif key in ['id', 'resource_id', 'obj_id']:
+                elif key in ['id', 'resource_id', 'obj_id', 'application_id', 'person_id', 'transaction_id', 'fee_structure_id']:
                     resource_id = str(value)
             
-            # Try to get old data if we have the necessary info
+            # Try to get old data BEFORE the update
             if db and resource_id and get_old_data:
                 try:
                     old_model = get_old_data(db, resource_id)
                     if old_model:
                         old_data = AuditHelper.model_to_dict(old_model, exclude_fields)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Failed to get old data for audit: {e}")
             
             # Execute the original function
             result = await func(*args, **kwargs) if hasattr(func, '__await__') else func(*args, **kwargs)
@@ -198,7 +202,7 @@ def audit_update(
                     # Get new data
                     new_data = AuditHelper.model_to_dict(result, exclude_fields)
                     res_type = resource_type or AuditHelper.get_resource_type(result)
-                    resource_id = str(result.id) if hasattr(result, 'id') else resource_id
+                    final_resource_id = str(result.id) if hasattr(result, 'id') else resource_id
                     
                     # Create user context
                     user_context = create_user_context(
@@ -206,10 +210,10 @@ def audit_update(
                         request or type('MockRequest', (), {'client': type('Client', (), {'host': 'unknown'})(), 'headers': {}})()
                     )
                     
-                    # Log the data change
+                    # Log the data change - the service will automatically identify changed fields
                     audit_service.log_data_change(
                         resource_type=res_type,
-                        resource_id=resource_id,
+                        resource_id=final_resource_id,
                         old_data=old_data,
                         new_data=new_data,
                         user_context=user_context,
