@@ -4,6 +4,7 @@ Provides reusable decorators to automatically log all CRUD operations with old/n
 """
 
 import functools
+import asyncio
 from typing import Any, Dict, Optional, Union, Type, Callable
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -86,7 +87,10 @@ def audit_create(
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             # Execute the original function
-            result = await func(*args, **kwargs) if hasattr(func, '__await__') else func(*args, **kwargs)
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
             
             try:
                 # Extract context from function arguments
@@ -192,7 +196,10 @@ def audit_update(
                     print(f"Failed to get old data for audit: {e}")
             
             # Execute the original function
-            result = await func(*args, **kwargs) if hasattr(func, '__await__') else func(*args, **kwargs)
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
             
             try:
                 # Only audit if we have the necessary context
@@ -279,7 +286,10 @@ def audit_delete(
                     pass
             
             # Execute the original function
-            result = await func(*args, **kwargs) if hasattr(func, '__await__') else func(*args, **kwargs)
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
             
             try:
                 # Only audit if we have the necessary context
@@ -322,7 +332,10 @@ def audit_read(
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             # Execute the original function
-            result = await func(*args, **kwargs) if hasattr(func, '__await__') else func(*args, **kwargs)
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
             
             # Only log if this is marked as sensitive data
             if not sensitive_only:
