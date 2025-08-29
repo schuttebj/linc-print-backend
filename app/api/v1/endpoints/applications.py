@@ -1027,15 +1027,27 @@ async def upload_application_document(
     db: Session = Depends(get_db),
     application_id: uuid.UUID,
     file: UploadFile = File(...),
-    document_type: str,
-    notes: Optional[str] = None,
+    document_type: str = Form(...),
+    document_name: Optional[str] = Form(None),
+    document_number: Optional[str] = Form(None),
+    issue_date: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    issuing_authority: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Upload document for application (medical certificate, parental consent, etc.)
+    Upload document for application (medical certificate, police clearance, parental consent, etc.)
     
     Requires: applications.update permission
     """
+    import os
+    import mimetypes
+    from pathlib import Path
+    from app.core.config import get_settings
+    from app.crud.crud_application import crud_application_document
+    from app.schemas.application import ApplicationDocumentCreate
+    
     if not current_user.has_permission("applications.update"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1056,14 +1068,243 @@ async def upload_application_document(
             detail="Not authorized to upload documents for this application"
         )
     
-    # For now, return placeholder response - implement file upload logic later
+    # Validate file
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided"
+        )
+    
+    # Check file size (10MB limit)
+    file_content = await file.read()
+    file_size = len(file_content)
+    max_size = 10 * 1024 * 1024  # 10MB
+    
+    if file_size > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large. Maximum size is {max_size / 1024 / 1024}MB"
+        )
+    
+    # Validate file type (images and PDFs only)
+    allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+    file_extension = Path(file.filename).suffix.lower()
+    
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"
+        )
+    
+    # Get MIME type
+    mime_type, _ = mimetypes.guess_type(file.filename)
+    if not mime_type:
+        # Fallback MIME types
+        mime_type_map = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.bmp': 'image/bmp',
+            '.tiff': 'image/tiff'
+        }
+        mime_type = mime_type_map.get(file_extension, 'application/octet-stream')
+    
+    try:
+        # Get storage settings
+        settings = get_settings()
+        storage_base_path = settings.get_file_storage_path()
+        
+        # Create application documents directory: {storage_base}/applications/{application_id}/documents/
+        app_documents_dir = storage_base_path / "applications" / str(application_id) / "documents"
+        app_documents_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename to prevent conflicts
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{document_type}_{timestamp}_{uuid.uuid4().hex[:8]}{file_extension}"
+        file_path = app_documents_dir / safe_filename
+        
+        # Save file to disk
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        
+        # Parse dates if provided
+        parsed_issue_date = None
+        parsed_expiry_date = None
+        
+        if issue_date:
+            try:
+                parsed_issue_date = datetime.strptime(issue_date, "%Y-%m-%d")
+            except ValueError:
+                pass  # Invalid date format, ignore
+                
+        if expiry_date:
+            try:
+                parsed_expiry_date = datetime.strptime(expiry_date, "%Y-%m-%d")
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        # Create database record
+        document_create = ApplicationDocumentCreate(
+            application_id=application_id,
+            document_type=document_type,
+            document_name=document_name or file.filename,
+            file_path=str(file_path),
+            original_filename=file.filename,
+            file_size=file_size,
+            file_format=file_extension[1:],  # Remove the dot
+            mime_type=mime_type,
+            document_number=document_number,
+            issue_date=parsed_issue_date,
+            expiry_date=parsed_expiry_date,
+            issuing_authority=issuing_authority,
+            uploaded_by=current_user.id
+        )
+        
+        # Save to database using CRUD
+        document_record = crud_application_document.create(db=db, obj_in=document_create)
+        
+        return {
+            "status": "success",
+            "message": "Document uploaded successfully",
+            "document_id": str(document_record.id),
+            "file_name": file.filename,
+            "file_size": file_size,
+            "document_type": document_type,
+            "file_path": str(file_path),
+            "uploaded_at": document_record.created_at.isoformat()
+        }
+        
+    except Exception as e:
+        # Clean up file if database save failed
+        if 'file_path' in locals() and file_path.exists():
+            try:
+                file_path.unlink()
+            except:
+                pass
+        
+        logger.error(f"Error uploading document: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload document: {str(e)}"
+        )
+
+
+@router.get("/{application_id}/documents")
+def get_application_documents(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all documents for an application
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view application documents"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view documents for this application"
+        )
+    
+    # Get documents using CRUD
+    documents = crud_application_document.get_by_application(db=db, application_id=application_id)
+    
     return {
-        "status": "success",
-        "message": "Document upload endpoint ready",
-        "file_name": file.filename,
-        "document_type": document_type,
-        "notes": notes
+        "application_id": str(application_id),
+        "documents": [
+            {
+                "id": str(doc.id),
+                "document_type": doc.document_type,
+                "document_name": doc.document_name,
+                "original_filename": doc.original_filename,
+                "file_size": doc.file_size,
+                "file_format": doc.file_format,
+                "mime_type": doc.mime_type,
+                "document_number": doc.document_number,
+                "issue_date": doc.issue_date.isoformat() if doc.issue_date else None,
+                "expiry_date": doc.expiry_date.isoformat() if doc.expiry_date else None,
+                "issuing_authority": doc.issuing_authority,
+                "is_verified": doc.is_verified,
+                "verification_status": doc.verification_status,
+                "uploaded_at": doc.uploaded_at.isoformat(),
+                "uploaded_by": str(doc.uploaded_by)
+            }
+            for doc in documents
+        ]
     }
+
+
+@router.get("/{application_id}/documents/{document_id}/download")
+def download_application_document(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Download an application document
+    
+    Requires: applications.read permission
+    """
+    if not current_user.has_permission("applications.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to download application documents"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to download documents for this application"
+        )
+    
+    # Get the specific document
+    document = crud_application_document.get(db=db, id=document_id)
+    if not document or document.application_id != application_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    
+    # Check if file exists on disk
+    file_path = Path(document.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found on disk"
+        )
+    
+    # Return file response
+    return FileResponse(
+        path=str(file_path),
+        filename=document.original_filename,
+        media_type=document.mime_type
+    )
 
 
 @router.post("/{application_id}/biometric-data")
