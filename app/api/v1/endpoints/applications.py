@@ -2332,11 +2332,12 @@ def _generate_license_from_authorization(db: Session, application: Application, 
 
 def _generate_license_from_application_status(db: Session, application: Application, current_user: User):
     """
-    Generate a license from an application status update (when moving to APPROVED)
-    Used for status-based license generation without authorization data
+    Generate one or more licenses from an application status update (when moving to APPROVED)
+    Handles multiple licenses for capture applications and professional permits
     """
     from app.models.license import License, LicenseStatus
     from app.models.user import Location
+    from datetime import datetime, timedelta
     
     # Get location for license number generation
     location = db.query(Location).filter(Location.id == application.location_id).first()
@@ -2346,23 +2347,241 @@ def _generate_license_from_application_status(db: Session, application: Applicat
             detail=f"Location {application.location_id} not found"
         )
     
-    # Create license with minimal restrictions (can be updated later)
+    return _generate_licenses_from_application(db, application, current_user)
+
+
+def _generate_licenses_from_application(db: Session, application: Application, current_user: User) -> list:
+    """
+    Generate one or more licenses from an approved application
+    Each license code gets its own License record for individual tracking
+    
+    Business Rules:
+    - License codes: Lifetime validity (never expire)
+    - Professional permits: 2-year expiry from issue date
+    - Learner's permits: 6-month expiry
+    - Card validity: 5 years from issue
+    """
+    from app.models.license import License, LicenseStatus
+    from datetime import datetime, timedelta
+    
+    licenses = []
+    
+    if application.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
+        # CAPTURE APPLICATIONS: Create license for each verified captured code
+        if application.license_capture and application.license_capture.get('captured_licenses'):
+            for captured_license in application.license_capture['captured_licenses']:
+                if captured_license.get('verified', False):  # Only create verified licenses
+                    license = License(
+                        person_id=application.person_id,
+                        created_from_application_id=application.id,
+                        category=captured_license['license_category'],
+                        status=LicenseStatus.ACTIVE,
+                        issue_date=_parse_captured_date(captured_license.get('issue_date')) or application.approval_date,
+                        expiry_date=_calculate_license_expiry(captured_license['license_category'], application.approval_date),
+                        issuing_location_id=application.location_id,
+                        issued_by_user_id=current_user.id,
+                        restrictions=captured_license.get('restrictions', {}),
+                        captured_from_license_number=captured_license.get('original_license_number'),
+                        # Professional permits (if applicable)
+                        has_professional_permit=_requires_professional_permit(captured_license['license_category']),
+                        professional_permit_categories=_get_professional_categories_for_code(captured_license['license_category']),
+                        professional_permit_expiry=_calculate_professional_permit_expiry() if _requires_professional_permit(captured_license['license_category']) else None,
+                    )
+                    licenses.append(license)
+    
+    elif application.application_type == ApplicationType.PROFESSIONAL_LICENSE:
+        # PROFESSIONAL LICENSE: Create main license with professional permits
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
         category=application.license_category,
         status=LicenseStatus.ACTIVE,
-        issue_date=datetime.utcnow(),
+            issue_date=application.approval_date,
+            expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
         issuing_location_id=application.location_id,
         issued_by_user_id=current_user.id,
-        restrictions=[]  # Empty restrictions - can be updated via authorization later
-    )
+            restrictions=application.identified_restrictions or {},
+            # Professional permits
+            has_professional_permit=True,
+            professional_permit_categories=application.professional_permit_categories or [],
+            professional_permit_expiry=_calculate_professional_permit_expiry(),
+        )
+        licenses.append(license)
     
+    else:
+        # STANDARD APPLICATIONS: Single license as current
+        license = License(
+            person_id=application.person_id,
+            created_from_application_id=application.id,
+            category=application.license_category,
+            status=LicenseStatus.ACTIVE,
+            issue_date=application.approval_date,
+            expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
+            issuing_location_id=application.location_id,
+            issued_by_user_id=current_user.id,
+            restrictions=application.identified_restrictions or {},
+        )
+        licenses.append(license)
+    
+    # Save all licenses
+    for license in licenses:
     db.add(license)
-    db.commit()
-    db.refresh(license)
     
-    return license
+    db.flush()
+    return licenses
+
+
+def _parse_captured_date(date_str: str) -> datetime:
+    """Parse captured date string to datetime"""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return None
+
+
+def _calculate_license_expiry(category: str, issue_date: datetime) -> datetime:
+    """
+    Calculate expiry date based on license type
+    - Learner's permits (1, 2, 3): 6 months
+    - All other license codes: Never expire (None)
+    """
+    from datetime import timedelta
+    
+    if category in ['1', '2', '3']:  # Learner's permits only
+        return issue_date + timedelta(days=180)  # 6 months
+    return None  # All other license codes are lifetime
+
+
+def _calculate_professional_permit_expiry() -> datetime:
+    """Professional permits expire every 2 years"""
+    from datetime import datetime, timedelta
+    return datetime.utcnow() + timedelta(days=2*365)  # 2 years
+
+
+def _requires_professional_permit(category: str) -> bool:
+    """Check if license category requires professional permits"""
+    commercial_categories = ['C', 'C1', 'CE', 'C1E', 'D', 'D1', 'D2']
+    return category in commercial_categories
+
+
+def _get_professional_categories_for_code(category: str) -> list:
+    """Get default professional permit categories for a license code"""
+    category_mapping = {
+        'C': ['G'],      # Heavy goods transport
+        'C1': ['G'],     # Light goods transport  
+        'CE': ['G'],     # Heavy goods + trailer
+        'C1E': ['G'],    # Light goods + trailer
+        'D': ['P'],      # Heavy passenger transport
+        'D1': ['P'],     # Light passenger transport
+        'D2': ['P', 'D'] # Passenger + dangerous goods
+    }
+    return category_mapping.get(category, [])
+
+
+def get_person_active_licenses_for_card(db: Session, person_id: str) -> dict:
+    """
+    Get all active licenses and permits for a person for card generation
+    Returns structured data showing individual validity for each code/permit
+    
+    Used by card generation system to include all active licenses and permits
+    """
+    from app.models.license import License, LicenseStatus
+    from datetime import datetime, timedelta
+    import uuid
+    
+    # Convert person_id to UUID if it's a string
+    person_uuid = uuid.UUID(person_id) if isinstance(person_id, str) else person_id
+    
+    active_licenses = db.query(License).filter(
+        License.person_id == person_uuid,
+        License.status == LicenseStatus.ACTIVE
+    ).all()
+    
+    license_codes = []
+    professional_permits = []
+    
+    for license in active_licenses:
+        # License code (lifetime validity, card expires in 5 years)
+        card_validity = license.issue_date + timedelta(days=5*365) if license.issue_date else None
+        
+        license_codes.append({
+            'category': license.category.value if hasattr(license.category, 'value') else str(license.category),
+            'issue_date': license.issue_date.isoformat() if license.issue_date else None,
+            'expiry_date': license.expiry_date.isoformat() if license.expiry_date else None,  # Only learner's permits expire
+            'card_validity': card_validity.isoformat() if card_validity else None,
+            'restrictions': license.restrictions or {},
+            'license_id': str(license.id)
+        })
+        
+        # Professional permits (2-year validity)
+        if license.has_professional_permit and license.professional_permit_categories:
+            for permit_category in license.professional_permit_categories:
+                is_expired = False
+                if license.professional_permit_expiry:
+                    is_expired = license.professional_permit_expiry < datetime.utcnow()
+                
+                professional_permits.append({
+                    'category': permit_category,
+                    'issue_date': license.issue_date.isoformat() if license.issue_date else None,
+                    'expiry_date': license.professional_permit_expiry.isoformat() if license.professional_permit_expiry else None,
+                    'is_expired': is_expired,
+                    'license_id': str(license.id)
+                })
+    
+    # Calculate overall card validity (maximum of all license card validities)
+    card_valid_until = None
+    if license_codes:
+        max_validity = max([lc['card_validity'] for lc in license_codes if lc['card_validity']], default=None)
+        card_valid_until = max_validity
+    
+    return {
+        'person_id': str(person_uuid),
+        'license_codes': license_codes,
+        'professional_permits': professional_permits,
+        'card_valid_until': card_valid_until,
+        'total_license_count': len(license_codes),
+        'active_permit_count': len([p for p in professional_permits if not p['is_expired']])
+    }
+
+
+@router.get("/person/{person_id}/card-data", response_model=Dict[str, Any])
+def get_person_card_data(
+    *,
+    db: Session = Depends(get_db),
+    person_id: uuid.UUID,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get all active licenses and permits for a person for card generation
+    
+    Returns structured data showing individual validity for each code/permit.
+    Used by card generation and printing systems.
+    """
+    if not current_user.has_permission("licenses.read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to view license data"
+        )
+    
+    try:
+        card_data = get_person_active_licenses_for_card(db, str(person_id))
+        
+        return {
+            "success": True,
+            "data": card_data,
+            "message": f"Found {card_data['total_license_count']} license codes and {card_data['active_permit_count']} active permits"
+        }
+    except Exception as e:
+        logger.error(f"Error getting card data for person {person_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve card data: {str(e)}"
+        )
 
 
 @router.get("/files/{file_path:path}")
@@ -3000,38 +3219,34 @@ def process_application_approval(
         }
 
 
-def _generate_license_from_application(db: Session, application: Application, restrictions_data: dict = None) -> "License":
+def _generate_license_from_application(db: Session, application: Application, restrictions_data: dict = None):
     """
-    Generate a license from an approved application
+    Legacy function - now delegates to enhanced license generation
     restrictions_data format: {"driver_restrictions": ["01"], "vehicle_restrictions": ["01", "03"]}
     """
-    from app.models.license import License, LicenseStatus
+    # For compatibility, use the enhanced license generation
+    # This will return the first license created
+    from app.models.user import User
     
-    # Convert restrictions to license format (structured JSON)
-    license_restrictions = restrictions_data or {"driver_restrictions": [], "vehicle_restrictions": []}
+    # Get the current user from the application's approved_by_user_id
+    current_user = db.query(User).filter(User.id == application.approved_by_user_id).first()
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot find user who approved this application"
+        )
     
-    # Create license
-    license = License(
-        person_id=application.person_id,
-        created_from_application_id=application.id,
-        category=application.license_category,
-        status=LicenseStatus.ACTIVE,
-        issue_date=application.approval_date,
-        issuing_location_id=application.approved_at_location_id,
-        issued_by_user_id=application.approved_by_user_id,
-        restrictions=license_restrictions,
-        medical_restrictions=[],  # Can be populated from medical_information if needed
-    )
+    licenses = _generate_licenses_from_application(db, application, current_user)
     
-    # Set expiry date for learner's permits (6 months)
-    if application.application_type == ApplicationType.LEARNERS_PERMIT:
-        from datetime import timedelta
-        license.expiry_date = application.approval_date + timedelta(days=180)
+    # Apply any additional restrictions if provided
+    if restrictions_data and licenses:
+        first_license = licenses[0]
+        existing_restrictions = first_license.restrictions or {}
+        merged_restrictions = {**existing_restrictions, **restrictions_data}
+        first_license.restrictions = merged_restrictions
+        db.flush()
     
-    db.add(license)
-    db.flush()  # Get the license ID
-    
-    return license
+    return licenses[0] if licenses else None
 
 
 def _validate_restrictions_for_application_type(application_type: str, restrictions_data: dict) -> bool:
