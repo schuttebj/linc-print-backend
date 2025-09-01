@@ -2391,37 +2391,37 @@ def _generate_licenses_from_application(db: Session, application: Application, c
     
     elif application.application_type == ApplicationType.PROFESSIONAL_LICENSE:
         # PROFESSIONAL LICENSE: Create main license with professional permits
-    license = License(
-        person_id=application.person_id,
-        created_from_application_id=application.id,
-        category=application.license_category,
-        status=LicenseStatus.ACTIVE,
-            issue_date=application.approval_date,
-            expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
-        issuing_location_id=application.location_id,
-        issued_by_user_id=current_user.id,
-            restrictions=application.identified_restrictions or {},
-            # Professional permits
-            has_professional_permit=True,
-            professional_permit_categories=application.professional_permit_categories or [],
-            professional_permit_expiry=_calculate_professional_permit_expiry(),
-        )
-        licenses.append(license)
-    
+            license = License(
+                person_id=application.person_id,
+                created_from_application_id=application.id,
+                category=application.license_category,
+                status=LicenseStatus.ACTIVE,
+                    issue_date=application.approval_date,
+                    expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
+                issuing_location_id=application.location_id,
+                issued_by_user_id=current_user.id,
+                    restrictions=application.identified_restrictions or {},
+                    # Professional permits
+                    has_professional_permit=True,
+                    professional_permit_categories=application.professional_permit_categories or [],
+                    professional_permit_expiry=_calculate_professional_permit_expiry(),
+                )
+            licenses.append(license)
+            
     else:
-        # STANDARD APPLICATIONS: Single license as current
-        license = License(
-            person_id=application.person_id,
-            created_from_application_id=application.id,
-            category=application.license_category,
-            status=LicenseStatus.ACTIVE,
-            issue_date=application.approval_date,
-            expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
-            issuing_location_id=application.location_id,
-            issued_by_user_id=current_user.id,
-            restrictions=application.identified_restrictions or {},
-        )
-        licenses.append(license)
+                # STANDARD APPLICATIONS: Single license as current
+            license = License(
+                    person_id=application.person_id,
+                    created_from_application_id=application.id,
+                    category=application.license_category,
+                    status=LicenseStatus.ACTIVE,
+                    issue_date=application.approval_date,
+                    expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
+                    issuing_location_id=application.location_id,
+                    issued_by_user_id=current_user.id,
+                    restrictions=application.identified_restrictions or {},
+                )
+            licenses.append(license)
     
     # Save all licenses
     for license in licenses:
