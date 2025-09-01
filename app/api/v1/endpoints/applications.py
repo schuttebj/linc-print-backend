@@ -2425,7 +2425,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
     
     # Save all licenses
     for license in licenses:
-    db.add(license)
+        db.add(license)
     
     db.flush()
     return licenses
