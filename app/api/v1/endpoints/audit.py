@@ -40,6 +40,7 @@ async def list_audit_logs(
     request: Request,
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    log_type: Optional[str] = Query(None, description="Filter by log type: 'transaction' for user actions, 'api' for request logs"),
     action_type: Optional[str] = Query(None, description="Filter by action type"),
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
@@ -51,46 +52,114 @@ async def list_audit_logs(
 ):
     """
     Get paginated list of audit logs with filtering
+    Supports log_type parameter to filter between transaction logs and API request logs
     Requires audit.read permission
     """
-    # Build query filters
-    query = db.query(UserAuditLog)
+    # Validate log_type parameter
+    if log_type and log_type not in ['transaction', 'api']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="log_type must be either 'transaction' or 'api'"
+        )
     
-    if action_type:
-        query = query.filter_by(action=action_type)
+    # Route to appropriate table and build query
+    if log_type == 'api':
+        # API Request Logs
+        query = db.query(ApiRequestLog)
+        
+        # Apply API-specific filters
+        if action_type:  # For API logs, this could be HTTP method
+            query = query.filter_by(method=action_type.upper())
+        
+        if user_id:
+            try:
+                query = query.filter_by(user_id=uuid.UUID(user_id))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid user ID format"
+                )
+        
+        if start_date:
+            query = query.filter(ApiRequestLog.created_at >= start_date)
+        
+        if end_date:
+            query = query.filter(ApiRequestLog.created_at <= end_date)
+        
+        # Apply ordering and pagination
+        query = query.order_by(ApiRequestLog.created_at.desc())
+        total = query.count()
+        offset = (page - 1) * per_page
+        logs = query.offset(offset).limit(per_page).all()
+        
+        # Convert API logs to dict format
+        log_data = []
+        for log in logs:
+            log_dict = {
+                "id": str(log.id),
+                "request_id": log.request_id,
+                "method": log.method,
+                "endpoint": log.endpoint,
+                "query_params": log.query_params,
+                "user_id": str(log.user_id) if log.user_id else None,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "status_code": log.status_code,
+                "response_size_bytes": log.response_size_bytes,
+                "duration_ms": log.duration_ms,
+                "location_id": str(log.location_id) if log.location_id else None,
+                "error_message": log.error_message,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "success": log.status_code < 400  # Derive success from status code
+            }
+            log_data.append(log_dict)
+        
+        resource_logged = "API_REQUEST_LOGS"
+        
+    else:
+        # Transaction Audit Logs (default)
+        query = db.query(UserAuditLog)
+        
+        if action_type:
+            query = query.filter_by(action=action_type)
+        
+        if resource_type:
+            query = query.filter_by(resource=resource_type)
+        
+        if user_id:
+            try:
+                query = query.filter_by(user_id=uuid.UUID(user_id))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid user ID format"
+                )
+        
+        if start_date:
+            query = query.filter(UserAuditLog.created_at >= start_date)
+        
+        if end_date:
+            query = query.filter(UserAuditLog.created_at <= end_date)
+        
+        if success_only is not None:
+            query = query.filter_by(success=success_only)
+        
+        # Apply ordering and pagination
+        query = query.order_by(UserAuditLog.created_at.desc())
+        total = query.count()
+        offset = (page - 1) * per_page
+        logs = query.offset(offset).limit(per_page).all()
+        
+        # Convert audit logs to dict format
+        audit_service = MadagascarAuditService(db)
+        log_data = [audit_service._audit_log_to_dict(log) for log in logs]
+        resource_logged = "AUDIT_LOGS"
     
-    if resource_type:
-        query = query.filter_by(resource=resource_type)
-    
-    if user_id:
-        try:
-            query = query.filter_by(user_id=uuid.UUID(user_id))
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid user ID format"
-            )
-    
-    if start_date:
-        query = query.filter(UserAuditLog.created_at >= start_date)
-    
-    if end_date:
-        query = query.filter(UserAuditLog.created_at <= end_date)
-    
-    if success_only is not None:
-        query = query.filter_by(success=success_only)
-    
-    # Apply ordering and pagination
-    query = query.order_by(UserAuditLog.created_at.desc())
-    total = query.count()
-    offset = (page - 1) * per_page
-    logs = query.offset(offset).limit(per_page).all()
-    
-    # Log the audit access
+    # Log the access
     audit_service = MadagascarAuditService(db)
     user_context = create_user_context(current_user, request)
     audit_service.log_view_access(
-        resource_type="AUDIT_LOGS",
+        resource_type=resource_logged,
         resource_id="all",
         user_context=user_context,
         screen_reference="AuditLogsPage",
@@ -99,12 +168,13 @@ async def list_audit_logs(
     )
     
     return {
-        "logs": [audit_service._audit_log_to_dict(log) for log in logs],
+        "logs": log_data,
         "total": total,
         "page": page,
         "per_page": per_page,
         "total_pages": (total + per_page - 1) // per_page,
         "filters_applied": {
+            "log_type": log_type,
             "action_type": action_type,
             "resource_type": resource_type,
             "user_id": user_id,
@@ -241,7 +311,202 @@ async def get_suspicious_activity(
     }
 
 
-@router.get("/statistics", summary="Get Audit Statistics")
+@router.get("/statistics/comprehensive", summary="Get Comprehensive System Statistics")
+async def get_comprehensive_statistics(
+    request: Request,
+    days: int = Query(7, ge=1, le=90, description="Days to analyze"),
+    current_user: User = Depends(require_permission("audit.read")),
+    db: Session = Depends(get_db)
+):
+    """
+    Get comprehensive system statistics for both transaction logs and API request logs
+    Optimized database queries for dashboard and analytics use
+    """
+    from sqlalchemy import func, and_, desc, case
+    
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    end_date = datetime.now(timezone.utc)
+    
+    # === TRANSACTION LOG STATISTICS ===
+    
+    # Basic transaction statistics
+    transaction_query = db.query(UserAuditLog).filter(
+        UserAuditLog.created_at >= start_date,
+        UserAuditLog.created_at <= end_date
+    )
+    
+    total_transactions = transaction_query.count()
+    successful_transactions = transaction_query.filter(UserAuditLog.success == True).count()
+    failed_transactions = total_transactions - successful_transactions
+    
+    # Unique users count
+    unique_users = db.query(func.count(func.distinct(UserAuditLog.user_id))).filter(
+        UserAuditLog.created_at >= start_date,
+        UserAuditLog.created_at <= end_date,
+        UserAuditLog.user_id.isnot(None)
+    ).scalar() or 0
+    
+    # Security events count
+    security_events = transaction_query.filter(
+        UserAuditLog.action.like('%SECURITY%') | 
+        UserAuditLog.action.like('%LOGIN_FAILED%') |
+        (UserAuditLog.resource == 'SYSTEM_SECURITY') |
+        (UserAuditLog.success == False)
+    ).count()
+    
+    # Top actions
+    top_actions = db.query(
+        UserAuditLog.action,
+        func.count(UserAuditLog.id).label('count')
+    ).filter(
+        UserAuditLog.created_at >= start_date,
+        UserAuditLog.created_at <= end_date
+    ).group_by(UserAuditLog.action).order_by(
+        desc('count')
+    ).limit(10).all()
+    
+    # Daily activity for last 7 days
+    daily_activity = db.query(
+        func.date(UserAuditLog.created_at).label('activity_date'),
+        func.count(UserAuditLog.id).label('count')
+    ).filter(
+        UserAuditLog.created_at >= start_date,
+        UserAuditLog.created_at <= end_date
+    ).group_by(
+        func.date(UserAuditLog.created_at)
+    ).order_by('activity_date').all()
+    
+    # === API REQUEST LOG STATISTICS ===
+    
+    # Basic API statistics
+    api_query = db.query(ApiRequestLog).filter(
+        ApiRequestLog.created_at >= start_date,
+        ApiRequestLog.created_at <= end_date
+    )
+    
+    total_requests = api_query.count()
+    successful_requests = api_query.filter(ApiRequestLog.status_code < 400).count()
+    error_requests = total_requests - successful_requests
+    
+    # Response time statistics
+    timing_stats = db.query(
+        func.avg(ApiRequestLog.duration_ms).label('avg_duration'),
+        func.min(ApiRequestLog.duration_ms).label('min_duration'),
+        func.max(ApiRequestLog.duration_ms).label('max_duration'),
+        func.percentile_cont(0.95).within_group(ApiRequestLog.duration_ms).label('p95_duration')
+    ).filter(
+        ApiRequestLog.created_at >= start_date,
+        ApiRequestLog.created_at <= end_date
+    ).first()
+    
+    # Top endpoints by request count
+    top_endpoints = db.query(
+        ApiRequestLog.endpoint,
+        func.count(ApiRequestLog.id).label('request_count'),
+        func.avg(ApiRequestLog.duration_ms).label('avg_duration')
+    ).filter(
+        ApiRequestLog.created_at >= start_date,
+        ApiRequestLog.created_at <= end_date
+    ).group_by(
+        ApiRequestLog.endpoint
+    ).order_by(
+        desc('request_count')
+    ).limit(10).all()
+    
+    # Status code distribution
+    status_distribution = db.query(
+        func.floor(ApiRequestLog.status_code / 100).label('status_category'),
+        func.count(ApiRequestLog.id).label('count')
+    ).filter(
+        ApiRequestLog.created_at >= start_date,
+        ApiRequestLog.created_at <= end_date
+    ).group_by(
+        func.floor(ApiRequestLog.status_code / 100)
+    ).order_by('status_category').all()
+    
+    # Daily API requests
+    daily_api_requests = db.query(
+        func.date(ApiRequestLog.created_at).label('request_date'),
+        func.count(ApiRequestLog.id).label('count')
+    ).filter(
+        ApiRequestLog.created_at >= start_date,
+        ApiRequestLog.created_at <= end_date
+    ).group_by(
+        func.date(ApiRequestLog.created_at)
+    ).order_by('request_date').all()
+    
+    # Log statistics access
+    audit_service = MadagascarAuditService(db)
+    user_context = create_user_context(current_user, request)
+    audit_service.log_view_access(
+        resource_type="COMPREHENSIVE_STATISTICS",
+        resource_id="system",
+        user_context=user_context,
+        screen_reference="ComprehensiveStatisticsPage",
+        endpoint=str(request.url.path),
+        method=request.method
+    )
+    
+    return {
+        "time_period": {
+            "days": days,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat()
+        },
+        "transaction_logs": {
+            "summary": {
+                "total_actions": total_transactions,
+                "successful_actions": successful_transactions,
+                "failed_actions": failed_transactions,
+                "success_rate": (successful_transactions / total_transactions * 100) if total_transactions > 0 else 0,
+                "unique_users": unique_users,
+                "security_events": security_events
+            },
+            "top_actions": [
+                {"action": action, "count": count}
+                for action, count in top_actions
+            ],
+            "daily_activity": [
+                {"date": activity_date.isoformat(), "count": count}
+                for activity_date, count in daily_activity
+            ]
+        },
+        "api_requests": {
+            "summary": {
+                "total_requests": total_requests,
+                "successful_requests": successful_requests,
+                "error_requests": error_requests,
+                "success_rate": (successful_requests / total_requests * 100) if total_requests > 0 else 0,
+                "avg_response_time_ms": round(timing_stats.avg_duration or 0, 2),
+                "min_response_time_ms": timing_stats.min_duration or 0,
+                "max_response_time_ms": timing_stats.max_duration or 0,
+                "p95_response_time_ms": round(timing_stats.p95_duration or 0, 2)
+            },
+            "top_endpoints": [
+                {
+                    "endpoint": endpoint,
+                    "request_count": request_count,
+                    "avg_duration_ms": round(avg_duration or 0, 2)
+                }
+                for endpoint, request_count, avg_duration in top_endpoints
+            ],
+            "status_distribution": [
+                {
+                    "status_category": f"{int(status_category)}xx",
+                    "count": count
+                }
+                for status_category, count in status_distribution
+            ],
+            "daily_requests": [
+                {"date": request_date.isoformat(), "count": count}
+                for request_date, count in daily_api_requests
+            ]
+        },
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@router.get("/statistics", summary="Get Audit Statistics (Legacy)")
 async def get_audit_statistics(
     request: Request,
     days: int = Query(7, ge=1, le=90, description="Days to analyze"),
@@ -249,7 +514,8 @@ async def get_audit_statistics(
     db: Session = Depends(get_db)
 ):
     """
-    Get audit log statistics and metrics
+    Get audit log statistics and metrics (Legacy endpoint for backward compatibility)
+    Consider using /statistics/comprehensive for more detailed analytics
     """
     start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
