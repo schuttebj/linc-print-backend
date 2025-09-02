@@ -39,7 +39,7 @@ def require_permission(permission: str):
 async def list_audit_logs(
     request: Request,
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    per_page: int = Query(20, ge=1, le=500, description="Items per page"),
     log_type: Optional[str] = Query(None, description="Filter by log type: 'transaction' for user actions, 'api' for request logs"),
     action_type: Optional[str] = Query(None, description="Filter by action type"),
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
@@ -117,9 +117,47 @@ async def list_audit_logs(
         resource_logged = "API_REQUEST_LOGS"
         
     else:
-        # Transaction Audit Logs (default)
+        # Transaction Audit Logs (default) - Filter for real business transactions only
         query = db.query(UserAuditLog)
         
+        # Apply business transaction filtering
+        # INCLUDE: Real business operations that clerks/users directly initiate
+        business_actions = [
+            'CREATE', 'UPDATE', 'DELETE', 'SUBMIT', 'APPROVE', 'REJECT', 
+            'PRINT', 'EXPORT', 'SEARCH', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED',
+            'AUTHORIZATION', 'PAYMENT', 'REFUND', 'ACTIVATE', 'SUSPEND',
+            'REACTIVATE', 'RENEW', 'VERIFY', 'BIOMETRIC_CAPTURE'
+        ]
+        
+        business_resources = [
+            'APPLICATION', 'PERSON', 'LICENSE', 'TRANSACTION', 'CARD_ORDER',
+            'FEE_STRUCTURE', 'BIOMETRIC_DATA', 'DOCUMENT', 'USER', 'AUTHENTICATION'
+        ]
+        
+        # EXCLUDE: System/API operations that are automated
+        excluded_actions = [
+            'TOKEN_REFRESH', 'VIEW_ACCESS', 'LIST_ACCESS', 'LOAD_DATA',
+            'LOOKUP_ACCESS', 'STATISTICS_ACCESS', 'REPORT_ACCESS'
+        ]
+        
+        excluded_resources = [
+            'API_REQUEST_LOGS', 'AUDIT_LOGS', 'SYSTEM_STATISTICS', 
+            'LOCATION_LIST', 'LOOKUP_DATA', 'NAVIGATION'
+        ]
+        
+        # Build query with business transaction filters
+        query = query.filter(
+            # Include business actions OR business resources
+            (UserAuditLog.action.in_(business_actions)) |
+            (UserAuditLog.resource.in_(business_resources))
+        ).filter(
+            # Exclude system/API operations
+            ~UserAuditLog.action.in_(excluded_actions)
+        ).filter(
+            ~UserAuditLog.resource.in_(excluded_resources)
+        )
+        
+        # Apply additional filters
         if action_type:
             query = query.filter_by(action=action_type)
         
@@ -153,7 +191,7 @@ async def list_audit_logs(
         # Convert audit logs to dict format
         audit_service = MadagascarAuditService(db)
         log_data = [audit_service._audit_log_to_dict(log) for log in logs]
-        resource_logged = "AUDIT_LOGS"
+        resource_logged = "TRANSACTION_LOGS"
     
     # Log the access
     audit_service = MadagascarAuditService(db)
@@ -192,7 +230,7 @@ async def get_user_activity(
     start_date: Optional[datetime] = Query(None, description="Start date"),
     end_date: Optional[datetime] = Query(None, description="End date"),
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(20, ge=1, le=500),
     current_user: User = Depends(require_permission("audit.read")),
     db: Session = Depends(get_db)
 ):
@@ -329,24 +367,53 @@ async def get_comprehensive_statistics(
     
     # === TRANSACTION LOG STATISTICS ===
     
-    # Basic transaction statistics
+    # Basic transaction statistics - Apply same filtering as transaction logs
+    business_actions = [
+        'CREATE', 'UPDATE', 'DELETE', 'SUBMIT', 'APPROVE', 'REJECT', 
+        'PRINT', 'EXPORT', 'SEARCH', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED',
+        'AUTHORIZATION', 'PAYMENT', 'REFUND', 'ACTIVATE', 'SUSPEND',
+        'REACTIVATE', 'RENEW', 'VERIFY', 'BIOMETRIC_CAPTURE'
+    ]
+    
+    business_resources = [
+        'APPLICATION', 'PERSON', 'LICENSE', 'TRANSACTION', 'CARD_ORDER',
+        'FEE_STRUCTURE', 'BIOMETRIC_DATA', 'DOCUMENT', 'USER', 'AUTHENTICATION'
+    ]
+    
+    excluded_actions = [
+        'TOKEN_REFRESH', 'VIEW_ACCESS', 'LIST_ACCESS', 'LOAD_DATA',
+        'LOOKUP_ACCESS', 'STATISTICS_ACCESS', 'REPORT_ACCESS'
+    ]
+    
+    excluded_resources = [
+        'API_REQUEST_LOGS', 'AUDIT_LOGS', 'SYSTEM_STATISTICS', 
+        'LOCATION_LIST', 'LOOKUP_DATA', 'NAVIGATION'
+    ]
+    
     transaction_query = db.query(UserAuditLog).filter(
         UserAuditLog.created_at >= start_date,
         UserAuditLog.created_at <= end_date
+    ).filter(
+        # Include business actions OR business resources
+        (UserAuditLog.action.in_(business_actions)) |
+        (UserAuditLog.resource.in_(business_resources))
+    ).filter(
+        # Exclude system/API operations
+        ~UserAuditLog.action.in_(excluded_actions)
+    ).filter(
+        ~UserAuditLog.resource.in_(excluded_resources)
     )
     
     total_transactions = transaction_query.count()
     successful_transactions = transaction_query.filter(UserAuditLog.success == True).count()
     failed_transactions = total_transactions - successful_transactions
     
-    # Unique users count
-    unique_users = db.query(func.count(func.distinct(UserAuditLog.user_id))).filter(
-        UserAuditLog.created_at >= start_date,
-        UserAuditLog.created_at <= end_date,
+    # Unique users count (from filtered transaction query)
+    unique_users = transaction_query.with_entities(func.count(func.distinct(UserAuditLog.user_id))).filter(
         UserAuditLog.user_id.isnot(None)
     ).scalar() or 0
     
-    # Security events count
+    # Security events count (from filtered transaction query)
     security_events = transaction_query.filter(
         UserAuditLog.action.like('%SECURITY%') | 
         UserAuditLog.action.like('%LOGIN_FAILED%') |
@@ -354,24 +421,18 @@ async def get_comprehensive_statistics(
         (UserAuditLog.success == False)
     ).count()
     
-    # Top actions
-    top_actions = db.query(
+    # Top actions (from filtered transaction query)
+    top_actions = transaction_query.with_entities(
         UserAuditLog.action,
         func.count(UserAuditLog.id).label('count')
-    ).filter(
-        UserAuditLog.created_at >= start_date,
-        UserAuditLog.created_at <= end_date
     ).group_by(UserAuditLog.action).order_by(
         desc('count')
     ).limit(10).all()
     
-    # Daily activity for last 7 days
-    daily_activity = db.query(
+    # Daily activity for last 7 days (from filtered transaction query)
+    daily_activity = transaction_query.with_entities(
         func.date(UserAuditLog.created_at).label('activity_date'),
         func.count(UserAuditLog.id).label('count')
-    ).filter(
-        UserAuditLog.created_at >= start_date,
-        UserAuditLog.created_at <= end_date
     ).group_by(
         func.date(UserAuditLog.created_at)
     ).order_by('activity_date').all()
@@ -733,7 +794,7 @@ async def export_audit_logs(
 async def list_api_request_logs(
     request: Request,
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(50, ge=1, le=200, description="Items per page"),
+    per_page: int = Query(50, ge=1, le=500, description="Items per page"),
     method: Optional[str] = Query(None, description="Filter by HTTP method"),
     endpoint: Optional[str] = Query(None, description="Filter by endpoint (contains)"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
