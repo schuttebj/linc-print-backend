@@ -2371,13 +2371,19 @@ def _generate_licenses_from_application(db: Session, application: Application, c
         if application.license_capture and application.license_capture.get('captured_licenses'):
             for captured_license in application.license_capture['captured_licenses']:
                 if captured_license.get('verified', False):  # Only create verified licenses
+                    # Ensure we have a valid issue date for license generation
+                    from datetime import datetime
+                    effective_issue_date = (_parse_captured_date(captured_license.get('issue_date')) or 
+                                          application.approval_date or 
+                                          datetime.utcnow())
+                    
                     license = License(
                         person_id=application.person_id,
                         created_from_application_id=application.id,
                         category=captured_license['license_category'],
                         status=LicenseStatus.ACTIVE,
-                        issue_date=_parse_captured_date(captured_license.get('issue_date')) or application.approval_date,
-                        expiry_date=_calculate_license_expiry(captured_license['license_category'], application.approval_date),
+                        issue_date=effective_issue_date,
+                        expiry_date=_calculate_license_expiry(captured_license['license_category'], effective_issue_date),
                         issuing_location_id=application.location_id,
                         issued_by_user_id=current_user.id,
                         restrictions=captured_license.get('restrictions', {}),
@@ -2391,37 +2397,43 @@ def _generate_licenses_from_application(db: Session, application: Application, c
     
     elif application.application_type == ApplicationType.PROFESSIONAL_LICENSE:
         # PROFESSIONAL LICENSE: Create main license with professional permits
-            license = License(
-                person_id=application.person_id,
-                created_from_application_id=application.id,
-                category=application.license_category,
-                status=LicenseStatus.ACTIVE,
-                    issue_date=application.approval_date,
-                    expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
-                issuing_location_id=application.location_id,
-                issued_by_user_id=current_user.id,
-                    restrictions=application.identified_restrictions or {},
-                    # Professional permits
-                    has_professional_permit=True,
-                    professional_permit_categories=application.professional_permit_categories or [],
-                    professional_permit_expiry=_calculate_professional_permit_expiry(),
-                )
-            licenses.append(license)
+        from datetime import datetime
+        effective_issue_date = application.approval_date or datetime.utcnow()
+        
+        license = License(
+            person_id=application.person_id,
+            created_from_application_id=application.id,
+            category=application.license_category,
+            status=LicenseStatus.ACTIVE,
+            issue_date=effective_issue_date,
+            expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
+            issuing_location_id=application.location_id,
+            issued_by_user_id=current_user.id,
+            restrictions=application.identified_restrictions or {},
+            # Professional permits
+            has_professional_permit=True,
+            professional_permit_categories=application.professional_permit_categories or [],
+            professional_permit_expiry=_calculate_professional_permit_expiry(),
+        )
+        licenses.append(license)
             
     else:
-                # STANDARD APPLICATIONS: Single license as current
-            license = License(
-                    person_id=application.person_id,
-                    created_from_application_id=application.id,
-                    category=application.license_category,
-                    status=LicenseStatus.ACTIVE,
-                    issue_date=application.approval_date,
-                    expiry_date=_calculate_license_expiry(application.license_category, application.approval_date),
-                    issuing_location_id=application.location_id,
-                    issued_by_user_id=current_user.id,
-                    restrictions=application.identified_restrictions or {},
-                )
-            licenses.append(license)
+        # STANDARD APPLICATIONS: Single license as current
+        from datetime import datetime
+        effective_issue_date = application.approval_date or datetime.utcnow()
+        
+        license = License(
+            person_id=application.person_id,
+            created_from_application_id=application.id,
+            category=application.license_category,
+            status=LicenseStatus.ACTIVE,
+            issue_date=effective_issue_date,
+            expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
+            issuing_location_id=application.location_id,
+            issued_by_user_id=current_user.id,
+            restrictions=application.identified_restrictions or {},
+        )
+        licenses.append(license)
     
     # Save all licenses
     for license in licenses:
@@ -2450,10 +2462,12 @@ def _calculate_license_expiry(category: str, issue_date: datetime) -> datetime:
     - Learner's permits (1, 2, 3): 6 months
     - All other license codes: Never expire (None)
     """
-    from datetime import timedelta
+    from datetime import datetime, timedelta
     
     if category in ['1', '2', '3']:  # Learner's permits only
-        return issue_date + timedelta(days=180)  # 6 months
+        # Use current datetime if issue_date is None
+        effective_issue_date = issue_date if issue_date is not None else datetime.utcnow()
+        return effective_issue_date + timedelta(days=180)  # 6 months
     return None  # All other license codes are lifetime
 
 
