@@ -213,7 +213,7 @@ class LicenseSearchFilters(BaseModel):
     
     # Basic filters
     person_id: Optional[UUID] = Field(None, description="Filter by person")
-    license_category: Optional[LicenseCategory] = Field(None, description="Filter by category")
+    license_category: Optional[Union[LicenseCategory, str]] = Field(None, description="Filter by category")
     status: Optional[LicenseStatus] = Field(None, description="Filter by status")
     
     # Location filters
@@ -233,6 +233,38 @@ class LicenseSearchFilters(BaseModel):
     
     # Search terms
     person_name: Optional[str] = Field(None, description="Search by person name")
+    
+    @validator('license_category', pre=True)
+    def validate_license_category(cls, v):
+        """Convert string values to enum for learner's permits and validate enum values"""
+        if v is None:
+            return v
+        
+        # If it's already a LicenseCategory enum, return as is
+        if isinstance(v, LicenseCategory):
+            return v
+        
+        # If it's a string, try to convert to enum
+        if isinstance(v, str):
+            # Direct enum value lookup for learner's permits
+            if v in ['1', '2', '3']:
+                mapping = {
+                    '1': LicenseCategory.LEARNERS_1,
+                    '2': LicenseCategory.LEARNERS_2,
+                    '3': LicenseCategory.LEARNERS_3
+                }
+                return mapping[v]
+            
+            # For other categories, try to find by value
+            for category in LicenseCategory:
+                if category.value == v:
+                    return category
+            
+            # If no match found, raise validation error
+            valid_values = [cat.value for cat in LicenseCategory]
+            raise ValueError(f"Invalid license category '{v}'. Valid values: {', '.join(valid_values)}")
+        
+        return v
 
 
 # Response schemas

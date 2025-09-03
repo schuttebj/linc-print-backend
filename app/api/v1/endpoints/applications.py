@@ -668,8 +668,12 @@ def update_application_status(
             
             if not existing_license:
                 # Generate license automatically
-                license = _generate_license_from_application_status(db, updated_application, current_user)
-                logger.info(f"Auto-generated license {license.id} for application {application_id}")
+                licenses = _generate_license_from_application_status(db, updated_application, current_user)
+                if licenses:
+                    license_ids = [license.id for license in licenses]
+                    logger.info(f"Auto-generated {len(licenses)} license(s) {license_ids} for application {application_id}")
+                else:
+                    logger.warning(f"No licenses were generated for application {application_id}")
         except Exception as e:
             # Log error but don't fail status update
             logger.error(f"Failed to auto-generate license for application {application_id}: {str(e)}")
