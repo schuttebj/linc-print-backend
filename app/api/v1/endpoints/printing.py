@@ -228,7 +228,7 @@ async def search_person_for_card_ordering(
         logger.info(f"Found {len(all_licenses)} active licenses for person")
         
         # Filter licenses into card-eligible and non-eligible
-        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
+        learners_categories = [LicenseCategory.L1, LicenseCategory.L2, LicenseCategory.L3]
         card_eligible_licenses = [
             license for license in all_licenses 
             if license.category not in learners_categories
@@ -249,7 +249,7 @@ async def search_person_for_card_ordering(
         logger.info(f"Found {len(approved_applications)} approved applications")
         
         # Check which approved applications are for card-eligible license categories
-        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
+        learners_categories = [LicenseCategory.L1, LicenseCategory.L2, LicenseCategory.L3]
         card_eligible_applications = [
             app for app in approved_applications 
             if app.license_category and app.license_category not in learners_categories
@@ -577,7 +577,7 @@ async def create_print_job(
         logger.info(f"Found {len(person_licenses)} total licenses for person {application.person_id}")
         
         # Filter out learners permits (they don't go on cards)
-        learners_categories = [LicenseCategory.LEARNERS_1, LicenseCategory.LEARNERS_2, LicenseCategory.LEARNERS_3]
+        learners_categories = [LicenseCategory.L1, LicenseCategory.L2, LicenseCategory.L3]
         card_licenses = [
             license for license in person_licenses 
             if license.category not in learners_categories

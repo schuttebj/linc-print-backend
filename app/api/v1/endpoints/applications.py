@@ -1967,9 +1967,9 @@ def _get_minimum_age_for_category(category: LicenseCategory) -> int:
         LicenseCategory.D2: 24,
         
         # Learner's permits
-        LicenseCategory.LEARNERS_1: 16,
-        LicenseCategory.LEARNERS_2: 16,
-        LicenseCategory.LEARNERS_3: 16,
+        LicenseCategory.L1: 16,
+        LicenseCategory.L2: 16,
+        LicenseCategory.L3: 16,
     }
     return age_requirements.get(category, 18)  # Default to 18 if not found
 
@@ -2318,7 +2318,7 @@ def _generate_license_from_authorization(db: Session, application: Application, 
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
-        category=_convert_category_to_enum(application.license_category),
+        category=_convert_string_to_license_category(application.license_category),
         status=LicenseStatus.ACTIVE,
         issue_date=application.approval_date,
         issuing_location_id=application.approved_at_location_id,
@@ -2384,7 +2384,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
                     license = License(
                         person_id=application.person_id,
                         created_from_application_id=application.id,
-                        category=_convert_category_to_enum(captured_license['license_category']),
+                        category=_convert_string_to_license_category(captured_license['license_category']),
                         status=LicenseStatus.ACTIVE,
                         issue_date=effective_issue_date,
                         expiry_date=_calculate_license_expiry(captured_license['license_category'], effective_issue_date),
@@ -2407,7 +2407,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
         license = License(
             person_id=application.person_id,
             created_from_application_id=application.id,
-            category=_convert_category_to_enum(application.license_category),
+            category=_convert_string_to_license_category(application.license_category),
             status=LicenseStatus.ACTIVE,
             issue_date=effective_issue_date,
             expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
@@ -2429,7 +2429,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
         license = License(
             person_id=application.person_id,
             created_from_application_id=application.id,
-            category=_convert_category_to_enum(application.license_category),
+            category=_convert_string_to_license_category(application.license_category),
             status=LicenseStatus.ACTIVE,
             issue_date=effective_issue_date,
             expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
@@ -2460,28 +2460,19 @@ def _parse_captured_date(date_str: str) -> datetime:
             return None
 
 
-def _convert_category_to_enum(category_value: str) -> LicenseCategory:
+def _convert_string_to_license_category(category_str: str) -> LicenseCategory:
     """Convert string category value to LicenseCategory enum object"""
-    if isinstance(category_value, LicenseCategory):
-        return category_value
+    if isinstance(category_str, LicenseCategory):
+        return category_str
     
-    if isinstance(category_value, str):
-        # Direct enum value lookup for learner's permits
-        if category_value in ['1', '2', '3']:
-            mapping = {
-                '1': LicenseCategory.LEARNERS_1,
-                '2': LicenseCategory.LEARNERS_2,
-                '3': LicenseCategory.LEARNERS_3
-            }
-            return mapping[category_value]
-        
-        # For other categories, try to find by value
-        for category in LicenseCategory:
-            if category.value == category_value:
-                return category
+    # For string values, find the matching enum
+    for category in LicenseCategory:
+        if category.value == category_str:
+            return category
     
     # If no match found, raise error
-    raise ValueError(f"Invalid license category '{category_value}'. Cannot convert to enum object.")
+    raise ValueError(f"Invalid license category string '{category_str}'. No matching enum found.")
+
 
 
 def _calculate_license_expiry(category: str, issue_date: datetime) -> datetime:

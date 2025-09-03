@@ -236,7 +236,7 @@ class LicenseSearchFilters(BaseModel):
     
     @validator('license_category', pre=True)
     def validate_license_category(cls, v):
-        """Convert string values to enum for learner's permits and validate enum values"""
+        """Convert string values to enum and validate enum values"""
         if v is None:
             return v
         
@@ -249,9 +249,9 @@ class LicenseSearchFilters(BaseModel):
             # Direct enum value lookup for learner's permits
             if v in ['1', '2', '3']:
                 mapping = {
-                    '1': LicenseCategory.LEARNERS_1,
-                    '2': LicenseCategory.LEARNERS_2,
-                    '3': LicenseCategory.LEARNERS_3
+                    '1': LicenseCategory.L1,
+                    '2': LicenseCategory.L2,
+                    '3': LicenseCategory.L3
                 }
                 return mapping[v]
             

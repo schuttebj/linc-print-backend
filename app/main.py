@@ -632,7 +632,7 @@ async def fix_license_category_enum():
                 "message": "LicenseCategory enum fixed successfully",
                 "enum_values_created": created_values,
                 "total_enum_values": len(created_values),
-                "includes_learners_3": "3" in created_values,
+                "includes_category_3": "3" in created_values,
                 "timestamp": time.time()
             }
             

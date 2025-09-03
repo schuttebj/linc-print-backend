@@ -79,7 +79,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
         }
         
         # Set expiry date for learner's permits (6 months from issue date)
-        if obj_in.license_category.value in ['1', '2', '3']:  # LEARNERS_1, LEARNERS_2, LEARNERS_3
+        if obj_in.license_category.value in ['1', '2', '3']:  # L1, L2, L3
             from datetime import timedelta
             license_data["expiry_date"] = issue_date + timedelta(days=180)  # 6 months
         
@@ -208,24 +208,8 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             query = query.filter(License.person_id == filters.person_id)
         
         if filters.license_category:
-            # Handle both enum objects and string values
-            category_value = filters.license_category
-            if isinstance(category_value, str):
-                # Convert string values to enum for learner's permits
-                if category_value in ['1', '2', '3']:
-                    mapping = {
-                        '1': LicenseCategory.LEARNERS_1,
-                        '2': LicenseCategory.LEARNERS_2,
-                        '3': LicenseCategory.LEARNERS_3
-                    }
-                    category_value = mapping[category_value]
-                else:
-                    # For other categories, try to find by value
-                    for category in LicenseCategory:
-                        if category.value == category_value:
-                            category_value = category
-                            break
-            query = query.filter(License.category == category_value)
+            # License category is stored as enum, use enum objects for comparison
+            query = query.filter(License.category == filters.license_category)
         
         if filters.status:
             query = query.filter(License.status == filters.status)

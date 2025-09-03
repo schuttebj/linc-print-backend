@@ -183,9 +183,9 @@ async def get_license_categories() -> List[Dict[str, Any]]:
         LicenseCategory.D2: "Specialized public transport (articulated buses, 24+ years)",
         
         # Learner's permits
-        LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
-        LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
-        LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
+        LicenseCategory.L1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
+        LicenseCategory.L2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
+        LicenseCategory.L3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
     }
     
     return [
@@ -224,9 +224,9 @@ def _get_minimum_age_for_category(category: LicenseCategory) -> int:
         LicenseCategory.D2: 24,
         
         # Learner's permits
-        LicenseCategory.LEARNERS_1: 16,
-        LicenseCategory.LEARNERS_2: 16,
-        LicenseCategory.LEARNERS_3: 16,
+        LicenseCategory.L1: 16,
+        LicenseCategory.L2: 16,
+        LicenseCategory.L3: 16,
     }
     return age_requirements.get(category, 18)  # Default to 18 if not found
 
@@ -442,9 +442,9 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
                     LicenseCategory.D2: "Specialized public transport (articulated buses, 24+ years)",
                     
                     # Learner's permits
-                    LicenseCategory.LEARNERS_1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
-                    LicenseCategory.LEARNERS_2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
-                    LicenseCategory.LEARNERS_3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
+                    LicenseCategory.L1: "Motor cycles, motor tricycles and motor quadricycles with engine of any capacity",
+                    LicenseCategory.L2: "Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles",
+                    LicenseCategory.L3: "Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles"
                 }.get(category, category.value),
                 "minimum_age": {
                     # Motorcycles
@@ -460,7 +460,7 @@ async def get_all_lookups(db: Session = Depends(get_db)) -> Dict[str, Any]:
                     LicenseCategory.D1: 21, LicenseCategory.D: 24, LicenseCategory.D2: 24,
                     
                     # Learner's permits
-                    LicenseCategory.LEARNERS_1: 16, LicenseCategory.LEARNERS_2: 16, LicenseCategory.LEARNERS_3: 16,
+                    LicenseCategory.L1: 16, LicenseCategory.L2: 16, LicenseCategory.L3: 16,
                 }.get(category, 18)
             }
             for category in LicenseCategory

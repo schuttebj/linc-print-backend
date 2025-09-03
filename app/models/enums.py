@@ -270,6 +270,11 @@ class CountryCode(PythonEnum):
 # Application-specific enums
 class LicenseCategory(PythonEnum):
     """SADC driver's license categories"""
+    # Learner's Permit Categories (No overlap with driving license codes)
+    L1 = "1"                # Motor cycles, motor tricycles and motor quadricycles with engine of any capacity
+    L2 = "2"                # Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles  
+    L3 = "3"                # Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles
+    
     # Motorcycles and Mopeds
     A1 = "A1"               # Small motorcycles and mopeds (<125cc, 16+)
     A2 = "A2"               # Mid-range motorcycles (power limited, up to 35kW, 18+)
@@ -291,11 +296,6 @@ class LicenseCategory(PythonEnum):
     D1 = "D1"               # Small buses (up to 16 passengers, 21+)
     D = "D"                 # Standard buses and coaches (over 16 passengers, 24+)
     D2 = "D2"               # Specialized public transport (articulated buses, 24+)
-    
-    # Learner's Permit Categories
-    LEARNERS_1 = "1"        # Motor cycles, motor tricycles and motor quadricycles with engine of any capacity
-    LEARNERS_2 = "2"        # Light motor vehicles, other than motor cycles, motor tricycles or motor quadricycles  
-    LEARNERS_3 = "3"        # Any motor vehicle other than motor cycles, motor tricycles or motor quadricycles
 
 
 class ApplicationType(PythonEnum):
