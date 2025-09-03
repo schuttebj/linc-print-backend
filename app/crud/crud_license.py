@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 
 from app.crud.base import CRUDBase
 from app.models.license import License, LicenseStatusHistory, LicenseStatus
+from app.models.enums import LicenseCategory
 from app.models.application import Application
 from app.models.person import Person
 from app.models.user import User, Location
@@ -207,7 +208,24 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             query = query.filter(License.person_id == filters.person_id)
         
         if filters.license_category:
-            query = query.filter(License.category == filters.license_category)
+            # Handle both enum objects and string values
+            category_value = filters.license_category
+            if isinstance(category_value, str):
+                # Convert string values to enum for learner's permits
+                if category_value in ['1', '2', '3']:
+                    mapping = {
+                        '1': LicenseCategory.LEARNERS_1,
+                        '2': LicenseCategory.LEARNERS_2,
+                        '3': LicenseCategory.LEARNERS_3
+                    }
+                    category_value = mapping[category_value]
+                else:
+                    # For other categories, try to find by value
+                    for category in LicenseCategory:
+                        if category.value == category_value:
+                            category_value = category
+                            break
+            query = query.filter(License.category == category_value)
         
         if filters.status:
             query = query.filter(License.status == filters.status)

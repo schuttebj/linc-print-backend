@@ -2318,7 +2318,7 @@ def _generate_license_from_authorization(db: Session, application: Application, 
     license = License(
         person_id=application.person_id,
         created_from_application_id=application.id,
-        category=application.license_category,
+        category=_convert_category_to_enum(application.license_category),
         status=LicenseStatus.ACTIVE,
         issue_date=application.approval_date,
         issuing_location_id=application.approved_at_location_id,
@@ -2384,7 +2384,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
                     license = License(
                         person_id=application.person_id,
                         created_from_application_id=application.id,
-                        category=captured_license['license_category'],
+                        category=_convert_category_to_enum(captured_license['license_category']),
                         status=LicenseStatus.ACTIVE,
                         issue_date=effective_issue_date,
                         expiry_date=_calculate_license_expiry(captured_license['license_category'], effective_issue_date),
@@ -2407,7 +2407,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
         license = License(
             person_id=application.person_id,
             created_from_application_id=application.id,
-            category=application.license_category,
+            category=_convert_category_to_enum(application.license_category),
             status=LicenseStatus.ACTIVE,
             issue_date=effective_issue_date,
             expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
@@ -2429,7 +2429,7 @@ def _generate_licenses_from_application(db: Session, application: Application, c
         license = License(
             person_id=application.person_id,
             created_from_application_id=application.id,
-            category=application.license_category,
+            category=_convert_category_to_enum(application.license_category),
             status=LicenseStatus.ACTIVE,
             issue_date=effective_issue_date,
             expiry_date=_calculate_license_expiry(application.license_category, effective_issue_date),
@@ -2458,6 +2458,30 @@ def _parse_captured_date(date_str: str) -> datetime:
             return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
         except ValueError:
             return None
+
+
+def _convert_category_to_enum(category_value: str) -> LicenseCategory:
+    """Convert string category value to LicenseCategory enum object"""
+    if isinstance(category_value, LicenseCategory):
+        return category_value
+    
+    if isinstance(category_value, str):
+        # Direct enum value lookup for learner's permits
+        if category_value in ['1', '2', '3']:
+            mapping = {
+                '1': LicenseCategory.LEARNERS_1,
+                '2': LicenseCategory.LEARNERS_2,
+                '3': LicenseCategory.LEARNERS_3
+            }
+            return mapping[category_value]
+        
+        # For other categories, try to find by value
+        for category in LicenseCategory:
+            if category.value == category_value:
+                return category
+    
+    # If no match found, raise error
+    raise ValueError(f"Invalid license category '{category_value}'. Cannot convert to enum object.")
 
 
 def _calculate_license_expiry(category: str, issue_date: datetime) -> datetime:
