@@ -44,7 +44,6 @@ def get_current_user(
 ) -> User:
     """
     Get current authenticated user from JWT token
-    Optimized with eager loading for better performance
     """
     try:
         # Verify and decode the JWT token
@@ -65,13 +64,8 @@ def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # Find user in database with eager loading of roles and permissions
-        from sqlalchemy.orm import joinedload
-        
-        user = db.query(User).options(
-            joinedload(User.roles).joinedload('permissions')
-        ).filter(User.id == user_id).first()
-        
+        # Find user in database
+        user = db.query(User).filter(User.id == user_id).first()
         if user is None or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -138,14 +132,9 @@ async def login(
     """
     Authenticate user and return access tokens
     Sets refresh token as httpOnly cookie for security
-    Optimized for performance with eager loading
     """
-    # Find user by username or email with eager loading of roles and permissions
-    from sqlalchemy.orm import joinedload
-    
-    user = db.query(User).options(
-        joinedload(User.roles).joinedload('permissions')
-    ).filter(
+    # Find user by username or email
+    user = db.query(User).filter(
         (User.username == login_data.username.lower()) | 
         (User.email == login_data.username.lower()),
         User.is_active == True
@@ -251,7 +240,6 @@ async def refresh_token(
 ):
     """
     Refresh access token using refresh token from httpOnly cookie
-    Optimized for performance with eager loading and minimal database operations
     """
     # Get refresh token from cookie
     refresh_token = request.cookies.get("refresh_token")
@@ -270,16 +258,9 @@ async def refresh_token(
             detail="Invalid refresh token"
         )
     
-    # Get user with eager loading of roles and permissions for optimal performance
+    # Get user
     user_id = payload.get("sub")
-    from sqlalchemy.orm import joinedload
-    
-    user = db.query(User).options(
-        joinedload(User.roles).joinedload('permissions')
-    ).filter(
-        User.id == user_id, 
-        User.is_active == True
-    ).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     
     if not user or user.status != UserStatus.ACTIVE:
         raise HTTPException(
@@ -287,18 +268,17 @@ async def refresh_token(
             detail="User not found or inactive"
         )
     
-    # Create new access token (now optimized with caching)
+    # Create new access token (with optimized caching)
     additional_claims = create_user_token_claims(user)
     access_token = create_access_token(user.id, additional_claims=additional_claims)
     
-    # Update token info (minimal database update)
+    # Update token info
     user.current_token_id = access_token[:32]
     user.token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=480)
     
-    # Commit only the essential token update
     db.commit()
     
-    # Log token refresh asynchronously to avoid blocking response
+    # Log token refresh with error handling to maintain stability
     try:
         log_user_action(db, user, "token_refresh", request)
     except Exception as log_error:
@@ -364,24 +344,9 @@ async def change_password(
 
 @router.get("/me", response_model=UserResponse, summary="Get Current User")
 async def get_current_user_info(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get current authenticated user information
-    Optimized to ensure roles and permissions are properly loaded
     """
-    # Re-query with eager loading to ensure all relations are loaded for UserResponse
-    from sqlalchemy.orm import joinedload
-    
-    user_with_relations = db.query(User).options(
-        joinedload(User.roles).joinedload('permissions')
-    ).filter(User.id == current_user.id).first()
-    
-    if not user_with_relations:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return UserResponse.from_orm(user_with_relations) 
+    return UserResponse.from_orm(current_user) 
