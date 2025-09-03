@@ -264,6 +264,7 @@ def calculate_password_strength(password: str) -> str:
 def create_user_token_claims(user) -> dict:
     """
     Create additional JWT claims for Madagascar license system users
+    Optimized for performance with caching and minimal database queries
     
     Args:
         user: User model instance
@@ -271,6 +272,17 @@ def create_user_token_claims(user) -> dict:
     Returns:
         Dictionary of additional claims
     """
+    # Use cached permissions if available to avoid repeated database queries
+    if not hasattr(user, '_cached_permissions') or not hasattr(user, '_cached_roles'):
+        # Collect roles and permissions efficiently
+        user._cached_roles = [role.name for role in user.roles]
+        
+        permissions = set()
+        for role in user.roles:
+            for permission in role.permissions:
+                permissions.add(permission.name)
+        user._cached_permissions = list(permissions)
+    
     claims = {
         "user_id": str(user.id),
         "username": user.username,
@@ -278,17 +290,10 @@ def create_user_token_claims(user) -> dict:
         "country_code": user.country_code,
         "language": user.language,
         "timezone": user.timezone,
-        "roles": [role.name for role in user.roles],
-        "permissions": []
+        "roles": user._cached_roles,
+        "permissions": user._cached_permissions,
+        "is_superuser": user.is_superuser  # Add for frontend JWT parsing
     }
-    
-    # Collect all permissions from roles
-    permissions = set()
-    for role in user.roles:
-        for permission in role.permissions:
-            permissions.add(permission.name)
-    
-    claims["permissions"] = list(permissions)
     
     # Add primary location (user's assigned location)
     if user.primary_location_id:
