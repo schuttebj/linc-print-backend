@@ -162,9 +162,9 @@ class ReceiptTemplate(DocumentTemplate):
             story = []
             
             # Government headers with coat of arms placeholder
-            story.append(Paragraph(data.get('government_header', 'REPOBLIKAN\'I MADAGASIKARA'), self.styles['GovernmentHeader']))
-            story.append(Paragraph(data.get('department_header', 'MINISTÈRE DES TRANSPORTS, DU TOURISME ET DE LA MÉTÉOROLOGIE'), self.styles['DepartmentHeader']))
-            story.append(Paragraph(data.get('office_header', 'Direction Générale des Transports Terrestres'), self.styles['OfficeHeader']))
+            story.append(Paragraph(data.get('government_header', 'REPUBLIC OF MADAGASCAR'), self.styles['GovernmentHeader']))
+            story.append(Paragraph(data.get('department_header', 'MINISTRY OF TRANSPORT, TOURISM AND METEOROLOGY'), self.styles['DepartmentHeader']))
+            story.append(Paragraph(data.get('office_header', 'General Directorate of Land Transport'), self.styles['OfficeHeader']))
             story.append(Spacer(1, 4))
             
             # Separator line
@@ -176,21 +176,21 @@ class ReceiptTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Receipt title with official styling
-            story.append(Paragraph(data.get('receipt_title', 'REÇU OFFICIEL DE PAIEMENT'), self.styles['OfficialTitle']))
+            story.append(Paragraph(data.get('receipt_title', 'OFFICIAL PAYMENT RECEIPT'), self.styles['OfficialTitle']))
             story.append(Spacer(1, 8))
             
             # Receipt details table with official styling
             receipt_details = [
                 [
-                    Paragraph('<b>N° de Reçu:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Receipt No:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('receipt_number', 'N/A')), self.styles['FieldValue']),
-                    Paragraph('<b>Date & Heure:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Date & Time:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('date', 'N/A')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>N° de Transaction:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Transaction No:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('transaction_number', 'N/A')), self.styles['FieldValue']),
-                    Paragraph('<b>Bureau:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Office:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('location', 'N/A')), self.styles['FieldValue'])
                 ]
             ]
@@ -205,23 +205,23 @@ class ReceiptTemplate(DocumentTemplate):
                 ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
             ]))
             
             story.append(receipt_table)
             story.append(Spacer(1, 8))
             
             # Customer information section with official header
-            story.append(Paragraph('INFORMATIONS DU BÉNÉFICIAIRE', self.styles['SectionHeader']))
+            story.append(Paragraph('BENEFICIARY INFORMATION', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             customer_data = [
                 [
-                    Paragraph('<b>Nom et Prénoms:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Full Name:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('person_name', 'N/A')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>Numéro CIN/Passeport:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>ID/Passport Number:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('person_id', 'N/A')), self.styles['FieldValue'])
                 ]
             ]
@@ -231,7 +231,7 @@ class ReceiptTemplate(DocumentTemplate):
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -243,14 +243,14 @@ class ReceiptTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Payment items section with official header
-            story.append(Paragraph('DÉTAIL DES PAIEMENTS', self.styles['SectionHeader']))
+            story.append(Paragraph('PAYMENT DETAILS', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             # Build payment items table with simple styling
             payment_data = [
                 [
-                    Paragraph('<b>Service / Prestation</b>', self.styles['FieldLabel']),
-                    Paragraph(f'<b>Montant ({data.get("currency", "Ariary")})</b>', self.styles['FieldLabel'])
+                    Paragraph('<b>Service / Description</b>', self.styles['FieldLabel']),
+                    Paragraph(f'<b>Amount ({data.get("currency", "Ariary")})</b>', self.styles['FieldLabel'])
                 ]
             ]
             
@@ -264,7 +264,7 @@ class ReceiptTemplate(DocumentTemplate):
             
             # Add total row with emphasis
             payment_data.append([
-                Paragraph('<b>MONTANT TOTAL À PAYER</b>', self.styles['FieldLabel']),
+                Paragraph('<b>TOTAL AMOUNT TO PAY</b>', self.styles['FieldLabel']),
                 Paragraph(f"<b>{data.get('total_amount', 0):,.0f}</b>", self.styles['FieldLabel'])
             ])
             
@@ -275,7 +275,7 @@ class ReceiptTemplate(DocumentTemplate):
                 ('ALIGN', (0, 0), (0, -1), 'LEFT'),
                 ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -287,25 +287,25 @@ class ReceiptTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Payment method section with official header
-            story.append(Paragraph('MODALITÉS DE PAIEMENT', self.styles['SectionHeader']))
+            story.append(Paragraph('PAYMENT METHODS', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             payment_method_data = [
                 [
-                    Paragraph('<b>Mode de Paiement:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Payment Method:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('payment_method', 'N/A')), self.styles['FieldValue'])
                 ]
             ]
             
             if data.get('payment_reference'):
                 payment_method_data.append([
-                    Paragraph('<b>Référence:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Reference:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('payment_reference')), self.styles['FieldValue'])
                 ])
             
             payment_method_data.append([
-                Paragraph('<b>Traité par:</b>', self.styles['FieldLabel']),
-                Paragraph(str(data.get('processed_by', 'Système')), self.styles['FieldValue'])
+                Paragraph('<b>Processed by:</b>', self.styles['FieldLabel']),
+                Paragraph(str(data.get('processed_by', 'System')), self.styles['FieldValue'])
             ])
             
             payment_method_table = Table(payment_method_data, colWidths=[50*mm, 120*mm])
@@ -313,7 +313,7 @@ class ReceiptTemplate(DocumentTemplate):
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -325,7 +325,7 @@ class ReceiptTemplate(DocumentTemplate):
             story.append(Spacer(1, 10))
             
             # Official verification stamp area
-            story.append(Paragraph('CACHET ET SIGNATURE OFFICIELS', self.styles['OfficialStamp']))
+            story.append(Paragraph('OFFICIAL STAMP AND SIGNATURE', self.styles['OfficialStamp']))
             story.append(Spacer(1, 10))
             
             # Official footer with government branding
@@ -340,7 +340,7 @@ class ReceiptTemplate(DocumentTemplate):
             story.append(Paragraph(data.get('validity_note', 'Ce reçu est valide et doit être conservé pour vos dossiers'), self.styles['Footer']))
             story.append(Paragraph(data.get('contact_info', 'Pour assistance: +261 20 22 123 45 | transport@gov.mg'), self.styles['Footer']))
             story.append(Spacer(1, 4))
-            story.append(Paragraph('Document généré électroniquement - Aucune signature manuscrite requise', self.styles['OfficialStamp']))
+            story.append(Paragraph('Document generated electronically - No handwritten signature required', self.styles['OfficialStamp']))
             
             # Build PDF
             doc.build(story)
@@ -377,9 +377,9 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story = []
             
             # Government headers
-            story.append(Paragraph(data.get('government_header', 'REPOBLIKAN\'I MADAGASIKARA'), self.styles['GovernmentHeader']))
-            story.append(Paragraph(data.get('department_header', 'MINISTÈRE DES TRANSPORTS, DU TOURISME ET DE LA MÉTÉOROLOGIE'), self.styles['DepartmentHeader']))
-            story.append(Paragraph(data.get('office_header', 'Direction Générale des Transports Terrestres'), self.styles['OfficeHeader']))
+            story.append(Paragraph(data.get('government_header', 'REPUBLIC OF MADAGASCAR'), self.styles['GovernmentHeader']))
+            story.append(Paragraph(data.get('department_header', 'MINISTRY OF TRANSPORT, TOURISM AND METEOROLOGY'), self.styles['DepartmentHeader']))
+            story.append(Paragraph(data.get('office_header', 'General Directorate of Land Transport'), self.styles['OfficeHeader']))
             story.append(Spacer(1, 4))
             
             # Separator line
@@ -391,21 +391,21 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Document title
-            story.append(Paragraph(data.get('document_title', 'CONFIRMATION DE COMMANDE DE CARTE'), self.styles['OfficialTitle']))
+            story.append(Paragraph(data.get('document_title', 'CARD ORDER CONFIRMATION'), self.styles['OfficialTitle']))
             story.append(Spacer(1, 8))
             
             # Order details table
             order_details = [
                 [
-                    Paragraph('<b>N° de Commande:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Order Number:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('order_number', 'N/A')), self.styles['FieldValue']),
-                    Paragraph('<b>Date de Commande:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Order Date:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('order_date', 'N/A')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>Type de Carte:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Card Type:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('card_type', 'N/A')), self.styles['FieldValue']),
-                    Paragraph('<b>Urgence:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Urgency:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('urgency_level', 'N/A')), self.styles['FieldValue'])
                 ]
             ]
@@ -420,27 +420,27 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
                 ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
             ]))
             
             story.append(order_table)
             story.append(Spacer(1, 8))
             
             # Customer information
-            story.append(Paragraph('INFORMATIONS DU DEMANDEUR', self.styles['SectionHeader']))
+            story.append(Paragraph('APPLICANT INFORMATION', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             customer_data = [
                 [
-                    Paragraph('<b>Nom et Prénoms:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Full Name:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('person_name', 'N/A')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>Numéro CIN/Passeport:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>ID/Passport Number:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('person_id', 'N/A')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>N° de Permis:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>License Number:</b>', self.styles['FieldLabel']),
                     Paragraph(str(data.get('license_number', 'N/A')), self.styles['FieldValue'])
                 ]
             ]
@@ -450,7 +450,7 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -462,20 +462,20 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Order status
-            story.append(Paragraph('STATUT DE LA COMMANDE', self.styles['SectionHeader']))
+            story.append(Paragraph('ORDER STATUS', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             status_data = [
                 [
-                    Paragraph('<b>Statut Actuel:</b>', self.styles['FieldLabel']),
-                    Paragraph(str(data.get('order_status', 'EN ATTENTE')), self.styles['FieldValue'])
+                    Paragraph('<b>Current Status:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('order_status', 'PENDING')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>Date Prévue de Livraison:</b>', self.styles['FieldLabel']),
-                    Paragraph(str(data.get('expected_delivery', 'À déterminer')), self.styles['FieldValue'])
+                    Paragraph('<b>Expected Delivery Date:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('expected_delivery', 'To be determined')), self.styles['FieldValue'])
                 ],
                 [
-                    Paragraph('<b>Frais de Traitement:</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Processing Fee:</b>', self.styles['FieldLabel']),
                     Paragraph(f"{data.get('processing_fee', 0):,.0f} {data.get('currency', 'Ariary')}", self.styles['FieldValue'])
                 ]
             ]
@@ -485,7 +485,7 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
@@ -497,14 +497,14 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Important notices
-            story.append(Paragraph('INFORMATIONS IMPORTANTES', self.styles['SectionHeader']))
+            story.append(Paragraph('IMPORTANT INFORMATION', self.styles['SectionHeader']))
             story.append(Spacer(1, 4))
             
             notices = [
-                "• Veuillez conserver ce document jusqu'à la réception de votre carte",
-                "• La carte sera disponible au bureau indiqué ci-dessus",
-                "• Apportez ce document et votre CIN lors de la récupération",
-                "• Les cartes non récupérées dans les 3 mois seront détruites"
+                "• Please keep this document until you receive your card",
+                "• The card will be available at the office indicated above",
+                "• Bring this document and your ID when collecting",
+                "• Cards not collected within 3 months will be destroyed"
             ]
             
             for notice in notices:
@@ -514,7 +514,7 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(Spacer(1, 8))
             
             # Signature area
-            story.append(Paragraph('SIGNATURE DU DEMANDEUR', self.styles['OfficialStamp']))
+            story.append(Paragraph('APPLICANT SIGNATURE', self.styles['OfficialStamp']))
             story.append(Spacer(1, 15))
             
             signature_table = Table([['Date: _______________', 'Signature: _______________']], colWidths=[85*mm, 85*mm])
@@ -588,60 +588,60 @@ class DocumentGenerator:
     def get_sample_receipt_data(self) -> Dict[str, Any]:
         """Generate sample receipt data for testing"""
         return {
-            'government_header': 'REPOBLIKAN\'I MADAGASIKARA',
-            'department_header': 'MINISTÈRE DES TRANSPORTS, DU TOURISME ET DE LA MÉTÉOROLOGIE',
-            'office_header': 'Direction Générale des Transports Terrestres',
-            'receipt_title': 'REÇU OFFICIEL DE PAIEMENT',
+            'government_header': 'REPUBLIC OF MADAGASCAR',
+            'department_header': 'MINISTRY OF TRANSPORT, TOURISM AND METEOROLOGY',
+            'office_header': 'General Directorate of Land Transport',
+            'receipt_title': 'OFFICIAL PAYMENT RECEIPT',
             'receipt_number': f'RCT-{datetime.now().strftime("%Y%m%d")}-001',
             'transaction_number': f'TXN-{datetime.now().strftime("%Y%m%d")}-001',
-            'date': datetime.now().strftime('%d/%m/%Y à %H:%M'),
-            'location': 'Bureau Central Antananarivo',
+            'date': datetime.now().strftime('%d/%m/%Y at %H:%M'),
+            'location': 'Central Office Antananarivo',
             'person_name': 'RAKOTOARISOA Jean Baptiste',
             'person_id': '101 234 567 890',
             'currency': 'Ariary',
             'items': [
                 {
-                    'description': 'Frais de demande de permis de conduire',
+                    'description': 'Driver\'s License Application Fee',
                     'amount': 38000
                 },
                 {
-                    'description': 'Examen théorique',
+                    'description': 'Theory Examination Fee',
                     'amount': 10000
                 },
                 {
-                    'description': 'Examen pratique',
+                    'description': 'Practical Examination Fee',
                     'amount': 10000
                 }
             ],
             'total_amount': 58000,
-            'payment_method': 'Espèces',
+            'payment_method': 'Cash',
             'payment_reference': None,
-            'processed_by': 'ANDRIANJAFY Marie Célestine',
-            'footer': 'République de Madagascar - Reçu Officiel du Gouvernement',
-            'validity_note': 'Ce reçu est valide et doit être conservé pour vos dossiers',
-            'contact_info': 'Pour assistance: +261 20 22 123 45 | transport@gov.mg'
+            'processed_by': 'ANDRIANJAFY Marie Celestine',
+            'footer': 'Republic of Madagascar - Official Government Receipt',
+            'validity_note': 'This receipt is valid and must be kept for your records',
+            'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg'
         }
     
     def get_sample_card_order_data(self) -> Dict[str, Any]:
         """Generate sample card order confirmation data for testing"""
         return {
-            'government_header': 'REPOBLIKAN\'I MADAGASIKARA',
-            'department_header': 'MINISTÈRE DES TRANSPORTS, DU TOURISME ET DE LA MÉTÉOROLOGIE',
-            'office_header': 'Direction Générale des Transports Terrestres',
-            'document_title': 'CONFIRMATION DE COMMANDE DE CARTE',
+            'government_header': 'REPUBLIC OF MADAGASCAR',
+            'department_header': 'MINISTRY OF TRANSPORT, TOURISM AND METEOROLOGY',
+            'office_header': 'General Directorate of Land Transport',
+            'document_title': 'CARD ORDER CONFIRMATION',
             'order_number': f'CMD-{datetime.now().strftime("%Y%m%d")}-001',
-            'order_date': datetime.now().strftime('%d/%m/%Y à %H:%M'),
-            'card_type': 'Permis de Conduire Standard',
-            'urgency_level': 'Normal (15 jours ouvrables)',
+            'order_date': datetime.now().strftime('%d/%m/%Y at %H:%M'),
+            'card_type': 'Standard Driver\'s License',
+            'urgency_level': 'Normal (15 business days)',
             'person_name': 'RAKOTOARISOA Jean Baptiste',
             'person_id': '101 234 567 890',
             'license_number': 'MDG-2024-AB-123456',
-            'order_status': 'EN COURS DE TRAITEMENT',
+            'order_status': 'PROCESSING',
             'expected_delivery': '15/02/2024',
             'processing_fee': 5000,
             'currency': 'Ariary',
-            'footer': 'République de Madagascar - Confirmation Officielle de Commande',
-            'contact_info': 'Pour assistance: +261 20 22 123 45 | transport@gov.mg'
+            'footer': 'Republic of Madagascar - Official Order Confirmation',
+            'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg'
         }
     
     def get_sample_data(self, template_type: str) -> Dict[str, Any]:
