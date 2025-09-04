@@ -26,6 +26,7 @@ from app.api.v1.endpoints import biometric
 from app.api.v1.endpoints import files
 from app.api.v1.endpoints import issues
 from app.api.v1.endpoints import document_test
+from app.api.v1.endpoints import documents
 
 
 api_router = APIRouter()
@@ -51,4 +52,5 @@ api_router.include_router(biometric.router, prefix="/biometric", tags=["Biometri
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(issues.router, prefix="/issues", tags=["Issues"])
 api_router.include_router(document_test.router, prefix="/document-test", tags=["Document Test"])
+api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
  
