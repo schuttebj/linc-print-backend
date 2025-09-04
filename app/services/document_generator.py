@@ -570,7 +570,7 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(Paragraph('APPLICANT SIGNATURE', self.styles['OfficialStamp']))
             story.append(Spacer(1, 15))
             
-            signature_table = Table([['Date: _______________', 'Signature: _______________']], colWidths=[85*mm, 85*mm])
+            signature_table = Table([['Date: _______________', '']], colWidths=[85*mm, 85*mm])
             signature_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
@@ -802,7 +802,6 @@ class LicenseVerificationTemplate(DocumentTemplate):
                 ('RIGHTPADDING', (0, 0), (-1, -1), 4),
                 ('TOPPADDING', (0, 0), (-1, -1), 15),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
             ]))
             
             story.append(signature_table)
