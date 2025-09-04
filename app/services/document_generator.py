@@ -426,8 +426,22 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(order_table)
             story.append(Spacer(1, 8))
             
-            # Customer information
-            story.append(Paragraph('APPLICANT INFORMATION', self.styles['SectionHeader']))
+            # Section header with full width
+            section_header_table = Table([['APPLICANT INFORMATION']], colWidths=[170*mm])
+            section_header_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            story.append(section_header_table)
             story.append(Spacer(1, 4))
             
             customer_data = [
@@ -461,8 +475,22 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(customer_table)
             story.append(Spacer(1, 8))
             
-            # Order status
-            story.append(Paragraph('ORDER STATUS', self.styles['SectionHeader']))
+            # Order status section header with full width
+            section_header_table = Table([['ORDER STATUS']], colWidths=[170*mm])
+            section_header_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            story.append(section_header_table)
             story.append(Spacer(1, 4))
             
             status_data = [
@@ -496,20 +524,45 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             story.append(status_table)
             story.append(Spacer(1, 8))
             
-            # Important notices
-            story.append(Paragraph('IMPORTANT INFORMATION', self.styles['SectionHeader']))
+            # Important notices section header with full width
+            section_header_table = Table([['IMPORTANT INFORMATION']], colWidths=[170*mm])
+            section_header_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            story.append(section_header_table)
             story.append(Spacer(1, 4))
             
-            notices = [
-                "• Please keep this document until you receive your card",
-                "• The card will be available at the office indicated above",
-                "• Bring this document and your ID when collecting",
-                "• Cards not collected within 3 months will be destroyed"
+            # Important notices in a table for consistency
+            notices_data = [
+                [Paragraph("• Please keep this document until you receive your card", self.styles['FieldValue'])],
+                [Paragraph("• The card will be available at the office indicated above", self.styles['FieldValue'])],
+                [Paragraph("• Bring this document and your ID when collecting", self.styles['FieldValue'])],
+                [Paragraph("• Cards not collected within 3 months will be destroyed", self.styles['FieldValue'])]
             ]
             
-            for notice in notices:
-                story.append(Paragraph(notice, self.styles['FieldValue']))
-                story.append(Spacer(1, 2))
+            notices_table = Table(notices_data, colWidths=[170*mm])
+            notices_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(notices_table)
             
             story.append(Spacer(1, 8))
             
@@ -555,6 +608,238 @@ class CardOrderConfirmationTemplate(DocumentTemplate):
             logger.error(f"Error generating card order confirmation PDF: {e}")
             raise Exception(f"Card order confirmation generation failed: {str(e)}")
 
+
+class LicenseVerificationTemplate(DocumentTemplate):
+    """License Verification Document template for Madagascar license verification"""
+    
+    def generate(self, data: Dict[str, Any]) -> bytes:
+        """Generate license verification PDF from license data"""
+        try:
+            logger.info(f"Generating license verification PDF for person: {data.get('person_name', 'Unknown')}")
+            
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=self.page_size,
+                rightMargin=15*mm,
+                leftMargin=15*mm,
+                topMargin=15*mm,
+                bottomMargin=15*mm,
+                title=self.title
+            )
+            
+            story = []
+            
+            # Government headers
+            story.append(Paragraph(data.get('government_header', 'REPUBLIC OF MADAGASCAR'), self.styles['GovernmentHeader']))
+            story.append(Paragraph(data.get('department_header', 'MINISTRY OF TRANSPORT'), self.styles['DepartmentHeader']))
+            story.append(Paragraph(data.get('office_header', 'License Information Verification Document'), self.styles['OfficeHeader']))
+            story.append(Spacer(1, 4))
+            
+            # Document title
+            story.append(Paragraph(data.get('document_title', 'LICENSE VERIFICATION DOCUMENT'), self.styles['OfficialTitle']))
+            story.append(Spacer(1, 8))
+            
+            # Person Information
+            story.append(Paragraph('LICENSE HOLDER INFORMATION', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            person_data = [
+                [
+                    Paragraph('<b>Full Name:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('person_name', 'N/A')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>ID Number:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('person_id', 'N/A')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Date of Birth:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('birth_date', 'N/A')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Nationality:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('nationality', 'N/A')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Verification Date:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('verification_date', datetime.now().strftime('%d/%m/%Y'))), self.styles['FieldValue'])
+                ]
+            ]
+            
+            person_table = Table(person_data, colWidths=[60*mm, 120*mm])
+            person_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            
+            story.append(person_table)
+            story.append(Spacer(1, 8))
+            
+            # Card Eligible Licenses
+            card_licenses = data.get('card_eligible_licenses', [])
+            story.append(Paragraph(f'LICENSES TO BE PRINTED ON CARD ({len(card_licenses)})', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            license_headers = [
+                [
+                    Paragraph('<b>Category</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Status</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Issue Date</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>Restrictions</b>', self.styles['FieldLabel'])
+                ]
+            ]
+            
+            license_data = []
+            for license in card_licenses:
+                restrictions_text = self._format_restrictions(license.get('restrictions', {}))
+                license_data.append([
+                    Paragraph(str(license.get('category', 'N/A')), self.styles['FieldValue']),
+                    Paragraph(str(license.get('status', 'N/A')), self.styles['FieldValue']),
+                    Paragraph(str(license.get('issue_date', 'N/A')), self.styles['FieldValue']),
+                    Paragraph(restrictions_text, self.styles['FieldValue'])
+                ])
+            
+            license_table_data = license_headers + license_data
+            license_table = Table(license_table_data, colWidths=[45*mm, 35*mm, 40*mm, 60*mm])
+            license_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BACKGROUND', (0, 0), (3, 0), colors.lightgrey),
+            ]))
+            
+            story.append(license_table)
+            story.append(Spacer(1, 8))
+            
+            # Learners Permits if any
+            learners_permits = data.get('learners_permits', [])
+            if learners_permits:
+                story.append(Paragraph(f'LEARNER\'S PERMITS (NOT PRINTED ON CARD) ({len(learners_permits)})', self.styles['SectionHeader']))
+                story.append(Spacer(1, 4))
+                
+                learners_headers = [
+                    [
+                        Paragraph('<b>Category</b>', self.styles['FieldLabel']),
+                        Paragraph('<b>Status</b>', self.styles['FieldLabel']),
+                        Paragraph('<b>Issue Date</b>', self.styles['FieldLabel']),
+                        Paragraph('<b>Expiry Date</b>', self.styles['FieldLabel'])
+                    ]
+                ]
+                
+                learners_data = []
+                for permit in learners_permits:
+                    learners_data.append([
+                        Paragraph(str(permit.get('category', 'N/A')), self.styles['FieldValue']),
+                        Paragraph(str(permit.get('status', 'N/A')), self.styles['FieldValue']),
+                        Paragraph(str(permit.get('issue_date', 'N/A')), self.styles['FieldValue']),
+                        Paragraph(str(permit.get('expiry_date', 'No expiry')), self.styles['FieldValue'])
+                    ])
+                
+                learners_table_data = learners_headers + learners_data
+                learners_table = Table(learners_table_data, colWidths=[45*mm, 35*mm, 45*mm, 55*mm])
+                learners_table.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                    ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ('BACKGROUND', (0, 0), (3, 0), colors.lightgrey),
+                ]))
+                
+                story.append(learners_table)
+                story.append(Spacer(1, 8))
+            
+            # Signature section
+            story.append(Paragraph('LICENSE HOLDER CONFIRMATION', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            confirmation_text = "I confirm that all the information above is accurate and I authorize the printing of my driver's license card with the categories and restrictions listed above."
+            story.append(Paragraph(confirmation_text, self.styles['FieldValue']))
+            story.append(Spacer(1, 8))
+            
+            signature_data = [
+                [
+                    Paragraph('<b>License Holder Signature:</b>', self.styles['FieldLabel']),
+                    Paragraph('_____________________________', self.styles['FieldValue']),
+                    Paragraph('<b>Date:</b>', self.styles['FieldLabel']),
+                    Paragraph('_______________', self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Authorized Officer:</b>', self.styles['FieldLabel']),
+                    Paragraph('_____________________________', self.styles['FieldValue']),
+                    Paragraph('<b>Badge:</b>', self.styles['FieldLabel']),
+                    Paragraph('_______________', self.styles['FieldValue'])
+                ]
+            ]
+            
+            signature_table = Table(signature_data, colWidths=[50*mm, 70*mm, 30*mm, 30*mm])
+            signature_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 15),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
+            ]))
+            
+            story.append(signature_table)
+            story.append(Spacer(1, 10))
+            
+            # Footer
+            story.append(Paragraph(data.get('footer', 'Ministry of Transport - Republic of Madagascar'), self.styles['Footer']))
+            story.append(Paragraph('License Information System', self.styles['Footer']))
+            story.append(Paragraph('This document must be signed before card printing authorization', self.styles['Footer']))
+            
+            # Build PDF
+            doc.build(story)
+            buffer.seek(0)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            logger.info(f"Successfully generated license verification PDF ({len(pdf_data)} bytes)")
+            return pdf_data
+            
+        except Exception as e:
+            logger.error(f"Error generating license verification PDF: {e}")
+            raise Exception(f"License verification generation failed: {str(e)}")
+    
+    def _format_restrictions(self, restrictions: Dict[str, Any]) -> str:
+        """Format restrictions for display"""
+        if not restrictions or not any(restrictions.values()):
+            return "00 - None"
+        
+        formatted = []
+        for restriction_type, codes in restrictions.items():
+            if codes and isinstance(codes, list):
+                for code in codes:
+                    formatted.append(f"{restriction_type.replace('_', ' ')}: {code}")
+        
+        return " | ".join(formatted) if formatted else "00 - None"
+
+
 class DocumentGenerator:
     """Main document generator service"""
     
@@ -572,9 +857,14 @@ class DocumentGenerator:
         template = CardOrderConfirmationTemplate("Madagascar Card Order Confirmation")
         return template.generate(data)
     
+    def generate_license_verification(self, data: Dict[str, Any]) -> bytes:
+        """Generate license verification PDF"""
+        template = LicenseVerificationTemplate("Madagascar License Verification")
+        return template.generate(data)
+    
     def get_supported_templates(self) -> List[str]:
         """Get list of supported template types"""
-        return ["receipt", "card_order_confirmation"]
+        return ["receipt", "card_order_confirmation", "license_verification"]
     
     def generate_document(self, template_type: str, data: Dict[str, Any]) -> bytes:
         """Generate document by template type"""
@@ -582,6 +872,8 @@ class DocumentGenerator:
             return self.generate_receipt(data)
         elif template_type == "card_order_confirmation":
             return self.generate_card_order_confirmation(data)
+        elif template_type == "license_verification":
+            return self.generate_license_verification(data)
         else:
             raise ValueError(f"Unsupported template type: {template_type}")
     
@@ -644,12 +936,55 @@ class DocumentGenerator:
             'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg'
         }
     
+    def get_sample_license_verification_data(self) -> Dict[str, Any]:
+        """Generate sample license verification data for testing"""
+        return {
+            'government_header': 'REPUBLIC OF MADAGASCAR',
+            'department_header': 'MINISTRY OF TRANSPORT',
+            'office_header': 'License Information Verification Document',
+            'document_title': 'LICENSE VERIFICATION DOCUMENT',
+            'person_name': 'RAKOTOARISOA Jean Baptiste',
+            'person_id': '101 234 567 890',
+            'birth_date': '15/03/1990',
+            'nationality': 'Malagasy',
+            'verification_date': datetime.now().strftime('%d/%m/%Y'),
+            'card_eligible_licenses': [
+                {
+                    'category': 'A1',
+                    'status': 'ACTIVE',
+                    'issue_date': '10/01/2022',
+                    'restrictions': {
+                        'driver_restrictions': ['01'],
+                        'vehicle_restrictions': []
+                    }
+                },
+                {
+                    'category': 'B',
+                    'status': 'ACTIVE',
+                    'issue_date': '15/06/2023',
+                    'restrictions': {}
+                }
+            ],
+            'learners_permits': [
+                {
+                    'category': 'A2',
+                    'status': 'ACTIVE',
+                    'issue_date': '20/11/2023',
+                    'expiry_date': '20/11/2024'
+                }
+            ],
+            'footer': 'Ministry of Transport - Republic of Madagascar',
+            'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg'
+        }
+    
     def get_sample_data(self, template_type: str) -> Dict[str, Any]:
         """Get sample data for any template type"""
         if template_type == "receipt":
             return self.get_sample_receipt_data()
         elif template_type == "card_order_confirmation":
             return self.get_sample_card_order_data()
+        elif template_type == "license_verification":
+            return self.get_sample_license_verification_data()
         else:
             raise ValueError(f"Unsupported template type: {template_type}")
 
