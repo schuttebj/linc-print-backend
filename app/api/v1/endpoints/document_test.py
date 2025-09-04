@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Query, Path
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -18,37 +18,58 @@ from app.services.document_generator import document_generator
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.get("/sample-receipt-pdf", summary="Generate Sample Receipt PDF")
-async def generate_sample_receipt_pdf(
-    format: str = Query("pdf", description="Output format: pdf"),
+@router.get("/templates", summary="Get Available Templates")
+async def get_available_templates(
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Get list of available document templates
+    """
+    return {
+        "templates": document_generator.get_supported_templates(),
+        "generator_version": document_generator.version,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@router.get("/sample-pdf/{template_type}", summary="Generate Sample PDF by Template")
+async def generate_sample_pdf(
+    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Generate a sample receipt PDF for testing document generation
+    Generate a sample PDF for any template type
     
     Returns a PDF file that can be previewed and printed from the frontend.
     This is a test endpoint to validate the document generation system.
     """
     try:
-        logger.info(f"Generating sample receipt PDF for user: {current_user.email}")
+        logger.info(f"Generating sample {template_type} PDF for user: {current_user.email}")
+        
+        # Validate template type
+        if template_type not in document_generator.get_supported_templates():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported template type: {template_type}"
+            )
         
         # Get sample data
-        sample_data = document_generator.get_sample_receipt_data()
+        sample_data = document_generator.get_sample_data(template_type)
         
-        # Add current user info
-        sample_data['processed_by'] = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email
+        # Add current user info if applicable
+        if template_type == "receipt":
+            sample_data['processed_by'] = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email
         
         # Generate PDF
-        pdf_bytes = document_generator.generate_receipt(sample_data)
+        pdf_bytes = document_generator.generate_document(template_type, sample_data)
         
-        logger.info(f"Successfully generated sample receipt PDF ({len(pdf_bytes)} bytes)")
+        logger.info(f"Successfully generated sample {template_type} PDF ({len(pdf_bytes)} bytes)")
         
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename=sample_receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                "Content-Disposition": f"inline; filename=sample_{template_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                 "Content-Length": str(len(pdf_bytes)),
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Pragma": "no-cache",
@@ -57,40 +78,50 @@ async def generate_sample_receipt_pdf(
         )
         
     except Exception as e:
-        logger.error(f"Error generating sample receipt PDF: {e}")
+        logger.error(f"Error generating sample {template_type} PDF: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate sample receipt: {str(e)}"
+            detail=f"Failed to generate sample {template_type}: {str(e)}"
         )
 
-@router.get("/sample-receipt-data", summary="Get Sample Receipt Data")
-async def get_sample_receipt_data(
+@router.get("/sample-data/{template_type}", summary="Get Sample Data by Template")
+async def get_sample_data(
+    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Get sample receipt data for testing
+    Get sample data for any template type
     
-    Returns the data structure used for receipt generation.
+    Returns the data structure used for document generation.
     Useful for understanding the expected data format.
     """
     try:
-        logger.info(f"Retrieving sample receipt data for user: {current_user.email}")
+        logger.info(f"Retrieving sample {template_type} data for user: {current_user.email}")
         
-        sample_data = document_generator.get_sample_receipt_data()
+        # Validate template type
+        if template_type not in document_generator.get_supported_templates():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported template type: {template_type}"
+            )
         
-        # Add current user info
-        sample_data['processed_by'] = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email
+        sample_data = document_generator.get_sample_data(template_type)
+        
+        # Add current user info if applicable
+        if template_type == "receipt":
+            sample_data['processed_by'] = f"{current_user.first_name} {current_user.last_name}" if current_user.first_name else current_user.email
         
         return {
             "success": True,
+            "template_type": template_type,
             "data": sample_data,
             "generator_version": document_generator.version,
             "generated_at": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error retrieving sample receipt data: {e}")
+        logger.error(f"Error retrieving sample {template_type} data: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve sample data: {str(e)}"
