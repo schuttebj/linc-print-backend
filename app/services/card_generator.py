@@ -347,12 +347,17 @@ class MadagascarCardGenerator:
     
     def _generate_v4_barcode_from_api(self, license_id: Optional[str] = None, 
                                      person_data: Optional[Dict[str, Any]] = None, 
-                                     card_id: Optional[str] = None,
+                                     card_number: Optional[str] = None,
                                      photo_data: Optional[bytes] = None,
+                                     license_codes: Optional[List[str]] = None,
                                      db_session=None) -> Image.Image:
         """Generate PDF417 barcode using production /generate endpoint (PRODUCTION METHOD)"""
         try:
             logger.info("=== CARD GENERATION: Using Production Barcode API ===")
+            
+            # Default license codes if not provided
+            if not license_codes:
+                license_codes = ['B', 'C']
             
             if license_id and db_session:
                 # Method 1: Use production /generate endpoint with database entities
@@ -364,10 +369,24 @@ class MadagascarCardGenerator:
                 from app.models import Person
                 from sqlalchemy.orm import Session
                 
-                # Create the request object
+                # Look up card UUID from card_number if available
+                card_uuid = None
+                if card_number and db_session:
+                    try:
+                        from app.models.card import Card
+                        card = db_session.query(Card).filter(Card.card_number == card_number).first()
+                        if card:
+                            card_uuid = card.id
+                            logger.info(f"Found card UUID {card_uuid} for card number {card_number}")
+                        else:
+                            logger.warning(f"No card found with card_number: {card_number}")
+                    except Exception as e:
+                        logger.warning(f"Failed to lookup card UUID for card_number {card_number}: {e}")
+                
+                # Create the request object (card_id is optional)
                 request = BarcodeGenerationRequest(
                     license_id=license_id,
-                    card_id=card_id,
+                    card_id=card_uuid,  # Use UUID if found, None if not
                     include_photo=photo_data is not None
                 )
                 
@@ -376,6 +395,12 @@ class MadagascarCardGenerator:
                     def __init__(self):
                         self.id = "system"
                         
+                # If we have photo data as bytes but no file path, use direct service approach
+                # since the production endpoint expects photos to be loaded from file paths
+                if photo_data and not hasattr(request, '_has_photo_file_path'):
+                    logger.info("Photo data available as bytes, using direct service call for better photo handling")
+                    raise Exception("Use direct service approach for photo handling")
+                
                 # Call the production endpoint function directly
                 try:
                     import asyncio
@@ -420,14 +445,20 @@ class MadagascarCardGenerator:
                 }
                 
                 service_license_data = {
-                    "license_codes": ['B', 'C'],  # Default codes
+                    "license_codes": license_codes,  # Use provided license codes
                     "vehicle_restrictions": [],
                     "driver_restrictions": []
                 }
                 
                 service_card_data = {
-                    "card_number": card_id or "Unknown"
+                    "card_number": card_number or "Unknown"
                 }
+                
+                # Log photo data info for debugging
+                if photo_data:
+                    logger.info(f"Direct service call: Including photo data ({len(photo_data)} bytes)")
+                else:
+                    logger.info("Direct service call: No photo data available")
                 
                 barcode_png_bytes = barcode_service.generate_pdf417_barcode_v4(
                     person_data=service_person_data,
@@ -893,8 +924,28 @@ class MadagascarCardGenerator:
             "gender": license_data.get('gender', 'M')
         }
         
+        # Extract license codes from license data (handle multiple licenses on one card)
+        license_codes = []
+        if "licenses" in license_data and isinstance(license_data["licenses"], list):
+            # Multiple licenses - extract all categories
+            for license in license_data["licenses"]:
+                if "category" in license:
+                    license_codes.append(license["category"])
+        elif "category" in license_data:
+            # Single license
+            license_codes = [license_data["category"]]
+        elif "categories" in license_data:
+            # Direct categories array
+            license_codes = license_data["categories"]
+        else:
+            license_codes = ['B', 'C']  # Default fallback
+        
+        # Ensure license_codes is a list of strings
+        if isinstance(license_codes, str):
+            license_codes = [license_codes]
+        
         license_info = {
-            "license_codes": ['B', 'C'],  # Default codes - can be made dynamic
+            "license_codes": license_codes,
             "vehicle_restrictions": [],
             "driver_restrictions": license_data.get('restrictions', '').split(',') if license_data.get('restrictions') else []
         }
@@ -915,8 +966,9 @@ class MadagascarCardGenerator:
         barcode_img = self._generate_v4_barcode_from_api(
             license_id=getattr(self, '_extracted_license_id', None),  # Use extracted license ID
             person_data=person_data,
-            card_id=card_info['card_number'],
+            card_number=card_info['card_number'],
             photo_data=full_photo_data,  # Use FULL photo, not 8-bit version
+            license_codes=license_info['license_codes'],  # Pass extracted license codes
             db_session=getattr(self, '_db_session', None)  # Use stored DB session if available
         )
         
