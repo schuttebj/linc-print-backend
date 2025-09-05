@@ -230,12 +230,7 @@ class ApplicationBase(BaseModel):
             raise ValueError("Replacement reason required for REPLACEMENT applications")
         return v
 
-    @validator('existing_license_number')
-    def validate_existing_license_number(cls, v, values):
-        """Validate existing license number is provided when required"""
-        if values.get('requires_existing_license') and not v:
-            raise ValueError("Existing license number required when requires_existing_license is True")
-        return v
+    # Validator removed - strict validation moved to ApplicationCreate schema only
 
     @validator('license_category', pre=True)
     def validate_license_category(cls, v):
@@ -259,6 +254,13 @@ class ApplicationCreate(ApplicationBase):
     medical_information: Optional[MedicalInformation] = None
     # License capture data for DRIVERS_LICENSE_CAPTURE and LEARNERS_PERMIT_CAPTURE applications
     license_capture: Optional[LicenseCaptureData] = None
+
+    @validator('existing_license_number')
+    def validate_existing_license_number_for_create(cls, v, values):
+        """Validate existing license number is provided when required for new applications"""
+        if values.get('requires_existing_license') and not v:
+            raise ValueError("Existing license number required when requires_existing_license is True")
+        return v
 
 
 class ApplicationUpdate(BaseModel):
@@ -289,6 +291,13 @@ class ApplicationUpdate(BaseModel):
     photo_captured: Optional[bool] = None
     signature_captured: Optional[bool] = None
     fingerprint_captured: Optional[bool] = None
+
+    @validator('existing_license_number')
+    def validate_existing_license_number_for_update(cls, v, values):
+        """Validate existing license number is provided when required for application updates"""
+        if values.get('requires_existing_license') and not v:
+            raise ValueError("Existing license number required when requires_existing_license is True")
+        return v
 
 
 class ApplicationSearch(BaseModel):
