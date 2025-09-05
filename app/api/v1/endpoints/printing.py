@@ -1529,11 +1529,9 @@ async def regenerate_print_job_files(
             "generation_timestamp": card_files.get("generation_timestamp"),
             "regenerated_by": str(current_user.id),
             "regenerated_at": datetime.utcnow().isoformat(),
-            "file_sizes": {
-                "front_image": len(card_files.get("front_image", "")),
-                "back_image": len(card_files.get("back_image", "")),
-                "combined_pdf": len(card_files.get("combined_pdf", ""))
-            }
+            "files_saved_to_disk": card_files.get("files_saved_to_disk", True),
+            "files_generated": card_files.get("files_generated", True),
+            "file_sizes": card_files.get("file_sizes", {})
         }
         
         # Store new card files
