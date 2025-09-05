@@ -482,11 +482,69 @@ class MadagascarCardGenerator:
             
         except Exception as e:
             logger.error(f"Error generating production barcode: {e}")
-            # Fallback: Create simple text placeholder
+            
+            # Check if this is the intentional fallback to direct service approach
+            if "Use direct service approach" in str(e) or photo_data is not None:
+                logger.info("Falling back to direct service call for barcode generation")
+                
+                # Use direct service call with available data
+                if not person_data:
+                    raise Exception("No person data available for barcode generation")
+                
+                service_person_data = {
+                    "first_name": person_data.get('first_name', person_data.get('names', 'Unknown')),
+                    "last_name": person_data.get('surname', person_data.get('last_name', 'Unknown')),
+                    "date_of_birth": person_data.get('date_of_birth', person_data.get('birth_date', '')).replace('-', '') if person_data.get('date_of_birth') or person_data.get('birth_date') else '',
+                    "gender": person_data.get('gender', 'M')
+                }
+                
+                service_license_data = {
+                    "license_codes": license_codes or ['B', 'C'],
+                    "vehicle_restrictions": [],
+                    "driver_restrictions": []
+                }
+                
+                service_card_data = {
+                    "card_number": card_number or "Unknown"
+                }
+                
+                # Log photo data info for debugging
+                if photo_data:
+                    logger.info(f"Direct service call: Including photo data ({len(photo_data)} bytes)")
+                else:
+                    logger.info("Direct service call: No photo data available")
+                
+                try:
+                    from app.services import barcode_service
+                    barcode_png_bytes = barcode_service.generate_pdf417_barcode_v4(
+                        person_data=service_person_data,
+                        license_data=service_license_data,
+                        card_data=service_card_data,
+                        photo_data=photo_data
+                    )
+                    
+                    if barcode_png_bytes:
+                        # Convert PNG bytes to PIL Image
+                        barcode_image = Image.open(io.BytesIO(barcode_png_bytes))
+                        
+                        # Convert to RGB if needed
+                        if barcode_image.mode != 'RGB':
+                            barcode_image = barcode_image.convert('RGB')
+                            
+                        logger.info(f"Direct service barcode generated successfully: {barcode_image.size}")
+                        return barcode_image
+                    else:
+                        logger.error("Direct service barcode generation returned None")
+                        
+                except Exception as service_error:
+                    logger.error(f"Direct service barcode generation failed: {service_error}")
+            
+            # Final fallback: Create simple text placeholder
+            logger.warning("Creating placeholder barcode due to generation failure")
             img = Image.new('RGB', (400, 50), COLORS["white"])
             draw = ImageDraw.Draw(img)
             font = self.fonts["small"]
-            draw.text((10, 10), "PRODUCTION BARCODE ERROR", fill=COLORS["red"], font=font)
+            draw.text((10, 10), "BARCODE GENERATION ERROR", fill=COLORS["red"], font=font)
             return img
     
     def _extract_photo_from_person_data(self, person_data: Dict[str, Any]) -> Optional[str]:
