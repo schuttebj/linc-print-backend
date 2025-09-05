@@ -1166,29 +1166,65 @@ class LicenseBarcodeService:
             
             print(f"Clean license data: {license_data_str}")
             
-            # Step 2: Process image if provided (exact from working code)
+            # Step 2: Process image with iterative scaling and PDF417 testing
             image_bytes = None
             if photo_data:
                 try:
-                    image = Image.open(io.BytesIO(photo_data)).convert("L")
-                    image = image.resize((60, 90))
+                    base_image = Image.open(io.BytesIO(photo_data)).convert("L")
                     
-                    # Try different quality levels starting from 50, stepping down by 5
-                    for quality in [50, 45, 40, 35, 30, 25, 20, 15, 10]:
-                        img_buffer = io.BytesIO()
-                        image.save(img_buffer, format="JPEG", quality=quality, optimize=True)
-                        image_bytes = img_buffer.getvalue()
+                    # Try different image sizes (width, height) - maintaining 2:3 aspect ratio
+                    # Start with 60x90, then scale down progressively
+                    size_attempts = [
+                        (60, 90),   # Original target size
+                        (55, 82),   # ~8% smaller
+                        (50, 75),   # ~17% smaller  
+                        (45, 67),   # ~25% smaller
+                        (40, 60),   # ~33% smaller
+                        (35, 52),   # ~42% smaller
+                        (30, 45),   # ~50% smaller
+                        (25, 37),   # ~58% smaller
+                    ]
+                    
+                    print(f"Trying {len(size_attempts)} different image sizes for PDF417 compatibility...")
+                    
+                    for width, height in size_attempts:
+                        print(f"Testing image size: {width}x{height}")
+                        resized_image = base_image.resize((width, height))
                         
-                        # Check if combined data will fit
-                        test_combined = license_data_bytes + b"||IMG||" + image_bytes
-                        test_compressed = zlib.compress(test_combined, level=9)
-                        
-                        if len(test_compressed) <= 1800:  # Conservative size limit
-                            print(f"Image processed with quality {quality}: {len(image_bytes)} bytes")
-                            break
-                    else:
-                        print("Could not compress image to acceptable size")
-                        image_bytes = None
+                        # Try quality levels for this size
+                        for quality in [50, 40, 30, 20, 15, 10]:
+                            img_buffer = io.BytesIO()
+                            resized_image.save(img_buffer, format="JPEG", quality=quality, optimize=True)
+                            test_image_bytes = img_buffer.getvalue()
+                            
+                            # Test complete payload
+                            test_combined = license_data_bytes + b"||IMG||" + test_image_bytes
+                            test_compressed = zlib.compress(test_combined, level=9)
+                            compressed_size = len(test_compressed)
+                            
+                            print(f"  Quality {quality}: image={len(test_image_bytes)}b, compressed={compressed_size}b")
+                            
+                            # Conservative limit: try to stay under 1000 bytes compressed
+                            if compressed_size <= 1000:
+                                # Test actual PDF417 generation to be sure
+                                try:
+                                    test_symbol = pyzint.Barcode.PDF417(test_compressed, option_1=5)
+                                    test_bmp = test_symbol.render_bmp()  # This will fail if too long
+                                    
+                                    # Success! Use this configuration
+                                    image_bytes = test_image_bytes
+                                    print(f"✓ SUCCESS: {width}x{height} @ quality {quality} works! Final size: {compressed_size} bytes")
+                                    break
+                                    
+                                except Exception as pdf_error:
+                                    print(f"  PDF417 test failed: {pdf_error}")
+                                    continue
+                            
+                        if image_bytes:
+                            break  # Found working size, exit outer loop
+                    
+                    if not image_bytes:
+                        print("⚠️  Could not find any image configuration that fits in PDF417 - proceeding without image")
                         
                 except Exception as e:
                     print(f"Failed to process photo: {e}")
