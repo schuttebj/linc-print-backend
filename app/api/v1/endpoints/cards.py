@@ -661,6 +661,148 @@ async def create_production_batch(
     return batch.to_dict()
 
 
+# Card File Operations
+@router.post("/{card_id}/regenerate-files", summary="Regenerate Card Files")
+async def regenerate_card_files(
+    card_id: UUID = Path(..., description="Card ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.create"))
+):
+    """
+    Regenerate card files for a specific card by finding its associated print job
+    
+    This deletes old files and recreates them without breaking the print job's ability to retrieve files.
+    """
+    try:
+        # Get the card
+        card = crud_card.get(db, id=card_id)
+        if not card:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Card not found"
+            )
+        
+        # Find the print job associated with this card by card number
+        from app.models.printing import PrintJob
+        print_job = db.query(PrintJob).filter(PrintJob.card_number == card.card_number).first()
+        
+        if not print_job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No print job found for this card"
+            )
+        
+        # Import regenerate function from printing endpoint
+        from app.api.v1.endpoints.printing import regenerate_print_job_files
+        
+        # Call the existing regenerate function
+        result = await regenerate_print_job_files(print_job.id, current_user, db)
+        
+        return {
+            "success": True,
+            "message": f"Card files regenerated successfully for card {card.card_number}",
+            "print_job_id": str(print_job.id),
+            "regenerated_at": result.pdf_files_generated
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating card files for card {card_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to regenerate card files: {str(e)}"
+        )
+
+
+@router.get("/{card_id}/preview/front", summary="Get Card Front Preview")
+async def get_card_front_preview(
+    card_id: UUID = Path(..., description="Card ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.read"))
+):
+    """
+    Get front card preview image for a specific card
+    """
+    try:
+        # Get the card
+        card = crud_card.get(db, id=card_id)
+        if not card:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Card not found"
+            )
+        
+        # Find the print job associated with this card
+        from app.models.printing import PrintJob
+        print_job = db.query(PrintJob).filter(PrintJob.card_number == card.card_number).first()
+        
+        if not print_job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No print job found for this card"
+            )
+        
+        # Import the front card endpoint from printing
+        from app.api.v1.endpoints.printing import get_print_job_front_card
+        
+        # Call the existing front card function
+        return await get_print_job_front_card(print_job.id, current_user, db)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting front preview for card {card_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get card preview: {str(e)}"
+        )
+
+
+@router.get("/{card_id}/preview/back", summary="Get Card Back Preview")
+async def get_card_back_preview(
+    card_id: UUID = Path(..., description="Card ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.read"))
+):
+    """
+    Get back card preview image for a specific card
+    """
+    try:
+        # Get the card
+        card = crud_card.get(db, id=card_id)
+        if not card:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Card not found"
+            )
+        
+        # Find the print job associated with this card
+        from app.models.printing import PrintJob
+        print_job = db.query(PrintJob).filter(PrintJob.card_number == card.card_number).first()
+        
+        if not print_job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No print job found for this card"
+            )
+        
+        # Import the back card endpoint from printing
+        from app.api.v1.endpoints.printing import get_print_job_back_card
+        
+        # Call the existing back card function
+        return await get_print_job_back_card(print_job.id, current_user, db)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting back preview for card {card_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get card preview: {str(e)}"
+        )
+
+
 # Health Check
 @router.get("/health", summary="Card Service Health Check")
 async def health_check(
