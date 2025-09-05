@@ -359,8 +359,7 @@ class MadagascarCardGenerator:
                 logger.info(f"Using production endpoint with license_id: {license_id}")
                 
                 # Import the endpoint function directly to avoid HTTP overhead
-                from app.api.v1.endpoints.barcode import generate_license_barcode
-                from app.schemas.barcode import BarcodeGenerationRequest
+                from app.api.v1.endpoints.barcode import generate_license_barcode, BarcodeGenerationRequest
                 from app.crud import crud_license
                 from app.models import Person
                 from sqlalchemy.orm import Session
@@ -640,6 +639,94 @@ class MadagascarCardGenerator:
         logger.info("No usable fingerprint data found, will use placeholder")
         return None
     
+    def _process_fingerprint_data(self, fingerprint_data: Optional[bytes], target_width: int, target_height: int) -> Optional[Image.Image]:
+        """Process fingerprint data with white background and 90-degree anti-clockwise rotation"""
+        if not fingerprint_data:
+            return None
+        
+        try:
+            logger.info(f"Processing fingerprint data: target_width={target_width}, target_height={target_height}")
+            
+            # Handle base64 data
+            if isinstance(fingerprint_data, str) and (fingerprint_data.startswith('data:') or len(fingerprint_data) > 1000):
+                logger.info("Decoding base64 fingerprint data string")
+                # Check if it's a data URI format (data:image/jpeg;base64,<data>)
+                if fingerprint_data.startswith('data:') and ',' in fingerprint_data:
+                    fingerprint_data = base64.b64decode(fingerprint_data.split(',')[1])
+                else:
+                    # Raw base64 string without data URI prefix
+                    fingerprint_data = base64.b64decode(fingerprint_data)
+            
+            # Decode base64
+            fingerprint_bytes = fingerprint_data
+            logger.info(f"Fingerprint bytes length: {len(fingerprint_bytes) if fingerprint_bytes else 0}")
+            
+            # Open image
+            fingerprint = Image.open(io.BytesIO(fingerprint_bytes))
+            logger.info(f"Opened fingerprint image: mode={fingerprint.mode}, size={fingerprint.size}")
+            
+            # Convert to RGB if needed to ensure proper color handling
+            if fingerprint.mode != 'RGB':
+                fingerprint = fingerprint.convert('RGB')
+                logger.info("Converted fingerprint to RGB")
+            
+            # Invert colors if fingerprint appears to have black background
+            # Check a sample of pixels to determine if background is predominantly black
+            width, height = fingerprint.size
+            sample_points = [
+                (0, 0), (width-1, 0), (0, height-1), (width-1, height-1),  # corners
+                (width//2, 0), (0, height//2), (width-1, height//2), (width//2, height-1)  # edges
+            ]
+            
+            black_pixels = 0
+            total_samples = len(sample_points)
+            for x, y in sample_points:
+                try:
+                    r, g, b = fingerprint.getpixel((x, y))
+                    # Consider pixel "black" if it's very dark
+                    if r < 50 and g < 50 and b < 50:
+                        black_pixels += 1
+                except:
+                    continue
+            
+            # If majority of sample points are black, likely black background - invert
+            if black_pixels > total_samples // 2:
+                logger.info("Detected black background, inverting fingerprint colors")
+                # Invert the image to make black background white
+                from PIL import ImageOps
+                fingerprint = ImageOps.invert(fingerprint)
+            else:
+                logger.info("Fingerprint appears to have light background, no inversion needed")
+            
+            # Rotate 90 degrees anti-clockwise (counter-clockwise)
+            logger.info("Rotating fingerprint 90 degrees anti-clockwise")
+            fingerprint = fingerprint.rotate(90, expand=True)
+            logger.info(f"Fingerprint size after rotation: {fingerprint.size}")
+            
+            # Resize to fit target dimensions maintaining aspect ratio
+            logger.info(f"Resizing fingerprint to fit: {target_width}x{target_height}")
+            fingerprint.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+            logger.info(f"Fingerprint size after thumbnail: {fingerprint.size}")
+            
+            # Create final image with white background and exact dimensions
+            final_fingerprint = Image.new('RGB', (target_width, target_height), (255, 255, 255))
+            
+            # Center the fingerprint
+            x_offset = (target_width - fingerprint.width) // 2
+            y_offset = (target_height - fingerprint.height) // 2
+            logger.info(f"Centering fingerprint at offset: ({x_offset}, {y_offset})")
+            final_fingerprint.paste(fingerprint, (x_offset, y_offset))
+            
+            logger.info("Fingerprint processing completed successfully")
+            return final_fingerprint
+            
+        except Exception as e:
+            logger.error(f"Error processing fingerprint: {e}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return None
+
     def _draw_fingerprint_pattern(self, draw, fp_x, fp_y, fp_w, fp_h):
         """Draw fingerprint pattern placeholder"""
         # Generate a realistic fingerprint-like pattern
@@ -862,7 +949,7 @@ class MadagascarCardGenerator:
         if fingerprint_data:
             try:
                 logger.info(f"Processing fingerprint data for back card")
-                fingerprint_img = self._process_photo_data(fingerprint_data, fp_w - 4, fp_h - 4)  # Leave border space
+                fingerprint_img = self._process_fingerprint_data(fingerprint_data, fp_w - 4, fp_h - 4)  # Leave border space, use specialized fingerprint processing
                 if fingerprint_img:
                     # Ensure coordinates are integers
                     paste_x = int(fp_x + 2)
