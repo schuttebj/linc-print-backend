@@ -515,7 +515,7 @@ class MadagascarCardGenerator:
                     logger.info("Direct service call: No photo data available")
                 
                 try:
-                    from app.services import barcode_service
+                    # Use the barcode_service instance (already imported at top of file)
                     barcode_png_bytes = barcode_service.generate_pdf417_barcode_v4(
                         person_data=service_person_data,
                         license_data=service_license_data,
@@ -1020,15 +1020,57 @@ class MadagascarCardGenerator:
         if full_photo_data:
             logger.info(f"Full photo size: {len(full_photo_data)} bytes")
         
-        # Generate NEW V4 barcode using PRODUCTION endpoint + full photo
-        barcode_img = self._generate_v4_barcode_from_api(
-            license_id=getattr(self, '_extracted_license_id', None),  # Use extracted license ID
-            person_data=person_data,
-            card_number=card_info['card_number'],
-            photo_data=full_photo_data,  # Use FULL photo, not 8-bit version
-            license_codes=license_info['license_codes'],  # Pass extracted license codes
-            db_session=getattr(self, '_db_session', None)  # Use stored DB session if available
-        )
+        # Generate V4 barcode using DIRECT service (simplified approach)
+        logger.info("=== CARD GENERATION: Using Direct V4 Barcode Service ===")
+        
+        # Prepare data for V4 barcode generation
+        service_person_data = {
+            "first_name": person_data.get('first_name', 'Unknown'),
+            "last_name": person_data.get('last_name', 'Unknown'), 
+            "date_of_birth": person_data.get('date_of_birth', '').replace('-', '') if person_data.get('date_of_birth') else '',
+            "gender": person_data.get('gender', 'M')
+        }
+        
+        service_license_data = {
+            "license_codes": license_info['license_codes'],
+            "vehicle_restrictions": [],
+            "driver_restrictions": []
+        }
+        
+        service_card_data = {
+            "card_number": card_info['card_number']
+        }
+        
+        # Log photo processing info
+        if full_photo_data:
+            logger.info(f"V4 service: Processing photo ({len(full_photo_data)} bytes) -> will resize to 60x90 greyscale & compress to fit 1800 byte limit")
+        else:
+            logger.info("V4 service: No photo data available")
+        
+        try:
+            # Use proven V4 barcode service directly (handles all image processing automatically)
+            barcode_png_bytes = barcode_service.generate_pdf417_barcode_v4(
+                person_data=service_person_data,
+                license_data=service_license_data,
+                card_data=service_card_data,
+                photo_data=full_photo_data
+            )
+            
+            if barcode_png_bytes:
+                # Convert PNG bytes to PIL Image
+                barcode_img = Image.open(io.BytesIO(barcode_png_bytes))
+                if barcode_img.mode != 'RGB':
+                    barcode_img = barcode_img.convert('RGB')
+                logger.info(f"V4 barcode generated successfully: {barcode_img.size}")
+            else:
+                raise Exception("V4 barcode generation returned None")
+                
+        except Exception as e:
+            logger.error(f"V4 barcode generation failed: {e}")
+            # Create fallback barcode
+            barcode_img = Image.new('RGB', (400, 50), COLORS["white"])
+            draw = ImageDraw.Draw(barcode_img)
+            draw.text((10, 10), "BARCODE ERROR", fill=COLORS["red"], font=self.fonts["small"])
         
         # Use SAME AMPRO coordinates for barcode placement (Row 1, all 6 columns)
         barcode_coords = BACK_COORDINATES["barcode"]
