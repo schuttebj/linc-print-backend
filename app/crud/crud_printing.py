@@ -360,6 +360,11 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         if printer_hardware_id:
             print_job.printer_hardware_id = printer_hardware_id
         
+        # Update application status to CARD_PRODUCTION
+        from app.models.enums import ApplicationStatus
+        if print_job.primary_application:
+            print_job.primary_application.status = ApplicationStatus.CARD_PRODUCTION
+        
         # Create status history
         status_history = PrintJobStatusHistory(
             print_job_id=print_job.id,
@@ -397,6 +402,11 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         print_job.printing_completed_at = datetime.utcnow()
         if production_notes:
             print_job.production_notes = production_notes
+        
+        # Update application status to PRINT_COMPLETE
+        from app.models.enums import ApplicationStatus
+        if print_job.primary_application:
+            print_job.primary_application.status = ApplicationStatus.PRINT_COMPLETE
         
         # Create status history
         status_history = PrintJobStatusHistory(

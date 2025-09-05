@@ -324,7 +324,8 @@ class ApplicationStatus(PythonEnum):
     CARD_PAYMENT_PENDING = "CARD_PAYMENT_PENDING"  # Test passed, awaiting card payment (NEW_LICENSE only)
     APPROVED = "APPROVED"                     # Application approved, ready for printing
     SENT_TO_PRINTER = "SENT_TO_PRINTER"      # Printing job created
-    CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM
+    CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured/printed
+    PRINT_COMPLETE = "PRINT_COMPLETE"         # Card printing completed, awaiting QA
     READY_FOR_COLLECTION = "READY_FOR_COLLECTION"  # Card available for pickup
     COMPLETED = "COMPLETED"                   # Card collected, process complete
     REJECTED = "REJECTED"                     # Application rejected
