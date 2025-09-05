@@ -403,10 +403,8 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         if production_notes:
             print_job.production_notes = production_notes
         
-        # Update application status to PRINT_COMPLETE
-        from app.models.enums import ApplicationStatus
-        if print_job.primary_application:
-            print_job.primary_application.status = ApplicationStatus.PRINT_COMPLETE
+        # Application stays in CARD_PRODUCTION status until QA is complete
+        # No application status change here - it happens when QA completes
         
         # Create status history
         status_history = PrintJobStatusHistory(
@@ -487,6 +485,11 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             if qa_result == QualityCheckResult.PASSED:
                 print_job.status = PrintJobStatus.COMPLETED
                 print_job.completed_at = datetime.utcnow()
+                
+                # Update application status to READY_FOR_COLLECTION when QA passes
+                from app.models.enums import ApplicationStatus
+                if print_job.primary_application:
+                    print_job.primary_application.status = ApplicationStatus.READY_FOR_COLLECTION
                 
                 # Clean up files after successful QA - they're no longer needed
                 try:
