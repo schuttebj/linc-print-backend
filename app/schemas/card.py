@@ -165,6 +165,7 @@ class CardResponse(BaseModel):
     id: UUID
     card_number: str
     person_id: UUID
+    person_name: Optional[str] = Field(None, description="Person's full name")
     card_type: CardType
     status: CardStatus
     production_status: ProductionStatus

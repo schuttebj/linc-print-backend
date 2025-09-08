@@ -366,6 +366,9 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         if print_job.primary_application:
             print_job.primary_application.status = ApplicationStatus.CARD_PRODUCTION
         
+        # Update card status to IN_PRODUCTION
+        self._update_card_status_for_print_job(db, print_job, "IN_PRODUCTION")
+        
         # Create status history
         status_history = PrintJobStatusHistory(
             print_job_id=print_job.id,
@@ -406,6 +409,9 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         
         # Application stays in CARD_PRODUCTION status until QA is complete
         # No application status change here - it happens when QA completes
+        
+        # Update card status to QUALITY_CONTROL
+        self._update_card_status_for_print_job(db, print_job, "QUALITY_CONTROL")
         
         # Create status history
         status_history = PrintJobStatusHistory(
@@ -490,6 +496,9 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                 from app.models.enums import ApplicationStatus
                 if print_job.primary_application:
                     print_job.primary_application.status = ApplicationStatus.READY_FOR_COLLECTION
+                
+                # Update card status to READY_FOR_COLLECTION
+                self._update_card_status_for_print_job(db, print_job, "READY_FOR_COLLECTION")
                 
                 # Clean up files after successful QA - they're no longer needed
                 try:
@@ -840,6 +849,45 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             has_next_page=(page * page_size) < total,
             has_previous_page=page > 1
         )
+    
+    def _update_card_status_for_print_job(self, db: Session, print_job, new_status: str):
+        """
+        Update the card status associated with a print job
+        """
+        try:
+            from app.models.card import Card
+            from app.models.enums import CardStatus
+            
+            # Find the card associated with this print job by card number
+            card = db.query(Card).filter(Card.card_number == print_job.card_number).first()
+            
+            if card:
+                # Update card status
+                card.status = new_status
+                
+                # Update specific date fields based on status
+                now = datetime.utcnow()
+                if new_status == "ORDERED":
+                    card.ordered_date = now
+                elif new_status == "IN_PRODUCTION":
+                    card.production_start_date = now
+                elif new_status == "QUALITY_CONTROL":
+                    # Mark production as completed
+                    card.production_completed_date = now
+                elif new_status == "READY_FOR_COLLECTION":
+                    card.ready_for_collection_date = now
+                elif new_status == "COLLECTED":
+                    card.collected_date = now
+                
+                card.updated_at = now
+                
+                logger.info(f"Updated card {card.id} status to {new_status} for print job {print_job.id}")
+            else:
+                logger.warning(f"No card found with number {print_job.card_number} for print job {print_job.id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to update card status for print job {print_job.id}: {e}")
+            # Don't fail the print job operation if card update fails
 
 
 class CRUDPrintQueue(CRUDBase[PrintQueue, dict, dict]):

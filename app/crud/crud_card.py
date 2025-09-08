@@ -188,9 +188,13 @@ class CRUDCard(CRUDBase[Card, CardCreate, CardUpdate]):
         filters: CardSearchFilters
     ) -> Tuple[List[Card], int]:
         """
-        Search cards with comprehensive filtering
+        Search cards with comprehensive filtering and person information
         """
-        query = db.query(Card)
+        # Join with Person table to get person names
+        query = db.query(Card).join(Person, Card.person_id == Person.id)
+        
+        # Add selectinload to include person data
+        query = query.options(selectinload(Card.person))
         
         # Apply filters
         if filters.person_id:
@@ -208,6 +212,17 @@ class CRUDCard(CRUDBase[Card, CardCreate, CardUpdate]):
         if filters.card_number:
             query = query.filter(Card.card_number.ilike(f"%{filters.card_number}%"))
         
+        # Person name search
+        if filters.person_name:
+            name_filter = f"%{filters.person_name}%"
+            query = query.filter(
+                or_(
+                    func.concat(Person.first_name, ' ', Person.surname).ilike(name_filter),
+                    Person.first_name.ilike(name_filter),
+                    Person.surname.ilike(name_filter)
+                )
+            )
+        
         if filters.production_location_id:
             query = query.filter(Card.production_location_id == filters.production_location_id)
         
@@ -224,8 +239,8 @@ class CRUDCard(CRUDBase[Card, CardCreate, CardUpdate]):
         # Get total count
         total = query.count()
         
-        # Apply pagination
-        cards = query.offset((filters.page - 1) * filters.size).limit(filters.size).all()
+        # Apply pagination and ordering
+        cards = query.order_by(desc(Card.created_at)).offset((filters.page - 1) * filters.size).limit(filters.size).all()
         
         return cards, total
 

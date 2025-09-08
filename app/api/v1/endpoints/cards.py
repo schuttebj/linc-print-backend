@@ -258,8 +258,17 @@ async def search_cards(
         # Calculate pagination info
         pages = (total + size - 1) // size if total > 0 else 1
         
+        # Create card responses with person names
+        card_responses = []
+        for card in cards:
+            card_dict = {
+                **card.__dict__,
+                'person_name': f"{card.person.first_name} {card.person.surname}" if card.person else None
+            }
+            card_responses.append(CardResponse(**card_dict))
+        
         return CardListResponse(
-            cards=[CardResponse.from_orm(card) for card in cards],
+            cards=card_responses,
             total=total,
             page=page,
             size=size,

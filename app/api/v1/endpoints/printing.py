@@ -771,10 +771,11 @@ async def create_print_job(
                 card_number=card_number,
                 person_id=application.person_id,
                 card_type=CardType.STANDARD,
-                status=CardStatus.PENDING_ORDER,  # Will change as print job progresses
+                status=CardStatus.ORDERED,  # Card ordered for production when print job is created
                 production_status=ProductionStatus.NOT_STARTED,
                 valid_from=valid_from,
                 valid_until=valid_until,
+                ordered_date=datetime.utcnow(),  # Mark as ordered
                 created_from_application_id=request.application_id,
                 production_location_id=print_location_id,
                 collection_location_id=print_location_id,  # Same location for collection
@@ -2052,13 +2053,35 @@ async def complete_card_collection(
                 detail="Some applications are not ready for collection or do not belong to this person"
             )
         
-        # Update application statuses to COMPLETED
+        # Update application statuses to COMPLETED and update card statuses
         completed_count = 0
         for app in applications:
             app.status = ApplicationStatus.COMPLETED
             app.collection_date = datetime.utcnow()
             app.collected_by_user_id = current_user.id
             completed_count += 1
+            
+            # Update associated card status to COLLECTED
+            from app.models.printing import PrintJob
+            from app.models.card import Card
+            from app.models.enums import CardStatus
+            
+            # Find the print job for this application
+            print_job = db.query(PrintJob).filter(
+                PrintJob.primary_application_id == app.id
+            ).first()
+            
+            if print_job:
+                # Find and update the card
+                card = db.query(Card).filter(
+                    Card.card_number == print_job.card_number
+                ).first()
+                
+                if card:
+                    card.status = CardStatus.COLLECTED
+                    card.collected_date = datetime.utcnow()
+                    card.updated_at = datetime.utcnow()
+                    logger.info(f"Updated card {card.id} status to COLLECTED for application {app.id}")
         
         db.commit()
         
