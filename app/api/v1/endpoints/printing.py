@@ -1264,6 +1264,46 @@ async def complete_qa_review(
     }
 
 
+# QA Search (must come before jobs/{job_id} to avoid route conflict)
+@router.get("/jobs/qa-search", response_model=PrintJobSearchResponse, summary="Search Print Jobs for QA")
+async def search_print_jobs_for_qa(
+    search_term: Optional[str] = Query(None, description="Search by person ID number, card number, or job number"),
+    status: str = Query("PRINTED", description="Job status to search for"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.quality_check"))
+):
+    """
+    Search print jobs ready for quality assurance
+    
+    Single search field that searches across person ID number, card number, and job number.
+    Only returns jobs in PRINTED status that are ready for QA.
+    Results are filtered based on user's location access permissions.
+    """
+    # Build search criteria
+    search_filters = PrintJobSearchFilters(
+        status=[PrintJobStatus.PRINTED] if status == "PRINTED" else [PrintJobStatus(status)]
+    )
+    
+    # Use the search term for all possible fields
+    extra_filters = {}
+    if search_term:
+        extra_filters['search_term'] = search_term.strip()
+    
+    # Search with location filtering
+    result = crud_print_job.search_for_qa(
+        db=db,
+        filters=search_filters,
+        extra_filters=extra_filters,
+        page=page,
+        page_size=page_size,
+        current_user=current_user
+    )
+    
+    return result
+
+
 # Job Information
 @router.get("/jobs/{job_id}", response_model=PrintJobDetailResponse, summary="Get Print Job Details")
 async def get_print_job(
@@ -1302,44 +1342,6 @@ async def get_print_job(
     
     return serialize_print_job_detail_response(print_job)
 
-
-@router.get("/jobs/qa-search", response_model=PrintJobSearchResponse, summary="Search Print Jobs for QA")
-async def search_print_jobs_for_qa(
-    search_term: Optional[str] = Query(None, description="Search by person ID number, card number, or job number"),
-    status: str = Query("PRINTED", description="Job status to search for"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("printing.quality_check"))
-):
-    """
-    Search print jobs ready for quality assurance
-    
-    Single search field that searches across person ID number, card number, and job number.
-    Only returns jobs in PRINTED status that are ready for QA.
-    Results are filtered based on user's location access permissions.
-    """
-    # Build search criteria
-    search_filters = PrintJobSearchFilters(
-        status=[PrintJobStatus.PRINTED] if status == "PRINTED" else [PrintJobStatus(status)]
-    )
-    
-    # Use the search term for all possible fields
-    extra_filters = {}
-    if search_term:
-        extra_filters['search_term'] = search_term.strip()
-    
-    # Search with location filtering
-    result = crud_print_job.search_for_qa(
-        db=db,
-        filters=search_filters,
-        extra_filters=extra_filters,
-        page=page,
-        page_size=page_size,
-        current_user=current_user
-    )
-    
-    return result
 
 @router.get("/jobs", response_model=PrintJobSearchResponse, summary="Search Print Jobs")
 async def search_print_jobs(
