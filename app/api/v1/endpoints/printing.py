@@ -1925,10 +1925,7 @@ async def search_person_for_collection(
         
         # Get applications ready for collection
         from app.models.enums import ApplicationStatus
-        ready_applications = db.query(Application).options(
-            selectinload(Application.primary_license),
-            selectinload(Application.print_jobs)
-        ).filter(
+        ready_applications = db.query(Application).filter(
             and_(
                 Application.person_id == person.id,
                 Application.status == ApplicationStatus.READY_FOR_COLLECTION
@@ -1938,12 +1935,19 @@ async def search_person_for_collection(
         # Prepare response data
         applications_data = []
         for app in ready_applications:
-            # Get card number from associated print job
+            # Get card number from associated print job by querying directly
             card_number = None
             print_job_number = None
-            if app.print_jobs:
+            
+            # Find print jobs associated with this application
+            from app.models.printing import PrintJob, PrintJobStatus
+            print_jobs = db.query(PrintJob).filter(
+                PrintJob.primary_application_id == app.id
+            ).all()
+            
+            if print_jobs:
                 # Get the most recent completed print job
-                completed_jobs = [job for job in app.print_jobs if job.status == PrintJobStatus.COMPLETED]
+                completed_jobs = [job for job in print_jobs if job.status == PrintJobStatus.COMPLETED]
                 if completed_jobs:
                     latest_job = max(completed_jobs, key=lambda x: x.completed_at or x.submitted_at)
                     card_number = latest_job.card_number
