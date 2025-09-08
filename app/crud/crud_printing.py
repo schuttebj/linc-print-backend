@@ -20,6 +20,7 @@ from app.models.printing import (
 from app.models.license import License
 from app.models.application import Application
 from app.models.user import User, Location
+from app.models.person import Person
 from app.models.enums import UserType
 
 # Initialize logger for this module
