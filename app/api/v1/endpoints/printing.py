@@ -2098,26 +2098,29 @@ async def get_overdue_cards_for_destruction(
     try:
         from datetime import timedelta
         from sqlalchemy.orm import selectinload
+        from sqlalchemy import select
         
         # Calculate cutoff date (3 months ago)
         cutoff_date = datetime.utcnow() - timedelta(days=90)  # 3 months = 90 days
         
         # Base query for overdue applications
+        # First, get application IDs that have completed print jobs before cutoff date
+        from app.models.printing import PrintJob, PrintJobStatus
+        
+        # Subquery to find applications with print jobs completed before cutoff
+        overdue_app_ids_subquery = db.query(PrintJob.primary_application_id).filter(
+            and_(
+                PrintJob.status == PrintJobStatus.COMPLETED,
+                PrintJob.completed_at < cutoff_date
+            )
+        ).distinct().subquery()
+        
         base_query = db.query(Application).options(
-            selectinload(Application.person).selectinload(Person.aliases),
-            selectinload(Application.print_jobs),
-            selectinload(Application.primary_license)
+            selectinload(Application.person).selectinload(Person.aliases)
         ).filter(
             and_(
                 Application.status == ApplicationStatus.READY_FOR_COLLECTION,
-                # Check when the application was marked as ready for collection
-                # We'll look for print jobs that were completed before the cutoff
-                Application.print_jobs.any(
-                    and_(
-                        PrintJob.status == PrintJobStatus.COMPLETED,
-                        PrintJob.completed_at < cutoff_date
-                    )
-                )
+                Application.id.in_(overdue_app_ids_subquery)
             )
         )
         
@@ -2131,9 +2134,13 @@ async def get_overdue_cards_for_destruction(
         overdue_data = []
         for app in overdue_applications:
             # Get the latest completed print job for this application
+            print_jobs = db.query(PrintJob).filter(
+                PrintJob.primary_application_id == app.id
+            ).all()
+            
             completed_job = None
-            if app.print_jobs:
-                completed_jobs = [job for job in app.print_jobs if job.status == PrintJobStatus.COMPLETED]
+            if print_jobs:
+                completed_jobs = [job for job in print_jobs if job.status == PrintJobStatus.COMPLETED]
                 if completed_jobs:
                     completed_job = max(completed_jobs, key=lambda x: x.completed_at or x.submitted_at)
             
