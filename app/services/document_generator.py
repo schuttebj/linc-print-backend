@@ -839,6 +839,193 @@ class LicenseVerificationTemplate(DocumentTemplate):
         return " | ".join(formatted) if formatted else "00 - None"
 
 
+class CardCollectionTemplate(DocumentTemplate):
+    """Card Collection Document template for Madagascar card collection confirmation"""
+    
+    def generate(self, data: Dict[str, Any]) -> bytes:
+        """Generate card collection confirmation PDF from collection data"""
+        try:
+            logger.info(f"Generating card collection PDF for person: {data.get('person_name', 'Unknown')}")
+            
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=self.page_size,
+                rightMargin=15*mm,
+                leftMargin=15*mm,
+                topMargin=15*mm,
+                bottomMargin=15*mm,
+                title=self.title
+            )
+            
+            story = []
+            
+            # Government headers
+            story.append(Paragraph(data.get('government_header', '🇲🇬 REPUBLIC OF MADAGASCAR'), self.styles['GovernmentHeader']))
+            story.append(Paragraph(data.get('department_header', 'MINISTRY OF TRANSPORT'), self.styles['DepartmentHeader']))
+            story.append(Paragraph(data.get('office_header', 'Driver License Collection Document'), self.styles['OfficeHeader']))
+            story.append(Spacer(1, 4))
+            
+            # Document title
+            story.append(Paragraph(data.get('document_title', 'CARD COLLECTION CONFIRMATION'), self.styles['OfficialTitle']))
+            story.append(Spacer(1, 8))
+            
+            # Collection Information
+            story.append(Paragraph('COLLECTION INFORMATION', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            collection_data = [
+                [
+                    Paragraph('<b>License Holder:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('person_name', 'Unknown')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>ID Number:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('person_id', 'Unknown')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Collection Date:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('collection_date', 'Unknown')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Collection Time:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('collection_time', 'Unknown')), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Total Cards:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('total_cards', 0)), self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph('<b>Collection Location:</b>', self.styles['FieldLabel']),
+                    Paragraph(str(data.get('collection_location', 'Unknown')), self.styles['FieldValue'])
+                ]
+            ]
+            
+            collection_table = Table(collection_data, colWidths=[50*mm, 120*mm])
+            collection_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            
+            story.append(collection_table)
+            story.append(Spacer(1, 8))
+            
+            # Applications Being Collected
+            story.append(Paragraph('APPLICATIONS COLLECTED', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            applications = data.get('applications', [])
+            if applications:
+                app_data = [['Application #', 'Type', 'Card Number', 'Print Job #', 'Approval Date']]
+                
+                for app in applications:
+                    app_data.append([
+                        str(app.get('application_number', 'N/A')),
+                        str(app.get('application_type', 'N/A')).replace('_', ' '),
+                        str(app.get('card_number', 'N/A')),
+                        str(app.get('print_job_number', 'N/A')),
+                        str(app.get('approval_date', 'N/A'))
+                    ])
+                
+                app_table = Table(app_data, colWidths=[35*mm, 35*mm, 35*mm, 35*mm, 30*mm])
+                app_table.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                    ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ]))
+                
+                story.append(app_table)
+            else:
+                story.append(Paragraph('No applications found', self.styles['FieldValue']))
+            
+            story.append(Spacer(1, 10))
+            
+            # Important Notice
+            story.append(Paragraph('IMPORTANT COLLECTION CONFIRMATION', self.styles['SectionHeader']))
+            story.append(Spacer(1, 4))
+            
+            notice_text = """
+            By signing below, I confirm that I have received my driver's license card(s) as detailed above. 
+            I understand that:
+            • I am responsible for the security of my card(s)
+            • Lost or stolen cards must be reported immediately
+            • This card is property of the Republic of Madagascar
+            • Any misuse of this card may result in legal consequences
+            """
+            
+            story.append(Paragraph(notice_text, self.styles['FieldValue']))
+            story.append(Spacer(1, 8))
+            
+            # Signatures section
+            story.append(Paragraph('SIGNATURES', self.styles['SectionHeader']))
+            story.append(Spacer(1, 6))
+            
+            signature_lines = data.get('signature_lines', {})
+            signature_data = [
+                [
+                    Paragraph('<b>' + signature_lines.get('collector', 'License Holder Signature') + '</b>', self.styles['FieldLabel']),
+                    Paragraph('<b>' + signature_lines.get('officer', 'Issuing Officer Signature') + '</b>', self.styles['FieldLabel'])
+                ],
+                [
+                    Paragraph('_' * 30, self.styles['FieldValue']),
+                    Paragraph('_' * 30, self.styles['FieldValue'])
+                ],
+                [
+                    Paragraph(f"Date: {data.get('collection_date', '___________')}", self.styles['FieldValue']),
+                    Paragraph(f"Officer: {data.get('collected_by', '___________')}", self.styles['FieldValue'])
+                ]
+            ]
+            
+            signature_table = Table(signature_data, colWidths=[85*mm, 85*mm])
+            signature_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 15),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            
+            story.append(signature_table)
+            story.append(Spacer(1, 10))
+            
+            # Footer
+            story.append(Paragraph(data.get('footer', 'Ministry of Transport - Republic of Madagascar'), self.styles['Footer']))
+            story.append(Paragraph(data.get('contact_info', 'For assistance: +261 20 22 123 45 | transport@gov.mg'), self.styles['Footer']))
+            story.append(Paragraph('Card Collection Confirmation Document', self.styles['Footer']))
+            
+            # Build PDF
+            doc.build(story)
+            buffer.seek(0)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            logger.info(f"Successfully generated card collection PDF ({len(pdf_data)} bytes)")
+            return pdf_data
+            
+        except Exception as e:
+            logger.error(f"Error generating card collection PDF: {e}")
+            raise Exception(f"Card collection generation failed: {str(e)}")
+
+
 class DocumentGenerator:
     """Main document generator service"""
     
@@ -861,9 +1048,14 @@ class DocumentGenerator:
         template = LicenseVerificationTemplate("Madagascar License Verification")
         return template.generate(data)
     
+    def generate_card_collection(self, data: Dict[str, Any]) -> bytes:
+        """Generate card collection document PDF"""
+        template = CardCollectionTemplate("Madagascar Card Collection")
+        return template.generate(data)
+    
     def get_supported_templates(self) -> List[str]:
         """Get list of supported template types"""
-        return ["receipt", "card_order_confirmation", "license_verification"]
+        return ["receipt", "card_order_confirmation", "license_verification", "card_collection"]
     
     def generate_document(self, template_type: str, data: Dict[str, Any]) -> bytes:
         """Generate document by template type"""
@@ -873,6 +1065,8 @@ class DocumentGenerator:
             return self.generate_card_order_confirmation(data)
         elif template_type == "license_verification":
             return self.generate_license_verification(data)
+        elif template_type == "card_collection":
+            return self.generate_card_collection(data)
         else:
             raise ValueError(f"Unsupported template type: {template_type}")
     
@@ -976,6 +1170,46 @@ class DocumentGenerator:
             'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg'
         }
     
+    def get_sample_card_collection_data(self) -> Dict[str, Any]:
+        """Generate sample card collection data for testing"""
+        return {
+            'government_header': '🇲🇬 REPUBLIC OF MADAGASCAR',
+            'department_header': 'MINISTRY OF TRANSPORT',
+            'office_header': 'Driver License Collection Document',
+            'document_title': 'CARD COLLECTION CONFIRMATION',
+            'person_name': 'RAKOTO JOHN ANDRY',
+            'person_id': '101234567890',
+            'birth_date': '15/03/1985',
+            'nationality': 'MALAGASY',
+            'collection_date': '2024-01-15',
+            'collection_time': '14:30:00',
+            'applications': [
+                {
+                    'application_number': 'A01-NL-2024-0001',
+                    'application_type': 'NEW_LICENSE',
+                    'card_number': 'A01000000001',
+                    'print_job_number': 'PJ20240115A01001',
+                    'approval_date': '2024-01-10'
+                },
+                {
+                    'application_number': 'A01-RC-2024-0002',
+                    'application_type': 'RENEWAL',
+                    'card_number': 'A01000000002',
+                    'print_job_number': 'PJ20240115A01002',
+                    'approval_date': '2024-01-12'
+                }
+            ],
+            'total_cards': 2,
+            'collected_by': 'ANDRIAMAMY Marie',
+            'collection_location': 'ANTANANARIVO CENTRAL OFFICE',
+            'footer': 'Ministry of Transport - Republic of Madagascar',
+            'contact_info': 'For assistance: +261 20 22 123 45 | transport@gov.mg',
+            'signature_lines': {
+                'collector': 'License Holder Signature',
+                'officer': 'Issuing Officer Signature'
+            }
+        }
+    
     def get_sample_data(self, template_type: str) -> Dict[str, Any]:
         """Get sample data for any template type"""
         if template_type == "receipt":
@@ -984,6 +1218,8 @@ class DocumentGenerator:
             return self.get_sample_card_order_data()
         elif template_type == "license_verification":
             return self.get_sample_license_verification_data()
+        elif template_type == "card_collection":
+            return self.get_sample_card_collection_data()
         else:
             raise ValueError(f"Unsupported template type: {template_type}")
 

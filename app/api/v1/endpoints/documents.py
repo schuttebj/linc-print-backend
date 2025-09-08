@@ -49,7 +49,7 @@ async def get_available_templates(
 
 @router.get("/sample-pdf/{template_type}", summary="Generate Sample PDF by Template")
 async def generate_sample_pdf(
-    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification)"),
+    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification, card_collection)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -101,7 +101,7 @@ async def generate_sample_pdf(
 
 @router.post("/generate-pdf/{template_type}", summary="Generate PDF with Custom Data")
 async def generate_pdf_with_data(
-    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification)"),
+    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification, card_collection)"),
     document_data: Dict[str, Any] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -162,7 +162,7 @@ async def generate_pdf_with_data(
 
 @router.get("/sample-data/{template_type}", summary="Get Sample Data by Template")
 async def get_sample_data(
-    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification)"),
+    template_type: str = Path(..., description="Template type (receipt, card_order_confirmation, license_verification, card_collection)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:

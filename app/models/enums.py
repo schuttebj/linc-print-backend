@@ -327,6 +327,7 @@ class ApplicationStatus(PythonEnum):
     CARD_PRODUCTION = "CARD_PRODUCTION"       # Card being manufactured by CIM
     READY_FOR_COLLECTION = "READY_FOR_COLLECTION"  # Card available for pickup
     COMPLETED = "COMPLETED"                   # Card collected, process complete
+    COLLECTION_FAILURE = "COLLECTION_FAILURE"  # Card not collected within 3 months, sent for destruction
     REJECTED = "REJECTED"                     # Application rejected
     CANCELLED = "CANCELLED"                   # Application cancelled
 

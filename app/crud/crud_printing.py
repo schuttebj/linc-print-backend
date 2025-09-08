@@ -466,7 +466,6 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         *,
         print_job: PrintJob,
         qa_result: QualityCheckResult,
-        qa_notes: str,
         current_user: User
     ) -> PrintJob:
         """
@@ -478,7 +477,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         try:
             # Update QA fields
             print_job.quality_check_result = qa_result
-            print_job.quality_check_notes = qa_notes
+            print_job.quality_check_notes = None
             print_job.quality_check_by_user_id = current_user.id
             print_job.quality_check_completed_at = datetime.utcnow()
             
@@ -604,7 +603,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                 to_status=print_job.status,
                 changed_by_user_id=current_user.id,
                 change_reason=f"Quality check completed: {qa_result}",
-                change_notes=qa_notes[:500] if qa_notes else None  # Limit notes length
+                change_notes=None
             )
             db.add(status_history)
             

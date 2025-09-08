@@ -1212,7 +1212,6 @@ async def complete_qa_review(
     
     # Parse request data
     outcome = request.get('outcome')
-    notes = request.get('notes', '')
     location_id = request.get('location_id')
     
     # Validate outcome
@@ -1231,19 +1230,11 @@ async def complete_qa_review(
     
     qa_result = qa_result_mapping[outcome]
     
-    # Require notes for failures
-    if qa_result != QualityCheckResult.PASSED and (not notes or len(notes.strip()) < 5):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Detailed notes are required when quality check fails"
-        )
-    
     # Complete quality check
     print_job = crud_print_job.complete_quality_check(
         db=db,
         print_job=print_job,
         qa_result=qa_result,
-        qa_notes=notes,
         current_user=current_user
     )
     
@@ -1885,4 +1876,388 @@ async def verify_print_job_cleanup(
         
     except Exception as e:
         logger.error(f"Error verifying cleanup for job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error verifying cleanup status") 
+        raise HTTPException(status_code=500, detail="Error verifying cleanup status")
+
+
+# Card Collection Endpoints
+@router.get("/collection/search/{person_id_number}", summary="Search Person for Card Collection")
+async def search_person_for_collection(
+    person_id_number: str = Path(..., description="Person ID number"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.collect"))
+):
+    """
+    Search for a person by ID number and return applications ready for collection
+    
+    Returns person information and applications with READY_FOR_COLLECTION status.
+    Only users with card collection permissions can access this endpoint.
+    """
+    try:
+        # Search for person by ID number through PersonAlias
+        from app.models.person import PersonAlias
+        from sqlalchemy.orm import selectinload
+        from sqlalchemy import select
+        
+        person_alias = db.query(PersonAlias).filter(
+            and_(
+                PersonAlias.document_number == person_id_number.strip(),
+                PersonAlias.is_current == True
+            )
+        ).first()
+        
+        if not person_alias:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Person not found with the provided ID number"
+            )
+        
+        # Get person with related data
+        person = db.query(Person).options(
+            selectinload(Person.aliases)
+        ).filter(Person.id == person_alias.person_id).first()
+        
+        if not person:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Person record not found"
+            )
+        
+        # Get applications ready for collection
+        from app.models.enums import ApplicationStatus
+        ready_applications = db.query(Application).options(
+            selectinload(Application.primary_license),
+            selectinload(Application.print_jobs)
+        ).filter(
+            and_(
+                Application.person_id == person.id,
+                Application.status == ApplicationStatus.READY_FOR_COLLECTION
+            )
+        ).all()
+        
+        # Prepare response data
+        applications_data = []
+        for app in ready_applications:
+            # Get card number from associated print job
+            card_number = None
+            print_job_number = None
+            if app.print_jobs:
+                # Get the most recent completed print job
+                completed_jobs = [job for job in app.print_jobs if job.status == PrintJobStatus.COMPLETED]
+                if completed_jobs:
+                    latest_job = max(completed_jobs, key=lambda x: x.completed_at or x.submitted_at)
+                    card_number = latest_job.card_number
+                    print_job_number = latest_job.job_number
+            
+            applications_data.append({
+                "id": str(app.id),
+                "application_number": app.application_number,
+                "application_type": app.application_type.value,
+                "status": app.status.value,
+                "application_date": app.application_date.isoformat(),
+                "approval_date": app.approval_date.isoformat() if app.approval_date else None,
+                "card_number": card_number,
+                "print_job_number": print_job_number
+            })
+        
+        # Check collection eligibility
+        can_collect = len(applications_data) > 0
+        issues = []
+        if not can_collect:
+            issues.append("No applications ready for collection")
+        
+        # Prepare person data
+        person_data = {
+            "id": str(person.id),
+            "first_name": person.first_name,
+            "last_name": person.surname,
+            "id_number": person_id_number,
+            "birth_date": person.birth_date.isoformat() if person.birth_date else None,
+            "nationality_code": person.nationality_code
+        }
+        
+        return {
+            "person": person_data,
+            "ready_for_collection": applications_data,
+            "collection_eligibility": {
+                "can_collect": can_collect,
+                "issues": issues,
+                "total_applications": len(applications_data)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching person for collection: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to search for person collection data"
+        )
+
+
+@router.post("/collection/complete", summary="Complete Card Collection")
+@audit_update(
+    resource_type="APPLICATION",
+    screen_reference="CardCollection",
+    get_old_data=lambda db, request: db.query(Application).filter(
+        Application.id.in_(request.get("application_ids", []))
+    ).all()
+)
+async def complete_card_collection(
+    request: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.collect"))
+):
+    """
+    Complete the collection process for multiple applications
+    
+    Updates application statuses to COMPLETED and records collection information.
+    """
+    try:
+        person_id = request.get("person_id")
+        application_ids = request.get("application_ids", [])
+        
+        if not person_id or not application_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Person ID and application IDs are required"
+            )
+        
+        # Validate person exists
+        person = db.query(Person).filter(Person.id == person_id).first()
+        if not person:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Person not found"
+            )
+        
+        # Get applications and validate they are ready for collection
+        from app.models.enums import ApplicationStatus
+        applications = db.query(Application).filter(
+            and_(
+                Application.id.in_(application_ids),
+                Application.person_id == person_id,
+                Application.status == ApplicationStatus.READY_FOR_COLLECTION
+            )
+        ).all()
+        
+        if len(applications) != len(application_ids):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Some applications are not ready for collection or do not belong to this person"
+            )
+        
+        # Update application statuses to COMPLETED
+        completed_count = 0
+        for app in applications:
+            app.status = ApplicationStatus.COMPLETED
+            app.collection_date = datetime.utcnow()
+            app.collected_by_user_id = current_user.id
+            completed_count += 1
+        
+        db.commit()
+        
+        return {
+            "message": f"Collection completed successfully for {completed_count} applications",
+            "completed_applications": completed_count,
+            "person_name": f"{person.first_name} {person.surname}",
+            "collection_date": datetime.utcnow().isoformat(),
+            "collected_by": f"{current_user.first_name} {current_user.last_name}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing card collection: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to complete card collection"
+        )
+
+
+# Card Destruction Endpoints
+@router.get("/destruction/overdue", summary="Get Overdue Cards for Destruction")
+async def get_overdue_cards_for_destruction(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.destroy"))
+):
+    """
+    Get cards that are overdue for collection (3+ months) and need to be destroyed
+    
+    Returns applications with READY_FOR_COLLECTION status where the ready date 
+    is more than 3 months ago.
+    """
+    try:
+        from datetime import timedelta
+        from sqlalchemy.orm import selectinload
+        
+        # Calculate cutoff date (3 months ago)
+        cutoff_date = datetime.utcnow() - timedelta(days=90)  # 3 months = 90 days
+        
+        # Base query for overdue applications
+        base_query = db.query(Application).options(
+            selectinload(Application.person).selectinload(Person.aliases),
+            selectinload(Application.print_jobs),
+            selectinload(Application.primary_license)
+        ).filter(
+            and_(
+                Application.status == ApplicationStatus.READY_FOR_COLLECTION,
+                # Check when the application was marked as ready for collection
+                # We'll look for print jobs that were completed before the cutoff
+                Application.print_jobs.any(
+                    and_(
+                        PrintJob.status == PrintJobStatus.COMPLETED,
+                        PrintJob.completed_at < cutoff_date
+                    )
+                )
+            )
+        )
+        
+        # Get total count
+        total_count = base_query.count()
+        
+        # Get paginated results
+        overdue_applications = base_query.offset((page - 1) * page_size).limit(page_size).all()
+        
+        # Prepare response data
+        overdue_data = []
+        for app in overdue_applications:
+            # Get the latest completed print job for this application
+            completed_job = None
+            if app.print_jobs:
+                completed_jobs = [job for job in app.print_jobs if job.status == PrintJobStatus.COMPLETED]
+                if completed_jobs:
+                    completed_job = max(completed_jobs, key=lambda x: x.completed_at or x.submitted_at)
+            
+            # Get person ID number
+            person_id_number = None
+            if app.person and app.person.aliases:
+                primary_alias = next((alias for alias in app.person.aliases if alias.is_current), None)
+                if primary_alias:
+                    person_id_number = primary_alias.document_number
+            
+            overdue_data.append({
+                "id": str(app.id),
+                "application_number": app.application_number,
+                "application_type": app.application_type.value,
+                "person_name": f"{app.person.first_name} {app.person.surname}" if app.person else None,
+                "person_id_number": person_id_number,
+                "ready_for_collection_date": completed_job.completed_at.isoformat() if completed_job and completed_job.completed_at else None,
+                "days_overdue": (datetime.utcnow() - completed_job.completed_at).days if completed_job and completed_job.completed_at else None,
+                "card_number": completed_job.card_number if completed_job else None,
+                "print_job_number": completed_job.job_number if completed_job else None,
+                "print_location": completed_job.print_location.name if completed_job and completed_job.print_location else None
+            })
+        
+        # Calculate pagination info
+        total_pages = (total_count + page_size - 1) // page_size
+        has_next_page = page < total_pages
+        has_previous_page = page > 1
+        
+        return {
+            "applications": overdue_data,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next_page": has_next_page,
+            "has_previous_page": has_previous_page,
+            "destruction_info": {
+                "cutoff_date": cutoff_date.isoformat(),
+                "cutoff_days": 90,
+                "message": "Cards ready for collection more than 3 months ago"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting overdue cards for destruction: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve overdue cards for destruction"
+        )
+
+
+@router.post("/destruction/destroy/{application_id}", summary="Mark Card as Destroyed")
+@audit_update(
+    resource_type="APPLICATION",
+    screen_reference="CardDestruction",
+    get_old_data=lambda db, application_id: db.query(Application).filter(
+        Application.id == application_id
+    ).first()
+)
+async def destroy_card(
+    application_id: str = Path(..., description="Application ID"),
+    request: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("cards.destroy"))
+):
+    """
+    Mark a card as destroyed due to non-collection
+    
+    Updates application status to COLLECTION_FAILURE and records destruction details.
+    This is a terminal status - the application cannot be recovered.
+    """
+    try:
+        # Get application
+        application = db.query(Application).options(
+            selectinload(Application.person),
+            selectinload(Application.print_jobs)
+        ).filter(Application.id == application_id).first()
+        
+        if not application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found"
+            )
+        
+        # Validate application is ready for collection
+        if application.status != ApplicationStatus.READY_FOR_COLLECTION:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Application must be in READY_FOR_COLLECTION status. Current status: {application.status}"
+            )
+        
+        # Get destruction notes
+        destruction_notes = request.get("destruction_notes", "")
+        destruction_reason = request.get("destruction_reason", "Non-collection after 3 months")
+        
+        # Update application status
+        application.status = ApplicationStatus.COLLECTION_FAILURE
+        application.destruction_date = datetime.utcnow()
+        application.destroyed_by_user_id = current_user.id
+        application.destruction_reason = destruction_reason
+        application.destruction_notes = destruction_notes
+        
+        # Update any associated print jobs to cancelled
+        for print_job in application.print_jobs:
+            if print_job.status == PrintJobStatus.COMPLETED:
+                print_job.status = PrintJobStatus.CANCELLED
+                print_job.cancellation_reason = "Card destroyed due to non-collection"
+                print_job.cancelled_at = datetime.utcnow()
+                print_job.cancelled_by_user_id = current_user.id
+        
+        db.commit()
+        
+        return {
+            "message": f"Card successfully marked as destroyed for application {application.application_number}",
+            "application_id": str(application.id),
+            "application_number": application.application_number,
+            "person_name": f"{application.person.first_name} {application.person.surname}" if application.person else None,
+            "destruction_date": application.destruction_date.isoformat(),
+            "destroyed_by": f"{current_user.first_name} {current_user.last_name}",
+            "destruction_reason": destruction_reason,
+            "final_status": application.status.value
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error destroying card for application {application_id}: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to destroy card"
+        ) 
