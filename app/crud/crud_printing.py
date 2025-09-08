@@ -746,7 +746,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         page: int = 1,
         page_size: int = 20,
         current_user: User
-    ) -> dict:
+    ) -> "PrintJobSearchResponse":
         """Search print jobs for QA with additional filtering"""
         from app.models.person import Person
         from app.models.card import Card
@@ -804,12 +804,13 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             
             # Search in person ID number (via PersonAlias)
             from app.models.person import PersonAlias
-            person_alias_subquery = db.query(PersonAlias.person_id).filter(
+            from sqlalchemy import select
+            person_alias_subquery = select(PersonAlias.person_id).filter(
                 and_(
                     PersonAlias.document_number.ilike(f"%{search_term}%"),
                     PersonAlias.is_current == True
                 )
-            ).subquery()
+            )
             
             search_conditions.append(
                 PrintJob.person_id.in_(person_alias_subquery)
@@ -830,13 +831,16 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         from app.api.v1.endpoints.printing import serialize_print_job_response
         job_responses = [serialize_print_job_response(job) for job in jobs]
         
-        return {
-            "jobs": job_responses,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size
-        }
+        # Return properly structured PrintJobSearchResponse
+        from app.schemas.printing import PrintJobSearchResponse
+        return PrintJobSearchResponse(
+            jobs=job_responses,
+            total_count=total,
+            page=page,
+            page_size=page_size,
+            has_next_page=(page * page_size) < total,
+            has_previous_page=page > 1
+        )
 
 
 class CRUDPrintQueue(CRUDBase[PrintQueue, dict, dict]):
