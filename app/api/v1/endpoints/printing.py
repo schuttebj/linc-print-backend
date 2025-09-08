@@ -12,7 +12,7 @@ import os
 import shutil
 from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from sqlalchemy.future import select
@@ -1154,7 +1154,7 @@ async def quality_check_job(
 )
 async def complete_qa_review(
     job_id: UUID = Path(..., description="Print Job ID"),
-    request: Dict[str, Any],
+    request: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("printing.quality_check"))
 ):
