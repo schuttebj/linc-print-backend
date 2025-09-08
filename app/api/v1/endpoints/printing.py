@@ -72,6 +72,7 @@ def serialize_print_job_response(print_job: PrintJob) -> PrintJobResponse:
         "queue_position": print_job.queue_position,
         "person_id": print_job.person_id,
         "person_name": f"{print_job.person.first_name} {print_job.person.surname}" if print_job.person else None,
+        "person_id_number": print_job.person.id_number if print_job.person else None,
         "print_location_id": print_job.print_location_id,
         "print_location_name": print_job.print_location.name if print_job.print_location else None,
         "assigned_to_user_id": print_job.assigned_to_user_id,
@@ -1085,7 +1086,7 @@ async def complete_printing_job(
 async def start_quality_check(
     job_id: UUID = Path(..., description="Print Job ID"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("printing.qa"))
+    current_user: User = Depends(require_permission("printing.quality_check"))
 ):
     """
     Start quality assurance review
@@ -1145,6 +1146,104 @@ async def quality_check_job(
     return serialize_print_job_response(print_job)
 
 
+@router.post("/jobs/{job_id}/qa-complete", summary="Complete QA Review")
+@audit_update(
+    resource_type="PRINT_JOB", 
+    screen_reference="QualityAssurance",
+    get_old_data=lambda db, job_id: db.query(crud_print_job.model).filter(crud_print_job.model.id == job_id).first()
+)
+async def complete_qa_review(
+    job_id: UUID = Path(..., description="Print Job ID"),
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.quality_check"))
+):
+    """
+    Complete quality assurance review for a print job
+    
+    Accepts outcomes:
+    - PASSED: Mark job as completed and application ready for collection
+    - FAILED_PRINTING: Send back to print queue for reprinting
+    - FAILED_DAMAGE: Mark as defective for handling
+    
+    Only users with access to the print location can perform QA.
+    """
+    # Get print job first to validate location access
+    print_job = crud_print_job.get(db, id=job_id)
+    if not print_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Print job not found"
+        )
+    
+    # Validate user has access to the print location
+    if not current_user.can_access_location(print_job.print_location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform quality checks for this location"
+        )
+    
+    # Validate job is in correct status
+    if print_job.status != PrintJobStatus.PRINTED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot perform QA on job with status {print_job.status}. Job must be PRINTED."
+        )
+    
+    # Parse request data
+    outcome = request.get('outcome')
+    notes = request.get('notes', '')
+    location_id = request.get('location_id')
+    
+    # Validate outcome
+    if outcome not in ['PASSED', 'FAILED_PRINTING', 'FAILED_DAMAGE']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid outcome. Must be PASSED, FAILED_PRINTING, or FAILED_DAMAGE"
+        )
+    
+    # Map frontend outcomes to backend enum values
+    qa_result_mapping = {
+        'PASSED': QualityCheckResult.PASSED,
+        'FAILED_PRINTING': QualityCheckResult.FAILED_PRINTING,
+        'FAILED_DAMAGE': QualityCheckResult.FAILED_DAMAGE
+    }
+    
+    qa_result = qa_result_mapping[outcome]
+    
+    # Require notes for failures
+    if qa_result != QualityCheckResult.PASSED and (not notes or len(notes.strip()) < 5):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Detailed notes are required when quality check fails"
+        )
+    
+    # Complete quality check
+    print_job = crud_print_job.complete_quality_check(
+        db=db,
+        print_job=print_job,
+        qa_result=qa_result,
+        qa_notes=notes,
+        current_user=current_user
+    )
+    
+    # Prepare response message
+    if qa_result == QualityCheckResult.PASSED:
+        message = f"Quality assurance passed. Job {print_job.job_number} completed and application ready for collection."
+    elif qa_result == QualityCheckResult.FAILED_PRINTING:
+        message = f"Quality assurance failed - printing issues. Job {print_job.job_number} sent back to print queue."
+    else:
+        message = f"Quality assurance failed - card defective. Job {print_job.job_number} marked for handling."
+    
+    response_data = serialize_print_job_response(print_job)
+    
+    # Return response with message in a dict format
+    return {
+        "job": response_data,
+        "message": message
+    }
+
+
 # Job Information
 @router.get("/jobs/{job_id}", response_model=PrintJobDetailResponse, summary="Get Print Job Details")
 async def get_print_job(
@@ -1183,6 +1282,49 @@ async def get_print_job(
     
     return serialize_print_job_detail_response(print_job)
 
+
+@router.get("/jobs/qa-search", response_model=PrintJobSearchResponse, summary="Search Print Jobs for QA")
+async def search_print_jobs_for_qa(
+    person_id_number: Optional[str] = Query(None, description="Search by person ID number"),
+    card_number: Optional[str] = Query(None, description="Search by card number"),
+    job_number: Optional[str] = Query(None, description="Search by job number"),
+    status: str = Query("PRINTED", description="Job status to search for"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("printing.quality_check"))
+):
+    """
+    Search print jobs ready for quality assurance
+    
+    Searches by person ID number, card number, or job number.
+    Only returns jobs in PRINTED status that are ready for QA.
+    Results are filtered based on user's location access permissions.
+    """
+    # Build search criteria
+    search_filters = PrintJobSearchFilters(
+        job_number=job_number,
+        status=[PrintJobStatus.PRINTED] if status == "PRINTED" else [PrintJobStatus(status)]
+    )
+    
+    # Add additional search criteria
+    extra_filters = {}
+    if person_id_number:
+        extra_filters['person_id_number'] = person_id_number
+    if card_number:
+        extra_filters['card_number'] = card_number
+    
+    # Search with location filtering
+    result = crud_print_job.search_for_qa(
+        db=db,
+        filters=search_filters,
+        extra_filters=extra_filters,
+        page=page,
+        page_size=page_size,
+        current_user=current_user
+    )
+    
+    return result
 
 @router.get("/jobs", response_model=PrintJobSearchResponse, summary="Search Print Jobs")
 async def search_print_jobs(

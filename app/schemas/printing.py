@@ -137,6 +137,7 @@ class PrintJobResponse(BaseModel):
     # Person and location
     person_id: UUID
     person_name: Optional[str] = Field(None, description="Person's full name")
+    person_id_number: Optional[str] = Field(None, description="Person's ID number")
     print_location_id: UUID
     print_location_name: Optional[str] = Field(None, description="Print location name")
     

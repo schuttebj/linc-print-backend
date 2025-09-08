@@ -561,10 +561,28 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                         })
             
             else:
-                # QA failed - determine appropriate reprint status
+                # QA failed - determine appropriate action
                 if qa_result == QualityCheckResult.FAILED_PRINTING:
-                    print_job.status = PrintJobStatus.REPRINT_REQUIRED
+                    # Send back to print queue for reprinting
+                    print_job.status = PrintJobStatus.QUEUED
                     print_job.priority = PrintJobPriority.HIGH
+                    print_job.assigned_to_user_id = None
+                    print_job.assigned_at = None
+                    print_job.printing_started_at = None
+                    print_job.printing_completed_at = None
+                    # Reset queue position to top
+                    print_job.queue_position = 1
+                    
+                    # Move other jobs down by 1 position
+                    other_jobs = db.query(PrintJob).filter(
+                        PrintJob.print_location_id == print_job.print_location_id,
+                        PrintJob.status.in_([PrintJobStatus.QUEUED, PrintJobStatus.ASSIGNED]),
+                        PrintJob.id != print_job.id
+                    ).all()
+                    
+                    for job in other_jobs:
+                        job.queue_position += 1
+                    
                 elif qa_result == QualityCheckResult.FAILED_DATA:
                     print_job.status = PrintJobStatus.REPRINT_REQUIRED
                     print_job.priority = PrintJobPriority.URGENT
@@ -576,12 +594,12 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
                     print_job.priority = PrintJobPriority.HIGH
                 
                 # Keep files for reprint - they'll be cleaned up when reprint QA passes
-                logger.info(f"QA FAILED ({qa_result}): Keeping files for reprint - print job {print_job.id}")
+                logger.info(f"QA FAILED ({qa_result}): Status set to {print_job.status} - print job {print_job.id}")
             
             # Create status history entry
             status_history = PrintJobStatusHistory(
                 print_job_id=print_job.id,
-                from_status=PrintJobStatus.QUALITY_CHECK,
+                from_status=PrintJobStatus.PRINTED,
                 to_status=print_job.status,
                 changed_by_user_id=current_user.id,
                 change_reason=f"Quality check completed: {qa_result}",
@@ -717,6 +735,119 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
             query = query.filter(PrintJob.status.in_(status))
         
         return query.order_by(desc(PrintJob.submitted_at)).limit(limit).all()
+
+    def search_for_qa(
+        self,
+        db: Session,
+        *,
+        filters: "PrintJobSearchFilters",
+        extra_filters: dict = None,
+        page: int = 1,
+        page_size: int = 20,
+        current_user: User
+    ) -> dict:
+        """Search print jobs for QA with additional filtering"""
+        from app.models.person import Person
+        from app.models.card import Card
+        from sqlalchemy.orm import selectinload
+        from sqlalchemy import func, desc, or_, and_
+        
+        if extra_filters is None:
+            extra_filters = {}
+        
+        # Base query with necessary joins for QA search
+        query = db.query(PrintJob).options(
+            selectinload(PrintJob.person),
+            selectinload(PrintJob.primary_application),
+            selectinload(PrintJob.print_location),
+            selectinload(PrintJob.assigned_to_user)
+        )
+        
+        # Apply location-based filtering based on user type
+        if current_user.user_type == UserType.LOCATION_USER:
+            # Location users can only see jobs for their location
+            if current_user.primary_location_id:
+                query = query.filter(PrintJob.print_location_id == current_user.primary_location_id)
+        elif current_user.user_type == UserType.PROVINCIAL_ADMIN:
+            # Provincial admins can see jobs for any location in their province
+            if current_user.scope_province:
+                from app.models.user import Location
+                province_locations = db.query(Location.id).filter(
+                    Location.province_code == current_user.scope_province
+                ).subquery()
+                query = query.filter(PrintJob.print_location_id.in_(province_locations))
+        # National and system admins can see all jobs (no filter)
+        
+        # Apply standard filters
+        if filters.status:
+            query = query.filter(PrintJob.status.in_(filters.status))
+        
+        if filters.job_number:
+            query = query.filter(PrintJob.job_number.ilike(f"%{filters.job_number}%"))
+        
+        # Apply extra filters for QA search
+        search_conditions = []
+        
+        if extra_filters.get('person_id_number'):
+            # Join with Person to search by ID number
+            query = query.join(PrintJob.person)
+            search_conditions.append(
+                Person.id_number.ilike(f"%{extra_filters['person_id_number']}%")
+            )
+        
+        if extra_filters.get('card_number'):
+            search_conditions.append(
+                PrintJob.card_number.ilike(f"%{extra_filters['card_number']}%")
+            )
+        
+        # Apply search conditions with OR logic
+        if search_conditions:
+            query = query.filter(or_(*search_conditions))
+        
+        # Get total count before pagination
+        total = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * page_size
+        jobs = query.order_by(desc(PrintJob.submitted_at)).offset(offset).limit(page_size).all()
+        
+        # Convert to response format
+        from app.schemas.printing import PrintJobResponse
+        job_responses = []
+        for job in jobs:
+            response = PrintJobResponse(
+                id=job.id,
+                job_number=job.job_number,
+                status=job.status,
+                priority=job.priority,
+                queue_position=job.queue_position,
+                person_id=job.person_id,
+                person_name=job.person.full_name if job.person else None,
+                person_id_number=job.person.id_number if job.person else None,
+                print_location_id=job.print_location_id,
+                print_location_name=job.print_location.name if job.print_location else None,
+                assigned_to_user_id=job.assigned_to_user_id,
+                assigned_to_user_name=job.assigned_to_user.full_name if job.assigned_to_user else None,
+                card_number=job.card_number,
+                card_template=job.card_template,
+                submitted_at=job.submitted_at,
+                assigned_at=job.assigned_at,
+                printing_started_at=job.printing_started_at,
+                printing_completed_at=job.printing_completed_at,
+                completed_at=job.completed_at,
+                pdf_files_generated=job.pdf_files_generated,
+                quality_check_result=job.quality_check_result,
+                quality_check_notes=job.quality_check_notes
+            )
+            job_responses.append(response)
+        
+        return {
+            "jobs": job_responses,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size
+        }
 
 
 class CRUDPrintQueue(CRUDBase[PrintQueue, dict, dict]):
