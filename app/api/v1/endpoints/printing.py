@@ -29,6 +29,7 @@ from app.crud.crud_card import crud_card
 from app.models.user import User
 from app.models.application import Application
 from app.models.license import License
+from app.models.person import Person
 from app.models.card import CardNumberGenerator, Card, CardType, CardStatus, CardLicense, ProductionStatus
 from app.models.enums import ApplicationStatus, LicenseCategory, BiometricDataType
 from app.models.printing import PrintJobStatus, PrintJobPriority, QualityCheckResult, PrintJobStatusHistory, PrintJob, PrintJobApplication
@@ -1884,7 +1885,7 @@ async def verify_print_job_cleanup(
 async def search_person_for_collection(
     person_id_number: str = Path(..., description="Person ID number"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("cards.collect"))
+    current_user: User = Depends(get_current_user)
 ):
     """
     Search for a person by ID number and return applications ready for collection
@@ -2082,7 +2083,7 @@ async def get_overdue_cards_for_destruction(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("cards.destroy"))
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get cards that are overdue for collection (3+ months) and need to be destroyed
@@ -2192,7 +2193,7 @@ async def destroy_card(
     application_id: str = Path(..., description="Application ID"),
     request: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("cards.destroy"))
+    current_user: User = Depends(get_current_user)
 ):
     """
     Mark a card as destroyed due to non-collection
