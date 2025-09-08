@@ -214,7 +214,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
     ) -> List[PrintJob]:
         """Get print queue for a location ordered by priority and FIFO"""
         query = db.query(PrintJob).options(
-            selectinload(PrintJob.person),
+            selectinload(PrintJob.person).selectinload(Person.aliases),
             selectinload(PrintJob.primary_application),
             selectinload(PrintJob.job_applications).selectinload(PrintJobApplication.application)
         ).filter(
@@ -757,7 +757,7 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         
         # Base query with necessary joins for QA search
         query = db.query(PrintJob).options(
-            selectinload(PrintJob.person),
+            selectinload(PrintJob.person).selectinload(Person.aliases),
             selectinload(PrintJob.primary_application),
             selectinload(PrintJob.print_location),
             selectinload(PrintJob.assigned_to_user)
@@ -788,16 +788,30 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         # Apply extra filters for QA search
         search_conditions = []
         
-        if extra_filters.get('person_id_number'):
-            # Join with Person to search by ID number
-            query = query.join(PrintJob.person)
+        if extra_filters.get('search_term'):
+            search_term = extra_filters['search_term']
+            
+            # Search in job number
             search_conditions.append(
-                Person.id_number.ilike(f"%{extra_filters['person_id_number']}%")
+                PrintJob.job_number.ilike(f"%{search_term}%")
             )
-        
-        if extra_filters.get('card_number'):
+            
+            # Search in card number
             search_conditions.append(
-                PrintJob.card_number.ilike(f"%{extra_filters['card_number']}%")
+                PrintJob.card_number.ilike(f"%{search_term}%")
+            )
+            
+            # Search in person ID number (via PersonAlias)
+            from app.models.person import PersonAlias
+            person_alias_subquery = db.query(PersonAlias.person_id).filter(
+                and_(
+                    PersonAlias.document_number.ilike(f"%{search_term}%"),
+                    PersonAlias.is_current == True
+                )
+            ).subquery()
+            
+            search_conditions.append(
+                PrintJob.person_id.in_(person_alias_subquery)
             )
         
         # Apply search conditions with OR logic
@@ -811,35 +825,9 @@ class CRUDPrintJob(CRUDBase[PrintJob, dict, dict]):
         offset = (page - 1) * page_size
         jobs = query.order_by(desc(PrintJob.submitted_at)).offset(offset).limit(page_size).all()
         
-        # Convert to response format
-        from app.schemas.printing import PrintJobResponse
-        job_responses = []
-        for job in jobs:
-            response = PrintJobResponse(
-                id=job.id,
-                job_number=job.job_number,
-                status=job.status,
-                priority=job.priority,
-                queue_position=job.queue_position,
-                person_id=job.person_id,
-                person_name=job.person.full_name if job.person else None,
-                person_id_number=job.person.id_number if job.person else None,
-                print_location_id=job.print_location_id,
-                print_location_name=job.print_location.name if job.print_location else None,
-                assigned_to_user_id=job.assigned_to_user_id,
-                assigned_to_user_name=job.assigned_to_user.full_name if job.assigned_to_user else None,
-                card_number=job.card_number,
-                card_template=job.card_template,
-                submitted_at=job.submitted_at,
-                assigned_at=job.assigned_at,
-                printing_started_at=job.printing_started_at,
-                printing_completed_at=job.printing_completed_at,
-                completed_at=job.completed_at,
-                pdf_files_generated=job.pdf_files_generated,
-                quality_check_result=job.quality_check_result,
-                quality_check_notes=job.quality_check_notes
-            )
-            job_responses.append(response)
+        # Convert to response format - use the serialize function from endpoints
+        from app.api.v1.endpoints.printing import serialize_print_job_response
+        job_responses = [serialize_print_job_response(job) for job in jobs]
         
         return {
             "jobs": job_responses,

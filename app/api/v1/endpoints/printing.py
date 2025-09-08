@@ -45,6 +45,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def get_person_primary_id_number(person) -> str:
+    """
+    Get the primary ID number from a person's aliases (identification documents)
+    """
+    if not person or not hasattr(person, 'aliases'):
+        return None
+    
+    # Look for primary identification document
+    for alias in person.aliases:
+        if alias.is_primary and alias.is_current:
+            return alias.document_number
+    
+    # If no primary found, get the first current document
+    for alias in person.aliases:
+        if alias.is_current:
+            return alias.document_number
+    
+    return None
+
+
 def serialize_print_job_response(print_job: PrintJob) -> PrintJobResponse:
     """
     Helper function to properly serialize PrintJob to PrintJobResponse
@@ -72,7 +92,7 @@ def serialize_print_job_response(print_job: PrintJob) -> PrintJobResponse:
         "queue_position": print_job.queue_position,
         "person_id": print_job.person_id,
         "person_name": f"{print_job.person.first_name} {print_job.person.surname}" if print_job.person else None,
-        "person_id_number": print_job.person.id_number if print_job.person else None,
+        "person_id_number": get_person_primary_id_number(print_job.person) if print_job.person else None,
         "print_location_id": print_job.print_location_id,
         "print_location_name": print_job.print_location.name if print_job.print_location else None,
         "assigned_to_user_id": print_job.assigned_to_user_id,
@@ -1285,9 +1305,7 @@ async def get_print_job(
 
 @router.get("/jobs/qa-search", response_model=PrintJobSearchResponse, summary="Search Print Jobs for QA")
 async def search_print_jobs_for_qa(
-    person_id_number: Optional[str] = Query(None, description="Search by person ID number"),
-    card_number: Optional[str] = Query(None, description="Search by card number"),
-    job_number: Optional[str] = Query(None, description="Search by job number"),
+    search_term: Optional[str] = Query(None, description="Search by person ID number, card number, or job number"),
     status: str = Query("PRINTED", description="Job status to search for"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -1297,22 +1315,19 @@ async def search_print_jobs_for_qa(
     """
     Search print jobs ready for quality assurance
     
-    Searches by person ID number, card number, or job number.
+    Single search field that searches across person ID number, card number, and job number.
     Only returns jobs in PRINTED status that are ready for QA.
     Results are filtered based on user's location access permissions.
     """
     # Build search criteria
     search_filters = PrintJobSearchFilters(
-        job_number=job_number,
         status=[PrintJobStatus.PRINTED] if status == "PRINTED" else [PrintJobStatus(status)]
     )
     
-    # Add additional search criteria
+    # Use the search term for all possible fields
     extra_filters = {}
-    if person_id_number:
-        extra_filters['person_id_number'] = person_id_number
-    if card_number:
-        extra_filters['card_number'] = card_number
+    if search_term:
+        extra_filters['search_term'] = search_term.strip()
     
     # Search with location filtering
     result = crud_print_job.search_for_qa(
