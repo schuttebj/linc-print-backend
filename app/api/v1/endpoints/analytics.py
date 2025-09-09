@@ -73,11 +73,15 @@ async def get_kpi_summary(
             end_date=end_date
         )
         
-        # Get all KPI data
+        logger.info(f"Getting KPI summary with filters: {filters}")
+        
+        # Get all KPI data with error handling
         applications_kpi = crud_analytics.get_application_kpi(db, filters)
         licenses_kpi = crud_analytics.get_license_kpi(db, filters)
         printing_kpi = crud_analytics.get_printing_kpi(db, filters)
         financial_kpi = crud_analytics.get_financial_kpi(db, filters)
+        
+        logger.info(f"KPI data retrieved: apps={applications_kpi.total}, licenses={licenses_kpi.total}")
         
         kpi_summary = KPISummary(
             applications=applications_kpi,

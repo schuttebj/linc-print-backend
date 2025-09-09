@@ -85,9 +85,22 @@ class CRUDAnalytics:
         )
         
         total = current_query.count()
-        pending = current_query.filter(Application.status == ApplicationStatus.PENDING_REVIEW).count()
-        approved = current_query.filter(Application.status == ApplicationStatus.COMPLETED).count()
-        rejected = current_query.filter(Application.status == ApplicationStatus.REJECTED).count()
+        pending = current_query.filter(Application.status.in_([
+            ApplicationStatus.SUBMITTED, 
+            ApplicationStatus.PAID,
+            ApplicationStatus.ON_HOLD
+        ])).count()
+        approved = current_query.filter(Application.status.in_([
+            ApplicationStatus.APPROVED,
+            ApplicationStatus.COMPLETED,
+            ApplicationStatus.READY_FOR_COLLECTION
+        ])).count()
+        rejected = current_query.filter(Application.status.in_([
+            ApplicationStatus.REJECTED,
+            ApplicationStatus.CANCELLED,
+            ApplicationStatus.FAILED,
+            ApplicationStatus.ABSENT
+        ])).count()
         
         # Previous period for comparison
         period_length = end_date - start_date
@@ -166,7 +179,7 @@ class CRUDAnalytics:
         # Base query with location filter
         base_query = db.query(PrintJob)
         if filters.location_id:
-            base_query = base_query.filter(PrintJob.location_id == filters.location_id)
+            base_query = base_query.filter(PrintJob.print_location_id == filters.location_id)
         
         # Current period metrics
         current_query = base_query.filter(
@@ -176,8 +189,17 @@ class CRUDAnalytics:
         
         total_jobs = current_query.count()
         completed = current_query.filter(PrintJob.status == PrintJobStatus.COMPLETED).count()
-        pending = current_query.filter(PrintJob.status == PrintJobStatus.PENDING).count()
-        failed = current_query.filter(PrintJob.status == PrintJobStatus.FAILED).count()
+        pending = current_query.filter(PrintJob.status.in_([
+            PrintJobStatus.QUEUED,
+            PrintJobStatus.ASSIGNED,
+            PrintJobStatus.PRINTING,
+            PrintJobStatus.QUALITY_CHECK
+        ])).count()
+        failed = current_query.filter(PrintJob.status.in_([
+            PrintJobStatus.FAILED,
+            PrintJobStatus.CANCELLED,
+            PrintJobStatus.REPRINT_REQUIRED
+        ])).count()
         
         # Previous period for comparison
         period_length = end_date - start_date
@@ -509,7 +531,7 @@ class CRUDAnalytics:
         for result in results:
             # Get print jobs and revenue for this location
             print_jobs = db.query(PrintJob).filter(
-                PrintJob.location_id == result.location_id,
+                PrintJob.print_location_id == result.location_id,
                 PrintJob.created_at >= start_date,
                 PrintJob.created_at <= end_date
             ).count()

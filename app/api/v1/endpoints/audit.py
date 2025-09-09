@@ -996,11 +996,12 @@ async def get_api_request_analytics(
     ).limit(10).all()
     
     # Error rate by endpoint
+    from sqlalchemy import case
     error_endpoints = db.query(
         ApiRequestLog.endpoint,
         func.count(ApiRequestLog.id).label('total_requests'),
-        func.count(
-            func.case([(ApiRequestLog.status_code >= 400, 1)])
+        func.sum(
+            case([(ApiRequestLog.status_code >= 400, 1)], else_=0)
         ).label('error_requests')
     ).filter(
         ApiRequestLog.created_at >= start_time,
