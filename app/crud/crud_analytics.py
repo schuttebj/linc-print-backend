@@ -12,12 +12,11 @@ import logging
 
 from app.models.application import Application
 from app.models.license import License  
-from app.models.printing import PrintJob
-from app.models.transaction import Transaction
+from app.models.printing import PrintJob, PrintJobStatus
+from app.models.transaction import Transaction, TransactionStatus, TransactionType
 from app.models.user import User
 from app.models.enums import (
-    ApplicationStatus, ApplicationType, LicenseCategory, 
-    PrintJobStatus, TransactionStatus, TransactionType
+    ApplicationStatus, ApplicationType, LicenseCategory
 )
 from app.schemas.analytics import (
     AnalyticsFilters, ApplicationKPI, LicenseKPI, PrintingKPI, FinancialKPI,
@@ -207,7 +206,7 @@ class CRUDAnalytics:
         
         # Base query for successful transactions with location filter
         base_query = db.query(Transaction).filter(
-            Transaction.status == TransactionStatus.COMPLETED
+            Transaction.status == TransactionStatus.PAID
         )
         if filters.location_id:
             base_query = base_query.filter(Transaction.location_id == filters.location_id)
@@ -223,19 +222,22 @@ class CRUDAnalytics:
             func.sum(Transaction.amount)
         ).scalar() or Decimal('0')
         
+        # Break down by transaction type (based on actual transaction model)
         application_fees = current_query.filter(
-            Transaction.transaction_type == TransactionType.APPLICATION_FEE
-        ).with_entities(func.sum(Transaction.amount)).scalar() or Decimal('0')
-        
-        license_fees = current_query.filter(
-            Transaction.transaction_type == TransactionType.LICENSE_FEE
+            Transaction.transaction_type == TransactionType.APPLICATION_PAYMENT
         ).with_entities(func.sum(Transaction.amount)).scalar() or Decimal('0')
         
         card_fees = current_query.filter(
-            Transaction.transaction_type == TransactionType.CARD_FEE
+            Transaction.transaction_type == TransactionType.CARD_ORDER_PAYMENT
         ).with_entities(func.sum(Transaction.amount)).scalar() or Decimal('0')
         
-        other_fees = total_revenue - application_fees - license_fees - card_fees
+        mixed_fees = current_query.filter(
+            Transaction.transaction_type == TransactionType.MIXED_PAYMENT
+        ).with_entities(func.sum(Transaction.amount)).scalar() or Decimal('0')
+        
+        # For compatibility with analytics schema, we'll map to expected categories
+        license_fees = Decimal('0')  # No separate license fees in current model
+        other_fees = mixed_fees  # Mixed payments count as "other"
         
         # Previous period for comparison
         period_length = end_date - start_date
@@ -516,7 +518,7 @@ class CRUDAnalytics:
                 Transaction.location_id == result.location_id,
                 Transaction.created_at >= start_date,
                 Transaction.created_at <= end_date,
-                Transaction.status == TransactionStatus.COMPLETED
+                Transaction.status == TransactionStatus.PAID
             ).scalar() or Decimal('0')
             
             location_data.append(LocationPerformance(
