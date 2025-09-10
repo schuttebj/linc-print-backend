@@ -2392,10 +2392,10 @@ def _generate_licenses_from_application(db: Session, application: Application, c
                         issued_by_user_id=current_user.id,
                         restrictions=captured_license.get('restrictions', {}),
                         captured_from_license_number=captured_license.get('original_license_number'),
-                        # Professional permits (if applicable)
-                        has_professional_permit=_requires_professional_permit(captured_license['license_category']),
-                        professional_permit_categories=_get_professional_categories_for_code(captured_license['license_category']),
-                        professional_permit_expiry=_calculate_professional_permit_expiry() if _requires_professional_permit(captured_license['license_category']) else None,
+                        # Professional permits should be separate applications, not automatically added
+                        has_professional_permit=False,
+                        professional_permit_categories=[],
+                        professional_permit_expiry=None,
                     )
                     licenses.append(license)
     
