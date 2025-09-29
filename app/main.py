@@ -710,6 +710,16 @@ async def initialize_users():
                 ("person_addresses.delete", "Delete Person Addresses", "Delete person addresses", "persons", "person_address", "delete"),
                 ("person_addresses.set_primary", "Set Primary Address", "Set primary address per type", "persons", "person_address", "set_primary"),
                 
+                # Applications Management Permissions (main application module)
+                ("applications.create", "Create Applications", "Create new applications", "applications", "application", "create"),
+                ("applications.read", "View Applications", "View applications", "applications", "application", "read"),
+                ("applications.update", "Update Applications", "Update applications", "applications", "application", "update"),
+                ("applications.delete", "Delete Applications", "Delete applications", "applications", "application", "delete"),
+                ("applications.approve", "Approve Applications", "Approve applications", "applications", "application", "approve"),
+                ("applications.authorize", "Authorize Applications", "Authorize applications", "applications", "application", "authorize"),
+                ("applications.review_authorization", "Review Authorization", "Review application authorization", "applications", "application", "review_authorization"),
+                ("applications.bulk_process", "Bulk Process Applications", "Process multiple applications", "applications", "application", "bulk_process"),
+                
                 # License Application Permissions (placeholders for future modules)
                 ("license_applications.create", "Create License Applications", "Create new license applications", "license_applications", "license_application", "create"),
                 ("license_applications.read", "View License Applications", "View license applications", "license_applications", "license_application", "read"),
@@ -804,11 +814,15 @@ async def initialize_users():
                 else:
                     permissions[name] = existing
             
-            # Define role permissions - Updated to include new features
+            # Define role permissions - Updated to match frontend expectations
             clerk_permissions = [
+                # Applications management (essential for clerks) - fixed to match frontend
+                "applications.create", "applications.read", "applications.update",
                 "license_applications.create", "license_applications.read", "license_applications.update",
+                # Licenses management
+                "licenses.read",
+                # Printing permissions
                 "printing.local_print", "printing.monitor_status",
-                # Enhanced printing and card management for clerks
                 "printing.create", "printing.read", "cards.order", "cards.read", "cards.track_status",
                 # Person management (essential for license applications)
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
@@ -825,6 +839,8 @@ async def initialize_users():
             ]
             
             supervisor_permissions = clerk_permissions + [
+                # Application management for supervisors
+                "applications.approve", "applications.delete",
                 "license_applications.approve",
                 "users.read", "users.update", "users.view_statistics", "roles.read", "permissions.read",
                 # Additional person management permissions for supervisors
@@ -853,7 +869,9 @@ async def initialize_users():
                 # Advanced reporting
                 "reports.provincial",
                 # Issue management for traffic department heads
-                "admin.issues.read", "admin.issues.write", "admin.issues.stats"
+                "admin.issues.read", "admin.issues.write", "admin.issues.stats",
+                # Applications full access for department heads
+                "applications.authorize", "applications.bulk_process"
             ]
             
             printer_permissions = [
@@ -871,7 +889,8 @@ async def initialize_users():
             
             # Define examiner permissions (authorization and review)
             examiner_permissions = [
-                "applications.authorize", "applications.review_authorization",
+                # Applications access for examiners
+                "applications.read", "applications.authorize", "applications.review_authorization",
                 "license_applications.read", "license_applications.approve",
                 # Basic permissions for interface
                 "roles.read", "users.read",
