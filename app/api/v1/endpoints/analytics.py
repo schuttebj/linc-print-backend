@@ -549,6 +549,476 @@ async def export_analytics_data(
     )
 
 
+@router.get("/api-performance", response_model=AnalyticsResponse)
+async def get_api_performance_analytics(
+    hours: int = Query(24, ge=1, le=168, description="Analysis period in hours"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get API request analytics and performance metrics for Analytics Dashboard"""
+    if not check_analytics_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    
+    try:
+        from sqlalchemy import func, desc
+        from app.models.user import ApiRequestLog
+        
+        # Calculate time range
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=hours)
+        
+        # Base query for the time period
+        base_query = db.query(ApiRequestLog).filter(
+            ApiRequestLog.created_at >= start_time,
+            ApiRequestLog.created_at <= end_time
+        )
+        
+        # Total requests
+        total_requests = base_query.count()
+        
+        if total_requests == 0:
+            # Return empty analytics if no data
+            api_analytics = {
+                "period": {
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "hours": hours
+                },
+                "overview": {
+                    "total_requests": 0,
+                    "successful_requests": 0,
+                    "success_rate_percent": 0,
+                    "average_response_time_ms": 0
+                },
+                "top_endpoints": [],
+                "status_code_distribution": [],
+                "slowest_endpoints": [],
+                "most_active_users": [],
+                "error_analysis": []
+            }
+        else:
+            # Success rate
+            successful_requests = base_query.filter(
+                ApiRequestLog.status_code < 400
+            ).count()
+            success_rate = (successful_requests / total_requests * 100) if total_requests > 0 else 0
+            
+            # Average response time
+            avg_duration = db.query(func.avg(ApiRequestLog.duration_ms)).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time
+            ).scalar() or 0
+            
+            # Top endpoints by request count
+            top_endpoints = db.query(
+                ApiRequestLog.endpoint,
+                func.count(ApiRequestLog.id).label('request_count'),
+                func.avg(ApiRequestLog.duration_ms).label('avg_duration')
+            ).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time
+            ).group_by(
+                ApiRequestLog.endpoint
+            ).order_by(
+                desc('request_count')
+            ).limit(10).all()
+            
+            # Status code distribution
+            status_distribution = db.query(
+                ApiRequestLog.status_code,
+                func.count(ApiRequestLog.id).label('count')
+            ).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time
+            ).group_by(
+                ApiRequestLog.status_code
+            ).order_by(
+                desc('count')
+            ).all()
+            
+            # Slowest endpoints
+            slowest_endpoints = db.query(
+                ApiRequestLog.endpoint,
+                func.avg(ApiRequestLog.duration_ms).label('avg_duration'),
+                func.max(ApiRequestLog.duration_ms).label('max_duration'),
+                func.count(ApiRequestLog.id).label('request_count')
+            ).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time
+            ).group_by(
+                ApiRequestLog.endpoint
+            ).order_by(
+                desc('avg_duration')
+            ).limit(10).all()
+            
+            # Most active users
+            active_users = db.query(
+                ApiRequestLog.user_id,
+                func.count(ApiRequestLog.id).label('request_count')
+            ).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time,
+                ApiRequestLog.user_id.isnot(None)
+            ).group_by(
+                ApiRequestLog.user_id
+            ).order_by(
+                desc('request_count')
+            ).limit(10).all()
+            
+            # Error analysis
+            error_analysis = db.query(
+                ApiRequestLog.endpoint,
+                func.count(ApiRequestLog.id).label('total_requests'),
+                func.sum(func.case([(ApiRequestLog.status_code >= 400, 1)], else_=0)).label('error_requests')
+            ).filter(
+                ApiRequestLog.created_at >= start_time,
+                ApiRequestLog.created_at <= end_time
+            ).group_by(
+                ApiRequestLog.endpoint
+            ).having(
+                func.sum(func.case([(ApiRequestLog.status_code >= 400, 1)], else_=0)) > 0
+            ).order_by(
+                desc('error_requests')
+            ).limit(10).all()
+            
+            # Calculate error rates
+            error_analysis_with_rates = []
+            for error in error_analysis:
+                error_rate = (error.error_requests / error.total_requests * 100) if error.total_requests > 0 else 0
+                error_analysis_with_rates.append({
+                    "endpoint": error.endpoint,
+                    "total_requests": error.total_requests,
+                    "error_requests": error.error_requests,
+                    "error_rate_percent": round(error_rate, 1)
+                })
+            
+            api_analytics = {
+                "period": {
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                    "hours": hours
+                },
+                "overview": {
+                    "total_requests": total_requests,
+                    "successful_requests": successful_requests,
+                    "success_rate_percent": round(success_rate, 2),
+                    "average_response_time_ms": round(avg_duration, 2)
+                },
+                "top_endpoints": [
+                    {
+                        "endpoint": ep.endpoint,
+                        "request_count": ep.request_count,
+                        "avg_duration_ms": round(ep.avg_duration, 2)
+                    }
+                    for ep in top_endpoints
+                ],
+                "status_code_distribution": [
+                    {
+                        "status_code": status.status_code,
+                        "count": status.count
+                    }
+                    for status in status_distribution
+                ],
+                "slowest_endpoints": [
+                    {
+                        "endpoint": ep.endpoint,
+                        "avg_duration_ms": round(ep.avg_duration, 2),
+                        "max_duration_ms": ep.max_duration,
+                        "request_count": ep.request_count
+                    }
+                    for ep in slowest_endpoints
+                ],
+                "most_active_users": [
+                    {
+                        "user_id": str(user.user_id),
+                        "request_count": user.request_count
+                    }
+                    for user in active_users
+                ],
+                "error_analysis": error_analysis_with_rates
+            }
+        
+        return AnalyticsResponse(
+            success=True,
+            data=api_analytics,
+            last_updated=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching API performance analytics: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch API performance analytics"
+        )
+
+
+@router.get("/charts/licenses/trends", response_model=ChartDataResponse)
+async def get_license_trends(
+    date_range: str = Query("30days", regex="^(7days|30days|90days|6months|1year)$"),
+    location_id: Optional[int] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get license trends over time"""
+    if not check_analytics_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    
+    # Apply location restrictions
+    if current_user.role.hierarchy_level < RoleHierarchy.ADMIN.value:
+        location_id = current_user.primary_location_id
+    
+    try:
+        from app.models.license import License
+        
+        filters = AnalyticsFilters(
+            date_range=date_range,
+            location_id=location_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        start_date_filter, end_date_filter = crud_analytics._get_date_range_filter(filters)
+        
+        # Base query with location filter
+        base_query = db.query(License)
+        if filters.location_id:
+            base_query = base_query.filter(License.issued_location_id == filters.location_id)
+        
+        # Group by date for trend data
+        from sqlalchemy import func
+        results = base_query.filter(
+            License.issued_date >= start_date_filter,
+            License.issued_date <= end_date_filter
+        ).with_entities(
+            func.date(License.issued_date).label('date'),
+            func.count(License.id).label('count')
+        ).group_by(
+            func.date(License.issued_date)
+        ).all()
+        
+        # Convert to trend data points
+        trend_data = [
+            {
+                "date": result.date.isoformat(),
+                "licenses_issued": result.count,
+                "active": result.count,  # For compatibility
+                "expired": 0,  # Would need additional logic
+                "expiring": 0  # Would need additional logic
+            }
+            for result in results
+        ]
+        
+        return ChartDataResponse(
+            success=True,
+            data=trend_data,
+            metadata={
+                "total_records": len(trend_data),
+                "date_range": date_range,
+                "location_id": location_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching license trends: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch license trends"
+        )
+
+
+@router.get("/charts/printing/trends", response_model=ChartDataResponse)
+async def get_printing_trends(
+    date_range: str = Query("30days", regex="^(7days|30days|90days|6months|1year)$"),
+    location_id: Optional[int] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get printing job trends over time"""
+    if not check_analytics_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    
+    # Apply location restrictions
+    if current_user.role.hierarchy_level < RoleHierarchy.ADMIN.value:
+        location_id = current_user.primary_location_id
+    
+    try:
+        from app.models.printing import PrintJob
+        
+        filters = AnalyticsFilters(
+            date_range=date_range,
+            location_id=location_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        start_date_filter, end_date_filter = crud_analytics._get_date_range_filter(filters)
+        
+        # Base query with location filter
+        base_query = db.query(PrintJob)
+        if filters.location_id:
+            base_query = base_query.filter(PrintJob.print_location_id == filters.location_id)
+        
+        # Group by date and status for trend data
+        from sqlalchemy import func
+        results = base_query.filter(
+            PrintJob.created_at >= start_date_filter,
+            PrintJob.created_at <= end_date_filter
+        ).with_entities(
+            func.date(PrintJob.created_at).label('date'),
+            PrintJob.status,
+            func.count(PrintJob.id).label('count')
+        ).group_by(
+            func.date(PrintJob.created_at),
+            PrintJob.status
+        ).all()
+        
+        # Process results into daily data points
+        daily_data = {}
+        current = start_date_filter.date()
+        end = end_date_filter.date()
+        
+        # Initialize all dates with zero values
+        while current <= end:
+            daily_data[current] = {
+                'total_jobs': 0,
+                'completed': 0,
+                'pending': 0,
+                'failed': 0
+            }
+            current += timedelta(days=1)
+        
+        # Fill in actual data
+        from app.models.printing import PrintJobStatus
+        for result in results:
+            date = result.date
+            status = result.status
+            count = result.count
+            
+            if date in daily_data:
+                daily_data[date]['total_jobs'] += count
+                
+                if status == PrintJobStatus.COMPLETED:
+                    daily_data[date]['completed'] = count
+                elif status in [PrintJobStatus.QUEUED, PrintJobStatus.ASSIGNED, PrintJobStatus.PRINTING]:
+                    daily_data[date]['pending'] += count
+                elif status in [PrintJobStatus.FAILED, PrintJobStatus.CANCELLED]:
+                    daily_data[date]['failed'] += count
+        
+        # Convert to list of data points
+        trend_data = [
+            {
+                "date": date.isoformat(),
+                "total_jobs": data['total_jobs'],
+                "completed": data['completed'],
+                "pending": data['pending'],
+                "failed": data['failed']
+            }
+            for date, data in sorted(daily_data.items())
+        ]
+        
+        return ChartDataResponse(
+            success=True,
+            data=trend_data,
+            metadata={
+                "total_records": len(trend_data),
+                "date_range": date_range,
+                "location_id": location_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching printing trends: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch printing trends"
+        )
+
+
+@router.get("/charts/financial/trends", response_model=ChartDataResponse)
+async def get_financial_trends(
+    date_range: str = Query("30days", regex="^(7days|30days|90days|6months|1year)$"),
+    location_id: Optional[int] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get financial trends over time"""
+    if not check_analytics_access(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    
+    # Apply location restrictions
+    if current_user.role.hierarchy_level < RoleHierarchy.ADMIN.value:
+        location_id = current_user.primary_location_id
+    
+    try:
+        from app.models.transaction import Transaction, TransactionStatus
+        
+        filters = AnalyticsFilters(
+            date_range=date_range,
+            location_id=location_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        start_date_filter, end_date_filter = crud_analytics._get_date_range_filter(filters)
+        
+        # Base query for successful transactions with location filter
+        base_query = db.query(Transaction).filter(
+            Transaction.status == TransactionStatus.PAID
+        )
+        if filters.location_id:
+            base_query = base_query.filter(Transaction.location_id == filters.location_id)
+        
+        # Group by date for trend data
+        from sqlalchemy import func
+        results = base_query.filter(
+            Transaction.created_at >= start_date_filter,
+            Transaction.created_at <= end_date_filter
+        ).with_entities(
+            func.date(Transaction.created_at).label('date'),
+            func.sum(Transaction.amount).label('total_revenue'),
+            func.count(Transaction.id).label('transaction_count')
+        ).group_by(
+            func.date(Transaction.created_at)
+        ).all()
+        
+        # Convert to trend data points
+        trend_data = [
+            {
+                "date": result.date.isoformat(),
+                "total_revenue": float(result.total_revenue or 0),
+                "transaction_count": result.transaction_count,
+                "application_fees": float(result.total_revenue or 0) * 0.6,  # Estimated breakdown
+                "card_fees": float(result.total_revenue or 0) * 0.3,
+                "other_fees": float(result.total_revenue or 0) * 0.1
+            }
+            for result in results
+        ]
+        
+        return ChartDataResponse(
+            success=True,
+            data=trend_data,
+            metadata={
+                "total_records": len(trend_data),
+                "date_range": date_range,
+                "location_id": location_id,
+                "currency": "MGA"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching financial trends: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch financial trends"
+        )
+
+
 @router.get("/export/{export_id}/status", response_model=AnalyticsResponse)
 async def get_export_status(
     export_id: str,
