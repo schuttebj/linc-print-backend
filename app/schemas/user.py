@@ -258,6 +258,7 @@ class UserResponse(BaseModel):
     
     # Relationships
     roles: List[RoleResponse]
+    permissions: List[str] = Field(default_factory=list, description="User's effective permissions")
     primary_location: Optional[LocationResponse]
     assigned_locations: List[LocationResponse]
     
@@ -300,6 +301,13 @@ class UserResponse(BaseModel):
             'primary_location': obj.primary_location,
             'assigned_locations': obj.assigned_locations,
         }
+        
+        # Collect user's effective permissions from roles
+        permissions = set()
+        for role in obj.roles:
+            for permission in role.permissions:
+                permissions.add(permission.name)
+        user_data['permissions'] = list(permissions)
         
         # Get permission overrides
         permission_overrides = {}
