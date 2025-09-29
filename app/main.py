@@ -1070,6 +1070,13 @@ async def initialize_users():
                 }
             ]
             
+            # Find default location (Antananarivo Central Office) for test users
+            from app.models.user import Location
+            default_location = db.query(Location).filter(
+                Location.province_code == "T",  # Antananarivo province
+                Location.office_number == "01"  # Central office
+            ).first()
+            
             created_users = []
             updated_users = []
             for user_data in test_users:
@@ -1096,7 +1103,8 @@ async def initialize_users():
                         timezone="Indian/Antananarivo",
                         currency="MGA",
                         status=UserStatus.ACTIVE,
-                        is_verified=True
+                        is_verified=True,
+                        primary_location_id=default_location.id if default_location else None
                     )
                     
                     # Assign roles to new user
@@ -1106,9 +1114,11 @@ async def initialize_users():
                     db.add(user)
                     created_users.append(user_data["username"])
                 else:
-                    # Update existing user's roles
+                    # Update existing user's roles and location
                     user_roles = [roles[role_name] for role_name in user_data["roles"] if role_name in roles]
                     existing.roles = user_roles
+                    if default_location and not existing.primary_location_id:
+                        existing.primary_location_id = default_location.id
                     updated_users.append(user_data["username"])
             
             db.commit()
@@ -1132,9 +1142,10 @@ async def initialize_users():
                 ],
                 "created_users": created_users,
                 "updated_users": updated_users,
+                "default_location": default_location.name if default_location else "No default location found",
                 "permissions_created": len(permissions_data),
                 "roles_created": len(roles_data),
-                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser. Existing users updated with correct roles.",
+                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser. Existing users updated with correct roles and default location.",
                 "timestamp": time.time()
             }
             
