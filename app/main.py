@@ -1071,9 +1071,11 @@ async def initialize_users():
             ]
             
             created_users = []
+            updated_users = []
             for user_data in test_users:
                 existing = db.query(User).filter(User.username == user_data["username"]).first()
                 if not existing:
+                    # Create new user
                     user = User(
                         username=user_data["username"],
                         email=user_data["email"],
@@ -1097,12 +1099,17 @@ async def initialize_users():
                         is_verified=True
                     )
                     
-                    # Assign roles
+                    # Assign roles to new user
                     user_roles = [roles[role_name] for role_name in user_data["roles"] if role_name in roles]
                     user.roles = user_roles
                     
                     db.add(user)
                     created_users.append(user_data["username"])
+                else:
+                    # Update existing user's roles
+                    user_roles = [roles[role_name] for role_name in user_data["roles"] if role_name in roles]
+                    existing.roles = user_roles
+                    updated_users.append(user_data["username"])
             
             db.commit()
             
@@ -1124,9 +1131,10 @@ async def initialize_users():
                     {"username": "examiner1", "password": "Examiner123!", "permissions": "application authorization + license generation"}
                 ],
                 "created_users": created_users,
+                "updated_users": updated_users,
                 "permissions_created": len(permissions_data),
                 "roles_created": len(roles_data),
-                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser",
+                "note": "Person module is now fully integrated with permissions system. Admin = technical superuser. Existing users updated with correct roles.",
                 "timestamp": time.time()
             }
             
