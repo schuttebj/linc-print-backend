@@ -1077,6 +1077,14 @@ async def initialize_users():
                 Location.office_number == "01"  # Central office
             ).first()
             
+            if default_location:
+                logger.info(f"Found default location: {default_location.name} (ID: {default_location.id}) - will assign to users")
+            else:
+                logger.warning("No default location found. Please initialize locations first using /admin/init-locations")
+                # Also check if any locations exist at all
+                location_count = db.query(Location).count()
+                logger.info(f"Total locations in database: {location_count}")
+            
             created_users = []
             updated_users = []
             for user_data in test_users:
@@ -1142,7 +1150,7 @@ async def initialize_users():
                 ],
                 "created_users": created_users,
                 "updated_users": updated_users,
-                "default_location": default_location.name if default_location else "No default location found",
+                "default_location_assigned": default_location.name if default_location else "No location assigned - initialize locations first",
                 "permissions_created": len(permissions_data),
                 "roles_created": len(roles_data),
                 "note": "Person module is now fully integrated with permissions system. Admin = technical superuser. Existing users updated with correct roles and default location.",
@@ -1955,16 +1963,16 @@ async def reset_database():
         finally:
             db.close()
         
-        # Step 2: Initialize all data automatically
-        logger.info("Initializing users, roles, and permissions...")
-        users_result = await initialize_users()
-        if not isinstance(users_result, dict) or users_result.get("status") != "success":
-            raise Exception(f"Failed to initialize users: {users_result.get('message', 'Unknown error') if isinstance(users_result, dict) else 'JSONResponse returned'}")
-        
+        # Step 2: Initialize all data automatically (locations FIRST, then users)
         logger.info("Initializing locations...")
         locations_result = await initialize_locations()
         if not isinstance(locations_result, dict) or locations_result.get("status") != "success":
             raise Exception(f"Failed to initialize locations: {locations_result.get('message', 'Unknown error') if isinstance(locations_result, dict) else 'JSONResponse returned'}")
+        
+        logger.info("Initializing users, roles, and permissions...")
+        users_result = await initialize_users()
+        if not isinstance(users_result, dict) or users_result.get("status") != "success":
+            raise Exception(f"Failed to initialize users: {users_result.get('message', 'Unknown error') if isinstance(users_result, dict) else 'JSONResponse returned'}")
         
         logger.info("Initializing location users...")
         location_users_result = await initialize_location_users()
@@ -1984,8 +1992,9 @@ async def reset_database():
                 "Tables dropped and recreated",
                 "API request logs table created with indexes",
                 "Biometric files cleaned up",
-                "Base users and roles initialized (including EXAMINER role)",
                 "Madagascar locations initialized",
+                "Base users and roles initialized (including EXAMINER role)",
+                "Users assigned to default location (Antananarivo Central Office)",
                 "Location-based users created",
                 "Fee structures initialized"
             ],
