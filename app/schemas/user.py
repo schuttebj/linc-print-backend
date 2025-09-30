@@ -100,7 +100,6 @@ class UserCreate(UserBase):
     confirm_password: str = Field(..., description="Password confirmation")
     role_ids: List[uuid.UUID] = Field(default=[], description="List of role IDs to assign")
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location ID")
-    assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Assigned location IDs")
     
     # Permission management fields
     permission_names: Optional[List[str]] = Field(None, description="Final list of permission names for the user")

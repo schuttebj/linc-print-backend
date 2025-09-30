@@ -72,7 +72,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -136,7 +136,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -188,7 +188,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
@@ -239,7 +239,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
         hashed_password = pwd_context.hash(obj_in.password)
         
         # Create user object
-        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "assigned_location_ids", "permission_names", "permission_overrides"})
+        user_data = obj_in.dict(exclude={"password", "confirm_password", "role_ids", "permission_names", "permission_overrides"})
         user_data.update({
             "username": username,
             "password_hash": hashed_password,
