@@ -3954,30 +3954,32 @@ def _generate_license_for_application(
         
         # Use existing license generation logic
         from app.crud.crud_license import crud_license
+        from app.schemas.license import LicenseCreateFromApplication
         
-        license_data = {
-            "person_id": app.person_id,
+        # Build license creation schema
+        license_schema_data = {
             "application_id": app.id,
             "license_category": app.license_category,
-            "location_id": app.location_id,
-            "issued_by_user_id": current_user.id
+            "restrictions": [],
         }
         
-        # Add capture-specific data if applicable (license_capture is a JSON column, not a relationship)
+        # Add capture-specific data if applicable (license_capture is a JSON column)
         if app.license_capture:
             # license_capture is a dict stored in JSON column
             capture_data = app.license_capture if isinstance(app.license_capture, dict) else {}
             
-            if capture_data.get("issue_date"):
-                license_data["issue_date"] = capture_data["issue_date"]
-            if capture_data.get("expiry_date"):
-                license_data["expiry_date"] = capture_data["expiry_date"]
             if capture_data.get("license_number"):
-                license_data["license_number"] = capture_data["license_number"]
+                license_schema_data["captured_from_license_number"] = capture_data["license_number"]
             if capture_data.get("restrictions"):
-                license_data["restrictions"] = capture_data["restrictions"]
+                license_schema_data["restrictions"] = capture_data["restrictions"]
         
-        license = crud_license.create(db=db, obj_in=license_data)
+        # Create license using the proper schema
+        license_create = LicenseCreateFromApplication(**license_schema_data)
+        license = crud_license.create_from_application(
+            db=db, 
+            obj_in=license_create, 
+            current_user=current_user
+        )
         
         results["license_generated"] = True
         results["notes"].append(f"Generated license {license.license_number}")
