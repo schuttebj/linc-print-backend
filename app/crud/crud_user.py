@@ -283,10 +283,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     def get_by_location(self, db: Session, *, location_id: uuid.UUID) -> List[User]:
         """Get all users assigned to a location"""
         return db.query(User).filter(
-            or_(
-                User.primary_location_id == location_id,
-                User.assigned_locations.any(Location.id == location_id)
-            ),
+            User.primary_location_id == location_id,
             User.is_active == True
         ).all()
     
