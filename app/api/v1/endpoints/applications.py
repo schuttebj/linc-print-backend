@@ -4,13 +4,14 @@ Comprehensive REST API for driver's license applications with complete workflow 
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request, Response, Body
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, and_, or_, func
 from pathlib import Path
 import uuid
 import logging
+import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 import tempfile
