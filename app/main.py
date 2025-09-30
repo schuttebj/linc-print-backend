@@ -827,6 +827,8 @@ async def initialize_users():
                 # Person management (essential for license applications)
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
+                # Basic audit access for dashboard statistics
+                "audit.read",
                 "person_addresses.create", "person_addresses.read", "person_addresses.update", "person_addresses.set_primary",
                 # Transaction management (for processing payments)
                 "transactions.create", "transactions.read",

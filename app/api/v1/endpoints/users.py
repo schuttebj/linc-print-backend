@@ -67,8 +67,7 @@ async def list_users(
     # Build query
     query = db.query(User).options(
         joinedload(User.roles),
-        joinedload(User.primary_location),
-        joinedload(User.assigned_locations)
+        joinedload(User.primary_location)
     ).filter(User.is_active == True)
     
     # Apply search filter
