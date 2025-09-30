@@ -3947,40 +3947,42 @@ def _generate_license_for_application(
     }
     
     try:
-        # Reload application with license_capture relationship eagerly loaded
-        from sqlalchemy.orm import joinedload
-        from app.models.application import LicenseCapture
-        
-        app_with_capture = db.query(Application).options(
-            joinedload(Application.license_capture)
-        ).filter(Application.id == application.id).first()
+        # Reload application to ensure we have fresh data
+        app = db.query(Application).filter(Application.id == application.id).first()
+        if not app:
+            raise ValueError(f"Application {application.id} not found")
         
         # Use existing license generation logic
         from app.crud.crud_license import crud_license
         
         license_data = {
-            "person_id": app_with_capture.person_id,
-            "application_id": app_with_capture.id,
-            "license_category": app_with_capture.license_category,
-            "location_id": app_with_capture.location_id,
+            "person_id": app.person_id,
+            "application_id": app.id,
+            "license_category": app.license_category,
+            "location_id": app.location_id,
             "issued_by_user_id": current_user.id
         }
         
-        # Add capture-specific data if applicable
-        if app_with_capture.license_capture:
-            license_data.update({
-                "issue_date": app_with_capture.license_capture.issue_date,
-                "expiry_date": app_with_capture.license_capture.expiry_date,
-                "license_number": app_with_capture.license_capture.license_number,
-                "restrictions": app_with_capture.license_capture.restrictions
-            })
+        # Add capture-specific data if applicable (license_capture is a JSON column, not a relationship)
+        if app.license_capture:
+            # license_capture is a dict stored in JSON column
+            capture_data = app.license_capture if isinstance(app.license_capture, dict) else {}
+            
+            if capture_data.get("issue_date"):
+                license_data["issue_date"] = capture_data["issue_date"]
+            if capture_data.get("expiry_date"):
+                license_data["expiry_date"] = capture_data["expiry_date"]
+            if capture_data.get("license_number"):
+                license_data["license_number"] = capture_data["license_number"]
+            if capture_data.get("restrictions"):
+                license_data["restrictions"] = capture_data["restrictions"]
         
         license = crud_license.create(db=db, obj_in=license_data)
         
         results["license_generated"] = True
         results["notes"].append(f"Generated license {license.license_number}")
         
-        logger.info(f"Generated license {license.license_number} for application {app_with_capture.id}")
+        logger.info(f"Generated license {license.license_number} for application {app.id}")
         
     except Exception as e:
         logger.error(f"Failed to generate license for application {application.id}: {str(e)}")
