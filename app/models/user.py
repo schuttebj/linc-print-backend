@@ -146,7 +146,6 @@ class User(BaseModel):
     roles = relationship("Role", secondary=user_roles, back_populates="users")
     audit_logs = relationship("UserAuditLog", back_populates="user")
     primary_location = relationship("Location", foreign_keys=[primary_location_id])
-    assigned_locations = relationship("Location", secondary=user_locations, back_populates="assigned_users")
     permission_overrides = relationship("UserPermissionOverride", foreign_keys="UserPermissionOverride.user_id")
     
     # Issue tracking relationships
