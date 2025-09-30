@@ -747,6 +747,228 @@ def submit_application_async(
     }
 
 
+@router.post("/{application_id}/submit", response_model=Dict[str, Any])
+@audit_update(
+    resource_type="APPLICATION", 
+    screen_reference="ApplicationSubmission",
+    get_old_data=get_application_by_id
+)
+def submit_application_with_automation(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    reason: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Submit application with system automation
+    
+    New secure endpoint that:
+    1. Checks applications.submit permission (not change_status)
+    2. Updates status to SUBMITTED
+    3. Triggers automated workflow for capture applications
+    4. Returns detailed processing results
+    """
+    if not current_user.has_permission("applications.submit"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to submit application"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to submit this application"
+        )
+    
+    # Validate current status allows submission
+    if application.status not in [ApplicationStatus.DRAFT, ApplicationStatus.ON_HOLD]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application cannot be submitted from status {application.status}"
+        )
+    
+    try:
+        # Update to SUBMITTED status
+        updated_application = crud_application.update_status(
+            db=db,
+            application_id=application_id,
+            new_status=ApplicationStatus.SUBMITTED,
+            changed_by=current_user.id,
+            reason=reason or "Application submitted for processing",
+            notes=notes
+        )
+        
+        # Trigger automation based on application type
+        automation_results = trigger_application_automation(
+            db=db,
+            application=updated_application,
+            trigger_status=ApplicationStatus.SUBMITTED,
+            current_user=current_user
+        )
+        
+        return {
+            "status": "success",
+            "message": "Application submitted successfully",
+            "application_id": str(updated_application.id),
+            "current_status": updated_application.status.value,
+            "automation_triggered": automation_results.get("automation_triggered", False),
+            "final_status": automation_results.get("final_status"),
+            "license_generated": automation_results.get("license_generated", False),
+            "processing_notes": automation_results.get("notes", []),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error submitting application {application_id}: {str(e)}")
+        
+        # Mark application as ERROR status for manual review
+        try:
+            crud_application.update_status(
+                db=db,
+                application_id=application_id,
+                new_status=ApplicationStatus.ERROR,
+                changed_by=current_user.id,
+                reason="Submission processing failed",
+                notes=f"Error: {str(e)}"
+            )
+        except:
+            pass  # Don't fail if we can't update to ERROR status
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Application submission failed: {str(e)}"
+        )
+
+
+@router.post("/{application_id}/test-result", response_model=Dict[str, Any])
+@audit_update(
+    resource_type="APPLICATION", 
+    screen_reference="TestResultForm",
+    get_old_data=get_application_by_id
+)
+def record_test_result(
+    *,
+    db: Session = Depends(get_db),
+    application_id: uuid.UUID,
+    test_result: str = Body(..., description="Test result: PASSED, FAILED, or ABSENT"),
+    notes: Optional[str] = Body(None, description="Additional notes about the test"),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Record test result for an application (Examiner endpoint)
+    
+    Requires: applications.test_results permission
+    Automatically triggers approval workflow for PASSED results
+    """
+    if not current_user.has_permission("applications.test_results"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to record test results"
+        )
+    
+    application = crud_application.get(db=db, id=application_id)
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found"
+        )
+    
+    # Check location access
+    if not current_user.can_access_location(application.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to process this application"
+        )
+    
+    # Validate application is in correct status for testing
+    if application.status != ApplicationStatus.PAID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Application must be in PAID status for testing, currently {application.status}"
+        )
+    
+    # Validate test result
+    if test_result not in ["PASSED", "FAILED", "ABSENT"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Test result must be PASSED, FAILED, or ABSENT"
+        )
+    
+    try:
+        # Map test result to application status
+        status_mapping = {
+            "PASSED": ApplicationStatus.PASSED,
+            "FAILED": ApplicationStatus.FAILED,
+            "ABSENT": ApplicationStatus.ABSENT
+        }
+        
+        new_status = status_mapping[test_result]
+        
+        # Update application status
+        updated_application = crud_application.update_status(
+            db=db,
+            application_id=application_id,
+            new_status=new_status,
+            changed_by=current_user.id,
+            reason=f"Test result: {test_result}",
+            notes=notes or f"Examiner recorded test result: {test_result}"
+        )
+        
+        # Trigger automation for PASSED results
+        automation_results = {}
+        if test_result == "PASSED":
+            automation_results = trigger_application_automation(
+                db=db,
+                application=updated_application,
+                trigger_status=ApplicationStatus.PASSED,
+                current_user=current_user
+            )
+        
+        return {
+            "status": "success",
+            "message": f"Test result '{test_result}' recorded successfully",
+            "application_id": str(updated_application.id),
+            "test_result": test_result,
+            "current_status": updated_application.status.value,
+            "automation_triggered": automation_results.get("automation_triggered", False),
+            "final_status": automation_results.get("final_status", updated_application.status.value),
+            "license_generated": automation_results.get("license_generated", False),
+            "processing_notes": automation_results.get("notes", []),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error recording test result for application {application_id}: {str(e)}")
+        
+        # Mark application as ERROR status for manual review
+        try:
+            crud_application.update_status(
+                db=db,
+                application_id=application_id,
+                new_status=ApplicationStatus.ERROR,
+                changed_by=current_user.id,
+                reason="Test result processing failed",
+                notes=f"Error recording test result: {str(e)}"
+            )
+        except:
+            pass
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to record test result: {str(e)}"
+        )
+
+
 @router.post("/{application_id}/approve-and-generate-license", response_model=Dict[str, Any])
 def approve_and_generate_license(
     *,
@@ -2025,7 +2247,11 @@ def _is_valid_status_transition(current_status: ApplicationStatus, new_status: A
         ],
         ApplicationStatus.COMPLETED: [],  # No transitions from completed
         ApplicationStatus.REJECTED: [],  # No transitions from rejected
-        ApplicationStatus.CANCELLED: []  # No transitions from cancelled
+        ApplicationStatus.CANCELLED: [],  # No transitions from cancelled
+        ApplicationStatus.ERROR: [
+            ApplicationStatus.DRAFT, ApplicationStatus.SUBMITTED, ApplicationStatus.PAID,
+            ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED
+        ]  # ERROR status can be fixed by moving to appropriate status
     }
     
     # Special handling for license capture applications
@@ -3475,5 +3701,283 @@ def fix_new_license_workflow(
             "test_result": application.test_result.value,
             "next_step": "ready_for_card_ordering"
         }
+
+
+# ====================
+# AUTOMATION SYSTEM
+# ====================
+
+def trigger_application_automation(
+    db: Session,
+    application: Application,
+    trigger_status: ApplicationStatus,
+    current_user: User
+) -> Dict[str, Any]:
+    """
+    Trigger automated workflows based on application type and status
+    
+    Expandable automation system that handles:
+    - Capture application workflows
+    - License generation
+    - Status transitions
+    - Error handling
+    - Supervisor override scenarios (license cancellation/recreation)
+    """
+    automation_results = {
+        "automation_triggered": False,
+        "final_status": trigger_status.value,
+        "license_generated": False,
+        "notes": [],
+        "errors": []
+    }
+    
+    try:
+        logger.info(f"Triggering automation for application {application.id}, type: {application.application_type}, status: {trigger_status}")
+        
+        # CAPTURE APPLICATIONS AUTOMATION
+        if application.application_type in [ApplicationType.DRIVERS_LICENSE_CAPTURE, ApplicationType.LEARNERS_PERMIT_CAPTURE]:
+            automation_results.update(
+                _handle_capture_application_automation(db, application, trigger_status, current_user)
+            )
+        
+        # REGULAR APPLICATIONS AUTOMATION  
+        elif trigger_status == ApplicationStatus.PASSED:
+            # Auto-approve after test pass
+            automation_results.update(
+                _handle_test_pass_automation(db, application, current_user)
+            )
+        
+        # SUPERVISOR OVERRIDE AUTOMATION
+        # Handle license cancellation/recreation when supervisor changes status
+        elif trigger_status in [ApplicationStatus.FAILED, ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED]:
+            automation_results.update(
+                _handle_license_cancellation_automation(db, application, trigger_status, current_user)
+            )
+        elif trigger_status == ApplicationStatus.APPROVED and application.status in [ApplicationStatus.FAILED, ApplicationStatus.REJECTED]:
+            # Supervisor changed from FAILED/REJECTED back to APPROVED - recreate license
+            automation_results.update(
+                _handle_license_recreation_automation(db, application, current_user)
+            )
+        
+        return automation_results
+        
+    except Exception as e:
+        logger.error(f"Automation failed for application {application.id}: {str(e)}")
+        automation_results["errors"].append(f"Automation failed: {str(e)}")
+        
+        # Mark application as ERROR for manual review
+        try:
+            crud_application.update_status(
+                db=db,
+                application_id=application.id,
+                new_status=ApplicationStatus.ERROR,
+                changed_by=current_user.id,
+                reason="Automation processing failed",
+                notes=f"Automation error: {str(e)}"
+            )
+            automation_results["final_status"] = ApplicationStatus.ERROR.value
+        except Exception as status_error:
+            logger.error(f"Failed to update application to ERROR status: {str(status_error)}")
+        
+        return automation_results
+
+
+def _handle_capture_application_automation(
+    db: Session,
+    application: Application,
+    trigger_status: ApplicationStatus,
+    current_user: User
+) -> Dict[str, Any]:
+    """Handle automation for capture applications: SUBMITTED → APPROVED → COMPLETED"""
+    
+    results = {
+        "automation_triggered": True,
+        "notes": ["Capture application automation triggered"]
+    }
+    
+    if trigger_status == ApplicationStatus.SUBMITTED:
+        # Auto-approve capture applications
+        logger.info(f"Auto-approving capture application {application.id}")
+        
+        approved_app = crud_application.update_status(
+            db=db,
+            application_id=application.id,
+            new_status=ApplicationStatus.APPROVED,
+            changed_by=current_user.id,
+            reason="Auto-approved: Capture application",
+            notes="System automated approval for license capture"
+        )
+        
+        results["notes"].append("Auto-approved capture application")
+        results["final_status"] = ApplicationStatus.APPROVED.value
+        
+        # Generate license
+        license_result = _generate_license_for_application(db, approved_app, current_user)
+        results.update(license_result)
+        
+        if license_result.get("license_generated"):
+            # Auto-complete capture applications (no printing needed)
+            completed_app = crud_application.update_status(
+                db=db,
+                application_id=application.id,
+                new_status=ApplicationStatus.COMPLETED,
+                changed_by=current_user.id,
+                reason="Auto-completed: Capture application with license generated",
+                notes="System automated completion for license capture"
+            )
+            
+            results["notes"].append("Auto-completed capture application")
+            results["final_status"] = ApplicationStatus.COMPLETED.value
+    
+    return results
+
+
+def _handle_test_pass_automation(
+    db: Session,
+    application: Application,
+    current_user: User
+) -> Dict[str, Any]:
+    """Handle automation when test is marked as PASSED"""
+    
+    results = {
+        "automation_triggered": True,
+        "notes": ["Test pass automation triggered"]
+    }
+    
+    # Auto-approve after test pass
+    logger.info(f"Auto-approving application {application.id} after test pass")
+    
+    approved_app = crud_application.update_status(
+        db=db,
+        application_id=application.id,
+        new_status=ApplicationStatus.APPROVED,
+        changed_by=current_user.id,
+        reason="Auto-approved: Test passed",
+        notes="System automated approval after successful test"
+    )
+    
+    results["notes"].append("Auto-approved after test pass")
+    results["final_status"] = ApplicationStatus.APPROVED.value
+    
+    # Generate license
+    license_result = _generate_license_for_application(db, approved_app, current_user)
+    results.update(license_result)
+    
+    return results
+
+
+def _handle_license_cancellation_automation(
+    db: Session,
+    application: Application,
+    new_status: ApplicationStatus,
+    current_user: User
+) -> Dict[str, Any]:
+    """Handle license cancellation when application is marked as FAILED/REJECTED/CANCELLED"""
+    
+    results = {
+        "automation_triggered": True,
+        "notes": ["License cancellation automation triggered"],
+        "final_status": new_status.value
+    }
+    
+    # Cancel associated licenses
+    try:
+        from app.models.license import License
+        from app.models.enums import LicenseStatus
+        
+        # Find and cancel active licenses for this application
+        active_licenses = db.query(License).filter(
+            License.application_id == application.id,
+            License.status == LicenseStatus.ACTIVE
+        ).all()
+        
+        for license in active_licenses:
+            license.status = LicenseStatus.CANCELLED
+            license.cancellation_reason = f"Application {new_status.value.lower()}"
+            license.cancelled_date = datetime.utcnow()
+            license.cancelled_by_user_id = current_user.id
+            
+        db.commit()
+        
+        if active_licenses:
+            results["notes"].append(f"Cancelled {len(active_licenses)} associated license(s)")
+            logger.info(f"Cancelled {len(active_licenses)} licenses for application {application.id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to cancel licenses for application {application.id}: {str(e)}")
+        results["notes"].append(f"License cancellation failed: {str(e)}")
+    
+    return results
+
+
+def _handle_license_recreation_automation(
+    db: Session,
+    application: Application,
+    current_user: User
+) -> Dict[str, Any]:
+    """Handle license recreation when supervisor changes FAILED/REJECTED back to APPROVED"""
+    
+    results = {
+        "automation_triggered": True,
+        "notes": ["License recreation automation triggered"],
+        "final_status": ApplicationStatus.APPROVED.value
+    }
+    
+    # Generate new license
+    license_result = _generate_license_for_application(db, application, current_user)
+    results.update(license_result)
+    
+    if license_result.get("license_generated"):
+        results["notes"].append("Recreated license after supervisor override")
+    
+    return results
+
+
+def _generate_license_for_application(
+    db: Session,
+    application: Application,
+    current_user: User
+) -> Dict[str, Any]:
+    """Generate license for approved application"""
+    
+    results = {
+        "license_generated": False,
+        "notes": []
+    }
+    
+    try:
+        # Use existing license generation logic
+        from app.crud.crud_license import crud_license
+        
+        license_data = {
+            "person_id": application.person_id,
+            "application_id": application.id,
+            "license_category": application.license_category,
+            "location_id": application.location_id,
+            "issued_by_user_id": current_user.id
+        }
+        
+        # Add capture-specific data if applicable
+        if application.license_capture:
+            license_data.update({
+                "issue_date": application.license_capture.issue_date,
+                "expiry_date": application.license_capture.expiry_date,
+                "license_number": application.license_capture.license_number,
+                "restrictions": application.license_capture.restrictions
+            })
+        
+        license = crud_license.create(db=db, obj_in=license_data)
+        
+        results["license_generated"] = True
+        results["notes"].append(f"Generated license {license.license_number}")
+        
+        logger.info(f"Generated license {license.license_number} for application {application.id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to generate license for application {application.id}: {str(e)}")
+        results["notes"].append(f"License generation failed: {str(e)}")
+        raise  # Re-raise to trigger ERROR status
+    
+    return results
 
  

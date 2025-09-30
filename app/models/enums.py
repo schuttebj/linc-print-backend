@@ -330,6 +330,7 @@ class ApplicationStatus(PythonEnum):
     COLLECTION_FAILURE = "COLLECTION_FAILURE"  # Card not collected within 3 months, sent for destruction
     REJECTED = "REJECTED"                     # Application rejected
     CANCELLED = "CANCELLED"                   # Application cancelled
+    ERROR = "ERROR"                           # Processing error - requires manual intervention
 
 
 class PaymentStatus(PythonEnum):

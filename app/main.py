@@ -719,6 +719,11 @@ async def initialize_users():
                 ("applications.authorize", "Authorize Applications", "Authorize applications", "applications", "application", "authorize"),
                 ("applications.review_authorization", "Review Authorization", "Review application authorization", "applications", "application", "review_authorization"),
                 ("applications.bulk_process", "Bulk Process Applications", "Process multiple applications", "applications", "application", "bulk_process"),
+                ("applications.change_status", "Change Application Status", "Change application status through workflow", "applications", "application", "change_status"),
+                ("applications.submit", "Submit Applications", "Submit applications for processing", "applications", "application", "submit"),
+                ("applications.test_results", "Record Test Results", "Record test results (PASSED/FAILED/ABSENT)", "applications", "application", "test_results"),
+                ("applications.view_errors", "View Error Applications", "View applications with processing errors", "applications", "application", "view_errors"),
+                ("applications.fix_errors", "Fix Error Applications", "Fix and retry failed application processing", "applications", "application", "fix_errors"),
                 
                 # License Application Permissions (placeholders for future modules)
                 ("license_applications.create", "Create License Applications", "Create new license applications", "license_applications", "license_application", "create"),
@@ -760,6 +765,9 @@ async def initialize_users():
                 ("cards.delete", "Delete Cards", "Delete card records", "cards", "card", "delete"),
                 ("cards.order", "Order Cards", "Order cards for printing", "cards", "card", "order"),
                 ("cards.track_status", "Track Card Status", "Monitor card production status", "cards", "card", "track_status"),
+                ("cards.collect", "Collect Cards", "Complete card collection process", "cards", "card", "collect"),
+                ("cards.collection.read", "View Collection Queue", "View cards ready for collection", "cards", "card", "collection_read"),
+                ("cards.update_status", "Update Card Status", "Update card status through production workflow", "cards", "card", "update_status"),
                 
                 # Provincial Management Permissions (NEW)
                 ("provinces.manage_users", "Manage Provincial Users", "Manage users across entire province", "provinces", "province", "manage_users"),
@@ -816,14 +824,16 @@ async def initialize_users():
             
             # Define role permissions - Updated to match frontend expectations
             clerk_permissions = [
-                # Applications management (essential for clerks) - fixed to match frontend
-                "applications.create", "applications.read", "applications.update",
+                # Applications management (essential for clerks) - refined for security
+                "applications.create", "applications.read", "applications.update", "applications.submit",
                 "license_applications.create", "license_applications.read", "license_applications.update",
                 # Licenses management
                 "licenses.read",
                 # Printing permissions
                 "printing.local_print", "printing.monitor_status",
                 "printing.create", "printing.read", "cards.order", "cards.read", "cards.track_status",
+                # Card collection permissions for clerks
+                "cards.collect", "cards.collection.read",
                 # Person management (essential for license applications)
                 "persons.create", "persons.read", "persons.update", "persons.search", "persons.check_duplicates",
                 "person_aliases.create", "person_aliases.read", "person_aliases.update", "person_aliases.set_primary",
@@ -841,8 +851,9 @@ async def initialize_users():
             ]
             
             supervisor_permissions = clerk_permissions + [
-                # Application management for supervisors
-                "applications.approve", "applications.delete",
+                # Application management for supervisors - full control
+                "applications.change_status", "applications.approve", "applications.delete", "applications.bulk_process",
+                "applications.view_errors", "applications.fix_errors",
                 "license_applications.approve",
                 "users.read", "users.update", "users.view_statistics", "roles.read", "permissions.read",
                 # Additional person management permissions for supervisors
@@ -882,17 +893,19 @@ async def initialize_users():
                 # Enhanced printer permissions for full print workflow
                 "printing.read", "printing.assign", "printing.start", "printing.complete",
                 "printing.quality_check", "printing.regenerate_files", "printing.view_statistics",
-                "cards.read", "cards.track_status",
+                "cards.read", "cards.track_status", "cards.update", "cards.update_status",
+                # Application status management for printing workflow
+                "applications.read", "applications.change_status",
                 # Basic role viewing (needed for user interface)
                 "roles.read", "users.read",
                 # Issue tracking - all users can report issues
                 "issues.create", "issues.comment"
             ]
             
-            # Define examiner permissions (authorization and review)
+            # Define examiner permissions (test results and authorization)
             examiner_permissions = [
-                # Applications access for examiners
-                "applications.read", "applications.authorize", "applications.review_authorization",
+                # Applications access for examiners - focused on test results
+                "applications.read", "applications.test_results",
                 "license_applications.read", "license_applications.approve",
                 # Basic permissions for interface
                 "roles.read", "users.read",
