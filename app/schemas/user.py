@@ -64,7 +64,6 @@ class UserBase(BaseModel):
     
     # Location-based assignment
     primary_location_id: Optional[uuid.UUID] = Field(None, description="Primary location assignment")
-    assigned_location_ids: List[uuid.UUID] = Field(default=[], description="Additional location assignments")
     
     # Contact information
     phone_number: Optional[str] = Field(None, max_length=20, description="Phone number")
@@ -128,7 +127,6 @@ class UserUpdate(BaseModel):
     
     # Location-based assignment
     primary_location_id: Optional[uuid.UUID] = None
-    assigned_location_ids: Optional[List[uuid.UUID]] = None
     
     # Contact information
     phone_number: Optional[str] = Field(None, max_length=20)
@@ -260,7 +258,6 @@ class UserResponse(BaseModel):
     roles: List[RoleResponse]
     permissions: List[str] = Field(default_factory=list, description="User's effective permissions")
     primary_location: Optional[LocationResponse]
-    assigned_locations: List[LocationResponse]
     
     model_config = ConfigDict(from_attributes=True)
     
@@ -299,7 +296,6 @@ class UserResponse(BaseModel):
             'last_login_at': obj.last_login_at,
             'roles': obj.roles,
             'primary_location': obj.primary_location,
-            'assigned_locations': obj.assigned_locations,
         }
         
         # Collect user's effective permissions from roles

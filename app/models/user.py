@@ -300,8 +300,8 @@ class User(BaseModel):
         if self.primary_location_id == location_id:
             return True
             
-        # Check assigned locations
-        return any(location.id == location_id for location in self.assigned_locations)
+        # Location users have access only to their primary location
+        return False
     
     def get_accessible_locations(self) -> Optional[List[uuid.UUID]]:
         """Get list of location IDs this user can access"""
@@ -810,7 +810,6 @@ class Location(BaseModel):
     special_notes = Column(Text, nullable=True, comment="Special instructions or notes")
     
     # Relationships
-    assigned_users = relationship("User", secondary=user_locations, back_populates="assigned_locations")
     primary_users = relationship("User", foreign_keys="User.primary_location_id", back_populates="primary_location")
     
     def __repr__(self):
