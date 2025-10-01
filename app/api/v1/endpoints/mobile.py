@@ -17,6 +17,8 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.person import Person
 from app.models.license import License
+from app.models.application import ApplicationBiometricData
+from app.models.enums import BiometricDataType
 from app.crud.crud_license import crud_license
 from app.crud import person as crud_person
 
@@ -84,15 +86,40 @@ async def get_license_by_id(
     # Get the latest license (for primary info like photo, issue date)
     latest_license = max(licenses, key=lambda l: l.issue_date)
     
-    # Build photo URL (from latest license)
+    # Fetch biometric data from the LATEST application with biometric data for this person
     photo_url = None
-    if latest_license.photo_file_path:
-        photo_url = f"/api/v1/applications/files/{latest_license.photo_file_path}"
-    
-    # Build signature URL (from latest license)
     signature_url = None
-    if latest_license.signature_file_path:
-        signature_url = f"/api/v1/applications/files/{latest_license.signature_file_path}"
+    biometric_template_id = None
+    
+    # Get all applications for this person that have biometric data
+    from app.models.application import Application
+    
+    applications_with_biometrics = (
+        db.query(Application)
+        .join(ApplicationBiometricData, Application.id == ApplicationBiometricData.application_id)
+        .filter(Application.person_id == person.id)
+        .order_by(Application.created_at.desc())
+        .all()
+    )
+    
+    # Get the latest application with biometric data
+    if applications_with_biometrics:
+        latest_app = applications_with_biometrics[0]
+        
+        # Query biometric data for this latest application
+        biometric_data = db.query(ApplicationBiometricData).filter(
+            ApplicationBiometricData.application_id == latest_app.id
+        ).all()
+        
+        # Extract photo and signature file paths
+        for bio_data in biometric_data:
+            if bio_data.data_type == BiometricDataType.PHOTO and bio_data.file_path:
+                photo_url = f"/api/v1/applications/files/{bio_data.file_path}"
+            elif bio_data.data_type == BiometricDataType.SIGNATURE and bio_data.file_path:
+                signature_url = f"/api/v1/applications/files/{bio_data.file_path}"
+            elif bio_data.data_type == BiometricDataType.FINGERPRINT:
+                # Store fingerprint template ID for verification
+                biometric_template_id = str(bio_data.id) if bio_data.id else None
     
     # Generate a display number from license ID or use captured number
     license_display_number = (
@@ -120,14 +147,14 @@ async def get_license_by_id(
     # Sort categories alphabetically
     all_categories = sorted(list(set(all_categories)))
     
-    # Prepare mobile-optimized response with ALL licenses
+    # Prepare mobile-optimized response with ALL licenses and biometric data
     return {
         "license_id": str(latest_license.id),
         "license_number": license_display_number,
         "holder_name": f"{person.first_name} {person.surname}",
-        "holder_photo_url": photo_url,
-        "holder_signature_url": signature_url,
-        "biometric_template_id": latest_license.biometric_template_id,
+        "holder_photo_url": photo_url,  # From ApplicationBiometricData
+        "holder_signature_url": signature_url,  # From ApplicationBiometricData
+        "biometric_template_id": biometric_template_id,  # From ApplicationBiometricData
         "birth_date": person.birth_date.isoformat() if person.birth_date else None,
         "issue_date": latest_license.issue_date.isoformat() if latest_license.issue_date else None,
         "expiry_date": latest_license.expiry_date.isoformat() if latest_license.expiry_date else None,
