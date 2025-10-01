@@ -3982,9 +3982,9 @@ def _generate_license_for_application(
         )
         
         results["license_generated"] = True
-        results["notes"].append(f"Generated license {license.license_number}")
+        results["notes"].append(f"Generated license {license.id}")
         
-        logger.info(f"Generated license {license.license_number} for application {app.id}")
+        logger.info(f"Generated license {license.id} for application {app.id}")
         
     except HTTPException as he:
         error_msg = he.detail if hasattr(he, 'detail') else str(he)
