@@ -61,7 +61,7 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             "category": obj_in.license_category,
             "status": LicenseStatus.ACTIVE,
             "issue_date": issue_date,
-            "issuing_location_id": application.issuing_location_id,
+            "issuing_location_id": application.location_id,
             "issued_by_user_id": current_user.id,
             "restrictions": obj_in.restrictions,
             "medical_restrictions": obj_in.medical_restrictions,
