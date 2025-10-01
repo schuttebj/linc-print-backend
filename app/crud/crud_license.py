@@ -12,7 +12,7 @@ from fastapi import HTTPException, status
 
 from app.crud.base import CRUDBase
 from app.models.license import License, LicenseStatusHistory, LicenseStatus
-from app.models.enums import LicenseCategory
+from app.models.enums import LicenseCategory, ApplicationStatus
 from app.models.application import Application
 from app.models.person import Person
 from app.models.user import User, Location
