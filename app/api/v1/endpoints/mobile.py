@@ -81,36 +81,62 @@ async def get_license_by_id(
             detail="No active licenses found for this person"
         )
     
-    # Get the latest license
+    # Get the latest license (for primary info like photo, issue date)
     latest_license = max(licenses, key=lambda l: l.issue_date)
     
-    # Build photo URL
+    # Build photo URL (from latest license)
     photo_url = None
     if latest_license.photo_file_path:
-        # Use the backend base URL
         photo_url = f"/api/v1/applications/files/{latest_license.photo_file_path}"
+    
+    # Build signature URL (from latest license)
+    signature_url = None
+    if latest_license.signature_file_path:
+        signature_url = f"/api/v1/applications/files/{latest_license.signature_file_path}"
     
     # Generate a display number from license ID or use captured number
     license_display_number = (
         latest_license.captured_from_license_number or 
         latest_license.legacy_license_number or 
-        f"DL-{str(latest_license.id)[:8].upper()}"  # Use first 8 chars of UUID if no number
+        f"DL-{str(latest_license.id)[:8].upper()}"
     )
     
-    # Prepare mobile-optimized response
+    # Collect ALL categories from all active licenses
+    all_categories = []
+    all_licenses_info = []
+    for lic in licenses:
+        if lic.category:
+            all_categories.append(lic.category.value)
+            all_licenses_info.append({
+                "license_id": str(lic.id),
+                "category": lic.category.value,
+                "issue_date": lic.issue_date.isoformat() if lic.issue_date else None,
+                "expiry_date": lic.expiry_date.isoformat() if lic.expiry_date else None,
+                "status": lic.status.value if lic.status else "UNKNOWN",
+                "restrictions": lic.restrictions or {},
+                "has_professional_permit": lic.has_professional_permit or False
+            })
+    
+    # Sort categories alphabetically
+    all_categories = sorted(list(set(all_categories)))
+    
+    # Prepare mobile-optimized response with ALL licenses
     return {
         "license_id": str(latest_license.id),
         "license_number": license_display_number,
         "holder_name": f"{person.first_name} {person.surname}",
         "holder_photo_url": photo_url,
+        "holder_signature_url": signature_url,
+        "biometric_template_id": latest_license.biometric_template_id,
         "birth_date": person.birth_date.isoformat() if person.birth_date else None,
         "issue_date": latest_license.issue_date.isoformat() if latest_license.issue_date else None,
         "expiry_date": latest_license.expiry_date.isoformat() if latest_license.expiry_date else None,
-        "categories": [latest_license.category.value] if latest_license.category else [],
+        "categories": all_categories,  # ALL categories from all licenses
+        "licenses": all_licenses_info,  # Detailed info for each license
         "restrictions": latest_license.restrictions or {},
         "status": latest_license.status.value if latest_license.status else "UNKNOWN",
-        "is_valid": latest_license.status.value == "ACTIVE" if latest_license.status else False,
-        "has_professional_permit": latest_license.has_professional_permit or False,
+        "is_valid": all(lic.status.value == "ACTIVE" for lic in licenses if lic.status),
+        "has_professional_permit": any(lic.has_professional_permit for lic in licenses),
         "issuing_location": latest_license.issuing_location.name if latest_license.issuing_location else None,
         "last_synced": datetime.utcnow().isoformat() + "Z"
     }
@@ -159,6 +185,13 @@ async def generate_verification_qr(
         f"DL-{str(latest_license.id)[:8].upper()}"
     )
     
+    # Collect ALL categories from all active licenses
+    all_categories = []
+    for lic in licenses:
+        if lic.category:
+            all_categories.append(lic.category.value)
+    all_categories = sorted(list(set(all_categories)))
+    
     # Generate QR payload with timestamp
     timestamp = datetime.utcnow()
     expires_at = timestamp + timedelta(seconds=30)
@@ -169,7 +202,7 @@ async def generate_verification_qr(
         "expires_at": expires_at.isoformat() + "Z",
         "status": latest_license.status.value if latest_license.status else "UNKNOWN",
         "holder_name": f"{person.first_name} {person.surname}",
-        "categories": [latest_license.category.value] if latest_license.category else []
+        "categories": all_categories  # ALL categories from all licenses
     }
     
     # Create HMAC signature
