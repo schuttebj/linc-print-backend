@@ -111,12 +111,12 @@ async def get_license_by_id(
             ApplicationBiometricData.application_id == latest_app.id
         ).all()
         
-        # Extract photo and signature file paths
+        # Extract photo and signature file paths - use PUBLIC mobile endpoint
         for bio_data in biometric_data:
             if bio_data.data_type == BiometricDataType.PHOTO and bio_data.file_path:
-                photo_url = f"/api/v1/applications/files/{bio_data.file_path}"
+                photo_url = f"/api/v1/mobile/biometric-file/{bio_data.file_path}"
             elif bio_data.data_type == BiometricDataType.SIGNATURE and bio_data.file_path:
-                signature_url = f"/api/v1/applications/files/{bio_data.file_path}"
+                signature_url = f"/api/v1/mobile/biometric-file/{bio_data.file_path}"
             elif bio_data.data_type == BiometricDataType.FINGERPRINT:
                 # Store fingerprint template ID for verification
                 biometric_template_id = str(bio_data.id) if bio_data.id else None
@@ -349,3 +349,104 @@ async def health_check():
         "service": "mobile_api",
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
+
+
+@router.get("/biometric-file/{file_path:path}", summary="Serve Biometric Files (Public for Mobile App)")
+async def serve_mobile_biometric_file(
+    file_path: str,
+    db: Session = Depends(get_db)
+):
+    """
+    PUBLIC endpoint to serve biometric files (photos, signatures) for mobile app.
+    
+    This is a PUBLIC endpoint (no authentication required) to allow React Native 
+    Image components to load biometric images without auth tokens.
+    
+    Security: File paths must be properly validated to prevent directory traversal.
+    """
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    from app.core.config import get_settings
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"📂 Mobile biometric file request: {file_path}")
+    
+    settings = get_settings()
+    
+    # Get the base storage path
+    if hasattr(settings, 'FILE_STORAGE_PATH'):
+        base_path = Path(settings.FILE_STORAGE_PATH)
+    else:
+        base_path = Path(settings.FILE_STORAGE_BASE_PATH)
+    
+    # Handle absolute paths (strip leading / or /var)
+    file_path_obj = Path(file_path)
+    if file_path_obj.is_absolute():
+        # Convert absolute path to relative by finding the biometric folder
+        path_str = str(file_path_obj)
+        if 'biometric' in path_str:
+            # Extract everything from 'biometric' onwards
+            biometric_index = path_str.index('biometric')
+            relative_path = path_str[biometric_index:]
+            full_file_path = base_path / relative_path
+        else:
+            # If no 'biometric' in path, just use the filename parts after /var
+            parts = file_path_obj.parts
+            # Remove common prefixes like /var, /madagas...
+            clean_parts = [p for p in parts if p not in ['/', 'var', 'madagascar-license-data']]
+            relative_path = Path(*clean_parts) if clean_parts else file_path_obj
+            full_file_path = base_path / relative_path
+    else:
+        # Already relative, just append to base
+        full_file_path = base_path / file_path
+    
+    logger.info(f"📂 Resolved path: {full_file_path}")
+    
+    # Security check - ensure file is within storage directory
+    try:
+        full_file_path = full_file_path.resolve()
+        base_path = base_path.resolve()
+        if not str(full_file_path).startswith(str(base_path)):
+            logger.error(f"❌ Security violation: Attempted access outside storage: {full_file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+    except Exception as e:
+        logger.error(f"❌ Path resolution error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path"
+        )
+    
+    # Check if file exists
+    if not full_file_path.exists():
+        logger.error(f"❌ File not found: {full_file_path}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+    
+    # Check if it's a file (not directory)
+    if not full_file_path.is_file():
+        logger.error(f"❌ Not a file: {full_file_path}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path"
+        )
+    
+    logger.info(f"✅ Serving file: {full_file_path.name}")
+    
+    # Determine content type
+    content_type = "application/octet-stream"
+    if file_path.lower().endswith(('.jpg', '.jpeg')):
+        content_type = "image/jpeg"
+    elif file_path.lower().endswith('.png'):
+        content_type = "image/png"
+    
+    return FileResponse(
+        path=full_file_path,
+        media_type=content_type,
+        filename=full_file_path.name
+    )
