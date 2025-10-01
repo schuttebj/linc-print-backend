@@ -28,6 +28,7 @@ from app.api.v1.endpoints import issues
 from app.api.v1.endpoints import document_test
 from app.api.v1.endpoints import documents
 from app.api.v1.endpoints import analytics
+from app.api.v1.endpoints import mobile
 
 
 api_router = APIRouter()
@@ -55,4 +56,5 @@ api_router.include_router(issues.router, prefix="/issues", tags=["Issues"])
 api_router.include_router(document_test.router, prefix="/document-test", tags=["Document Test"])
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(mobile.router, prefix="/mobile", tags=["Mobile App"])
  

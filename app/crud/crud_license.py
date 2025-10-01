@@ -46,10 +46,10 @@ class CRUDLicense(CRUDBase[License, LicenseCreate, dict]):
             )
         
         # Validate application status
-        if application.status != "APPROVED":
+        if application.status != ApplicationStatus.APPROVED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Application must be approved before license creation. Current status: {application.status}"
+                detail=f"Application must be approved before license creation. Current status: {application.status.value}"
             )
         
         # Create license

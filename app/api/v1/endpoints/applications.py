@@ -3986,6 +3986,11 @@ def _generate_license_for_application(
         
         logger.info(f"Generated license {license.license_number} for application {app.id}")
         
+    except HTTPException as he:
+        error_msg = he.detail if hasattr(he, 'detail') else str(he)
+        logger.error(f"Failed to generate license for application {application.id}: {error_msg}")
+        results["notes"].append(f"License generation failed: {error_msg}")
+        raise ValueError(error_msg)  # Re-raise as ValueError to trigger ERROR status
     except Exception as e:
         logger.error(f"Failed to generate license for application {application.id}: {str(e)}")
         results["notes"].append(f"License generation failed: {str(e)}")
