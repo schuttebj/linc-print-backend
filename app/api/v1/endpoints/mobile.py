@@ -44,7 +44,7 @@ async def get_license_by_id(
     """
     
     # Find person by their ID document number
-    from app.crud.crud_person_alias import person_alias
+    from app.crud import person_alias, person as crud_person
     
     # Try to find person by their ID document
     found_alias = person_alias.get_by_document_number(
@@ -121,7 +121,7 @@ async def generate_verification_qr(
     """
     
     # Find person by their ID document number
-    from app.crud.crud_person_alias import person_alias
+    from app.crud import person_alias, person as crud_person
     
     found_alias = person_alias.get_by_document_number(
         db=db,
