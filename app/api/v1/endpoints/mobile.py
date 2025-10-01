@@ -90,10 +90,17 @@ async def get_license_by_id(
         # Use the backend base URL
         photo_url = f"/api/v1/applications/files/{latest_license.photo_file_path}"
     
+    # Generate a display number from license ID or use captured number
+    license_display_number = (
+        latest_license.captured_from_license_number or 
+        latest_license.legacy_license_number or 
+        f"DL-{str(latest_license.id)[:8].upper()}"  # Use first 8 chars of UUID if no number
+    )
+    
     # Prepare mobile-optimized response
     return {
         "license_id": str(latest_license.id),
-        "license_number": latest_license.license_number or "N/A",
+        "license_number": license_display_number,
         "holder_name": f"{person.first_name} {person.surname}",
         "holder_photo_url": photo_url,
         "birth_date": person.birth_date.isoformat() if person.birth_date else None,
@@ -145,12 +152,19 @@ async def generate_verification_qr(
     
     latest_license = max(licenses, key=lambda l: l.issue_date)
     
+    # Generate a display number from license ID or use captured number
+    license_display_number = (
+        latest_license.captured_from_license_number or 
+        latest_license.legacy_license_number or 
+        f"DL-{str(latest_license.id)[:8].upper()}"
+    )
+    
     # Generate QR payload with timestamp
     timestamp = datetime.utcnow()
     expires_at = timestamp + timedelta(seconds=30)
     
     qr_payload = {
-        "license_number": latest_license.license_number or "N/A",
+        "license_number": license_display_number,
         "timestamp": timestamp.isoformat() + "Z",
         "expires_at": expires_at.isoformat() + "Z",
         "status": latest_license.status.value if latest_license.status else "UNKNOWN",
@@ -211,12 +225,31 @@ async def verify_mobile_qr(
     
     # Verify license in database (get current status)
     license_number = qr_data.get("license_number")
-    if not license_number or license_number == "N/A":
+    if not license_number:
         raise HTTPException(status_code=400, detail="Invalid license number in QR")
     
+    # Search for license by number (could be captured, legacy, or UUID format)
+    license_obj = None
+    
+    # Try captured_from_license_number
     license_obj = db.query(License).filter(
-        License.license_number == license_number
+        License.captured_from_license_number == license_number
     ).first()
+    
+    # Try legacy_license_number
+    if not license_obj:
+        license_obj = db.query(License).filter(
+            License.legacy_license_number == license_number
+        ).first()
+    
+    # Try extracting UUID from DL- format
+    if not license_obj and license_number.startswith("DL-"):
+        uuid_part = license_number[3:]  # Remove "DL-" prefix
+        # Search for licenses where UUID starts with this
+        from sqlalchemy import cast, String
+        license_obj = db.query(License).filter(
+            cast(License.id, String).ilike(f"{uuid_part}%")
+        ).first()
     
     if not license_obj:
         raise HTTPException(status_code=404, detail="License not found in system")

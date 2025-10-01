@@ -401,7 +401,7 @@ class LicenseStatusHistoryResponse(BaseModel):
     from_status: Optional[LicenseStatus]
     to_status: LicenseStatus
     changed_at: datetime
-    changed_by_user_name: Optional[str]
+    changed_by_user_name: Optional[str] = None
     reason: Optional[str]
     notes: Optional[str]
     system_initiated: bool
